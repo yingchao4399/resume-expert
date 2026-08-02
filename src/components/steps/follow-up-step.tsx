@@ -10,11 +10,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, SectionTitle } from "@/components/shared/ui-helpers";
 import { generateFollowUpBullet } from "@/services/ai/resumeAgent";
 import { useResumeStore } from "@/store/resume-store";
+import { confirmedEvidencePrompt } from "@/lib/evidence/resume-evidence";
 
 export function FollowUpStep() {
   const {
     analysisResult,
     userInput,
+    careerEvidence,
     updateFollowUpAnswer,
     setFollowUpBullet,
     setCurrentStep,
@@ -36,7 +38,7 @@ export function FollowUpStep() {
     setError(null);
     try {
       const bullet = await generateFollowUpBullet(
-        userInput,
+        { ...userInput, additionalInfo: [userInput.additionalInfo, confirmedEvidencePrompt(careerEvidence)].filter(Boolean).join("\n\n") },
         question.question,
         question.purpose,
         question.userAnswer

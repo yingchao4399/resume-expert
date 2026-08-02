@@ -11,6 +11,7 @@ describe("resume document library", () => {
     useResumeStore.setState({
       documents: [document],
       activeDocumentId: document.id,
+      careerEvidence: [],
       userInput: document.userInput,
       currentStep: document.currentStep,
       analysisResult: document.analysisResult,

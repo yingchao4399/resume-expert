@@ -22,6 +22,7 @@ import {
 } from "@/services/ai/resumeAgent";
 import type { OptimizeStyle } from "@/types/resume";
 import { cn } from "@/lib/utils";
+import { confirmedEvidencePrompt } from "@/lib/evidence/resume-evidence";
 
 const STYLE_OPTIONS: { value: OptimizeStyle; label: string }[] = [
   { value: "concise", label: "更简洁" },
@@ -34,6 +35,7 @@ export function OptimizeStep() {
   const {
     analysisResult,
     userInput,
+    careerEvidence,
     optimizeStyle,
     setOptimizeStyle,
     isFinalResumeStale,
@@ -55,7 +57,7 @@ export function OptimizeStep() {
     setRegenerating(true);
     setOptimizeError(null);
     try {
-      const items = await regenerateOptimizedItems(userInput, style);
+      const items = await regenerateOptimizedItems({ ...userInput, additionalInfo: [userInput.additionalInfo, confirmedEvidencePrompt(careerEvidence)].filter(Boolean).join("\n\n") }, style);
       setOptimizedItems(items);
     } catch (error) {
       setOptimizeError(error instanceof Error ? error.message : "优化生成失败");
@@ -85,7 +87,7 @@ export function OptimizeStep() {
       const latestResult = useResumeStore.getState().analysisResult;
       if (!latestResult) return;
       const resume = await finalizeResume(
-        userInput,
+        { ...userInput, additionalInfo: [userInput.additionalInfo, confirmedEvidencePrompt(careerEvidence)].filter(Boolean).join("\n\n") },
         optimizeStyle,
         latestResult.optimizedItems,
         latestResult.followUpQuestions

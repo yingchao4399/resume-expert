@@ -6,7 +6,8 @@ import {
   RESUME_SECTION_LABELS,
   sanitizeLayoutConfig,
 } from "@/lib/templates/resume-templates";
-import type { FinalResume, ResumeLayoutConfig, ResumeSectionId } from "@/types/resume";
+import type { FinalResume, ResumeBulletValue, ResumeLayoutConfig, ResumeSectionId } from "@/types/resume";
+import { getBulletText } from "@/lib/evidence/resume-evidence";
 
 interface ResumeTemplateViewProps {
   resume: FinalResume;
@@ -142,7 +143,7 @@ function ExperienceList({
   items,
   layout,
 }: {
-  items: Array<{ title: string; period: string; bullets: string[] }>;
+  items: Array<{ title: string; period: string; bullets: ResumeBulletValue[] }>;
   layout: ResumeLayoutConfig;
 }) {
   const bullet = layout.bulletStyle === "dash" ? "–" : layout.bulletStyle === "square" ? "▪" : "•";
@@ -156,9 +157,9 @@ function ExperienceList({
           </div>
           <ul className="mt-[0.35em] space-y-[0.2em]">
             {item.bullets.map((line, index) => (
-              <li key={`${line}-${index}`} className="flex gap-2 text-neutral-700">
+              <li key={`${typeof line === "string" ? line : line.id}-${index}`} className="flex gap-2 text-neutral-700">
                 <span aria-hidden="true">{bullet}</span>
-                <span>{line}</span>
+                <span>{getBulletText(line)}</span>
               </li>
             ))}
           </ul>

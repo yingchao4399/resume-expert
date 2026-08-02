@@ -12,6 +12,7 @@ export const WORKFLOW_GROUPS: readonly WorkflowGroup[] = [
     label: "简历优化",
     steps: [
       { id: "input", label: "输入材料" },
+      { id: "evidence", label: "经历证据库" },
       { id: "jd-analysis", label: "JD 解析" },
       { id: "diagnosis", label: "简历诊断" },
       { id: "match", label: "匹配分析" },

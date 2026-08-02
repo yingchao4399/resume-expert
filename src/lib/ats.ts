@@ -5,6 +5,7 @@ import type {
   UserInput,
 } from "@/types/resume";
 import { formatResumeAsText } from "@/lib/utils";
+import { getBulletText } from "@/lib/evidence/resume-evidence";
 
 const EVIDENCE_WEIGHT = {
   strong: 100,
@@ -44,10 +45,10 @@ function completenessChecks(resume: FinalResume): boolean[] {
     Boolean(resume.summary.trim()),
     resume.coreSkills.some(Boolean),
     resume.workExperience.some(
-      (work) => work.company.trim() && work.bullets.some(Boolean)
+      (work) => work.company.trim() && work.bullets.some((bullet) => Boolean(getBulletText(bullet).trim()))
     ),
     resume.projectExperience.some(
-      (project) => project.name.trim() && project.bullets.some(Boolean)
+      (project) => project.name.trim() && project.bullets.some((bullet) => Boolean(getBulletText(bullet).trim()))
     ),
     resume.skillsAndTools.some(Boolean),
     Boolean(resume.education.school.trim() && resume.education.degree.trim()),
@@ -85,7 +86,7 @@ export function calculateATSAssessment(
   const bullets = [
     ...resume.workExperience.flatMap((work) => work.bullets),
     ...resume.projectExperience.flatMap((project) => project.bullets),
-  ].filter(Boolean);
+  ].map(getBulletText).filter(Boolean);
   const measurableScore =
     bullets.length > 0
       ? Math.round(

@@ -15,7 +15,8 @@ import {
   RESUME_SECTION_LABELS,
   sanitizeLayoutConfig,
 } from "@/lib/templates/resume-templates";
-import type { FinalResume, ResumeLayoutConfig, ResumeSectionId } from "@/types/resume";
+import type { FinalResume, ResumeBulletValue, ResumeLayoutConfig, ResumeSectionId } from "@/types/resume";
+import { getBulletText } from "@/lib/evidence/resume-evidence";
 
 function colorValue(hex: string) {
   return hex.replace("#", "");
@@ -79,7 +80,7 @@ export function buildResumeDocument(
   };
 
   const experiences = (
-    items: Array<{ title: string; period: string; bullets: string[] }>
+    items: Array<{ title: string; period: string; bullets: ResumeBulletValue[] }>
   ): Paragraph[] =>
     items.flatMap((item) => [
       new Paragraph({
@@ -88,7 +89,7 @@ export function buildResumeDocument(
         spacing: { before: 70, after: 50 },
         children: [run(item.title, { bold: true }), run(item.period ? `\t${item.period}` : "", { color: "666666" })],
       }),
-      ...item.bullets.map(bulletParagraph),
+      ...item.bullets.map((bullet) => bulletParagraph(getBulletText(bullet))),
     ]);
 
   const sectionContent = (id: ResumeSectionId): Paragraph[] => {

@@ -7,7 +7,7 @@ import {
   optimizeStyleSchema,
   userInputSchema,
 } from "@/lib/ai/schemas";
-import type { ResumeDocument } from "@/types/resume";
+import type { CareerEvidence, ResumeDocument } from "@/types/resume";
 import { sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
 
 const importMetadataSchema = z.object({
@@ -19,6 +19,7 @@ const importMetadataSchema = z.object({
 
 const stepIdSchema = z.enum([
   "input",
+  "evidence",
   "jd-analysis",
   "diagnosis",
   "match",
@@ -44,7 +45,7 @@ const layoutConfigSchema = z.object({
 });
 
 const documentSchema = z.object({
-  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
   id: z.string().min(1),
   title: z.string().min(1),
   createdAt: z.string(),
@@ -60,23 +61,43 @@ const documentSchema = z.object({
   hasManualEdits: z.boolean(),
 });
 
+const careerEvidenceSchema = z.object({
+  id: z.string().min(1),
+  type: z.enum(["work", "project", "achievement", "skill"]),
+  title: z.string(),
+  organization: z.string(),
+  role: z.string(),
+  period: z.string(),
+  description: z.string(),
+  metrics: z.array(z.string()),
+  skills: z.array(z.string()),
+  status: z.enum(["candidate", "confirmed"]),
+  sourceType: z.enum(["resume-import", "manual", "follow-up"]),
+  sourceDocumentId: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
 const backupSchema = z.object({
   backupVersion: z.literal(1),
   exportedAt: z.string(),
   documents: z.array(documentSchema).min(1),
+  careerEvidence: z.array(careerEvidenceSchema).optional().default([]),
 });
 
 export interface ResumeBackup {
   backupVersion: 1;
   exportedAt: string;
   documents: ResumeDocument[];
+  careerEvidence: CareerEvidence[];
 }
 
-export function createResumeBackup(documents: ResumeDocument[]): ResumeBackup {
+export function createResumeBackup(documents: ResumeDocument[], careerEvidence: CareerEvidence[] = []): ResumeBackup {
   return {
     backupVersion: 1,
     exportedAt: new Date().toISOString(),
     documents: structuredClone(documents),
+    careerEvidence: structuredClone(careerEvidence),
   };
 }
 
@@ -92,11 +113,12 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
     exportedAt: parsed.data.exportedAt,
     documents: parsed.data.documents.map((document) => ({
       ...document,
-      schemaVersion: 3,
+      schemaVersion: 4,
       sourceResume: document.sourceResume ?? null,
       importMetadata: document.importMetadata ?? null,
       layoutConfig: sanitizeLayoutConfig(document.layoutConfig),
     })),
+    careerEvidence: parsed.data.careerEvidence,
   };
 }
 
@@ -112,9 +134,10 @@ export async function readResumeBackup(file: File): Promise<ResumeBackup> {
 
 export function downloadResumeBackup(
   documents: ResumeDocument[],
+  careerEvidence: CareerEvidence[] = [],
   fileName = "resume-expert-backup.json"
 ): void {
-  const blob = new Blob([JSON.stringify(createResumeBackup(documents), null, 2)], {
+  const blob = new Blob([JSON.stringify(createResumeBackup(documents, careerEvidence), null, 2)], {
     type: "application/json;charset=utf-8",
   });
   const url = URL.createObjectURL(blob);

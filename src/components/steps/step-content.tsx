@@ -2,6 +2,7 @@
 
 import { useResumeStore } from "@/store/resume-store";
 import { InputStep } from "@/components/steps/input-step";
+import { EvidenceLibraryStep } from "@/components/steps/evidence-library-step";
 import { JDAnalysisStep } from "@/components/steps/jd-analysis-step";
 import { DiagnosisStep } from "@/components/steps/diagnosis-step";
 import { MatchStep } from "@/components/steps/match-step";
@@ -18,6 +19,8 @@ export function StepContent() {
   switch (currentStep) {
     case "input":
       return <InputStep />;
+    case "evidence":
+      return <EvidenceLibraryStep />;
     case "jd-analysis":
       return <JDAnalysisStep />;
     case "diagnosis":

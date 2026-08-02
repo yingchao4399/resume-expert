@@ -19,12 +19,14 @@ import { ResumeImportDialog } from "@/components/import/resume-import-dialog";
 import { useResumeStore } from "@/store/resume-store";
 import { runResumeAnalysis } from "@/services/ai/resumeAgent";
 import type { CompanyType, JobStage } from "@/types/resume";
+import { confirmedEvidencePrompt } from "@/lib/evidence/resume-evidence";
 
 export function InputStep() {
   const [importOpen, setImportOpen] = useState(false);
   const {
     optimizeStyle,
     userInput,
+    careerEvidence,
     setUserInput,
     setImportedResume,
     loadExampleData,
@@ -43,7 +45,7 @@ export function InputStep() {
     setAnalyzing(true);
     setAnalysisError(null);
     try {
-      const result = await runResumeAnalysis(userInput, optimizeStyle);
+      const result = await runResumeAnalysis({ ...userInput, additionalInfo: [userInput.additionalInfo, confirmedEvidencePrompt(careerEvidence)].filter(Boolean).join("\n\n") }, optimizeStyle);
       setAnalysisResult(result);
       setCurrentStep("jd-analysis");
     } catch (error) {

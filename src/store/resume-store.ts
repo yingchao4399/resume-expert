@@ -8,6 +8,7 @@ import {
 } from "zustand/middleware";
 import type {
   AnalysisResult,
+  CareerEvidence,
   FinalResume,
   OptimizeStyle,
   ResumeImportMetadata,
@@ -21,6 +22,7 @@ import type {
 import type { AIMode } from "@/lib/ai/types";
 import { WORKFLOW_STEPS } from "@/config/workflow";
 import { getDefaultLayoutConfig, sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
+import { buildEvidenceCandidates, normalizeFinalResumeBullets } from "@/lib/evidence/resume-evidence";
 
 export const RESUME_STORAGE_KEY = "resume-expert-library";
 export const RESUME_STORAGE_ERROR_EVENT = "resume-expert-storage-error";
@@ -28,6 +30,7 @@ export const RESUME_STORAGE_ERROR_EVENT = "resume-expert-storage-error";
 interface ResumeStore {
   documents: ResumeDocument[];
   activeDocumentId: string;
+  careerEvidence: CareerEvidence[];
   hasHydrated: boolean;
   storageError: string | null;
 
@@ -52,7 +55,11 @@ interface ResumeStore {
   selectDocument: (id: string) => void;
   setStorageError: (error: string | null) => void;
   markHydrated: () => void;
-  importDocuments: (documents: ResumeDocument[], mode: "merge" | "replace") => void;
+  importDocuments: (documents: ResumeDocument[], mode: "merge" | "replace", evidence?: CareerEvidence[]) => void;
+  addCareerEvidence: (evidence: Omit<CareerEvidence, "id" | "createdAt" | "updatedAt">) => void;
+  confirmCareerEvidence: (id: string) => void;
+  updateCareerEvidence: (id: string, patch: Partial<CareerEvidence>) => void;
+  deleteCareerEvidence: (id: string) => void;
 
   setUserInput: (input: Partial<UserInput>) => void;
   setImportedResume: (text: string, sourceResume: FinalResume | null, metadata: ResumeImportMetadata) => void;
@@ -173,7 +180,7 @@ function suggestedTitle(input: UserInput): string {
 export function createEmptyDocument(id = createId()): ResumeDocument {
   const timestamp = nowISO();
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     id,
     title: "未命名简历",
     createdAt: timestamp,
@@ -265,6 +272,27 @@ const safeLocalStorage: StateStorage = {
   },
 };
 
+function migrateDocument(document: Partial<ResumeDocument>): ResumeDocument {
+  const base = createEmptyDocument(typeof document.id === "string" ? document.id : createId());
+  const sourceResume = document.sourceResume
+    ? normalizeFinalResumeBullets(document.sourceResume, "imported")
+    : null;
+  const analysisResult = document.analysisResult
+    ? {
+        ...document.analysisResult,
+        finalResume: normalizeFinalResumeBullets(document.analysisResult.finalResume, "ai-generated"),
+      }
+    : null;
+  return {
+    ...base,
+    ...document,
+    schemaVersion: 4,
+    sourceResume,
+    analysisResult,
+    layoutConfig: sanitizeLayoutConfig(document.layoutConfig),
+  } as ResumeDocument;
+}
+
 const initialDocument = createEmptyDocument("initial-draft");
 
 export const useResumeStore = create<ResumeStore>()(
@@ -272,6 +300,7 @@ export const useResumeStore = create<ResumeStore>()(
     (set, get) => ({
       documents: [initialDocument],
       activeDocumentId: initialDocument.id,
+      careerEvidence: [],
       hasHydrated: false,
       storageError: null,
 
@@ -357,23 +386,69 @@ export const useResumeStore = create<ResumeStore>()(
       setStorageError: (error) => set({ storageError: error }),
       markHydrated: () => set({ hasHydrated: true }),
 
-      importDocuments: (documents, mode) =>
+      importDocuments: (documents, mode, evidence = []) =>
         set((state) => {
           if (documents.length === 0) return state;
-          const imported = documents.map((document) => ({
-            ...structuredClone(document),
-            id: mode === "merge" ? createId() : document.id,
-            title: mode === "merge" ? `${document.title} ? ??` : document.title,
+          const idMap = new Map<string, string>();
+          const imported = documents.map((document) => {
+            const nextId = mode === "merge" ? createId() : document.id;
+            idMap.set(document.id, nextId);
+            return migrateDocument({
+              ...structuredClone(document),
+              id: nextId,
+              title: mode === "merge" ? `${document.title} · 导入副本` : document.title,
+              updatedAt: nowISO(),
+            });
+          });
+          const importedEvidence = evidence.map((item) => ({
+            ...structuredClone(item),
+            id: mode === "merge" ? createId() : item.id,
+            sourceDocumentId: item.sourceDocumentId
+              ? idMap.get(item.sourceDocumentId) ?? item.sourceDocumentId
+              : null,
             updatedAt: nowISO(),
           }));
           const nextDocuments = mode === "replace" ? imported : [...state.documents, ...imported];
           const active = imported[0];
           return {
             documents: nextDocuments,
+            careerEvidence: mode === "replace"
+              ? importedEvidence
+              : [...state.careerEvidence, ...importedEvidence],
             activeDocumentId: active.id,
             ...workingStateFromDocument(active),
           };
         }),
+
+      addCareerEvidence: (evidence) =>
+        set((state) => {
+          const timestamp = nowISO();
+          return {
+            careerEvidence: [
+              ...state.careerEvidence,
+              { ...evidence, id: createId(), createdAt: timestamp, updatedAt: timestamp },
+            ],
+          };
+        }),
+
+      confirmCareerEvidence: (id) =>
+        set((state) => ({
+          careerEvidence: state.careerEvidence.map((item) =>
+            item.id === id ? { ...item, status: "confirmed", updatedAt: nowISO() } : item
+          ),
+        })),
+
+      updateCareerEvidence: (id, patch) =>
+        set((state) => ({
+          careerEvidence: state.careerEvidence.map((item) =>
+            item.id === id ? { ...item, ...patch, id: item.id, updatedAt: nowISO() } : item
+          ),
+        })),
+
+      deleteCareerEvidence: (id) =>
+        set((state) => ({
+          careerEvidence: state.careerEvidence.filter((item) => item.id !== id),
+        })),
 
       setUserInput: (input) =>
         set((state) => {
@@ -391,17 +466,30 @@ export const useResumeStore = create<ResumeStore>()(
         }),
 
       setImportedResume: (text, sourceResume, metadata) =>
-        set((state) =>
-          updateActiveDocument(state, {
-            userInput: { ...state.userInput, originalResume: text },
-            sourceResume,
-            importMetadata: metadata,
-            analysisResult: null,
-            currentStep: "input",
-            isFinalResumeStale: false,
-            hasManualEdits: false,
-          })
-        ),
+        set((state) => {
+          const normalizedSource = sourceResume
+            ? normalizeFinalResumeBullets(sourceResume, "imported")
+            : null;
+          const active = getActiveDocument(state);
+          const candidates = normalizedSource
+            ? buildEvidenceCandidates(normalizedSource, active.id)
+            : [];
+          const retained = state.careerEvidence.filter(
+            (item) => !(item.sourceDocumentId === active.id && item.status === "candidate")
+          );
+          return {
+            ...updateActiveDocument(state, {
+              userInput: { ...state.userInput, originalResume: text },
+              sourceResume: normalizedSource,
+              importMetadata: metadata,
+              analysisResult: null,
+              currentStep: "input",
+              isFinalResumeStale: false,
+              hasManualEdits: false,
+            }),
+            careerEvidence: [...retained, ...candidates],
+          };
+        }),
 
       setLayoutConfig: (config) =>
         set((state) => updateActiveDocument(state, { layoutConfig: sanitizeLayoutConfig(config) })),
@@ -434,7 +522,7 @@ export const useResumeStore = create<ResumeStore>()(
                 active.title === "未命名简历"
                   ? suggestedTitle(state.userInput)
                   : active.title,
-              analysisResult: result,
+              analysisResult: { ...result, finalResume: normalizeFinalResumeBullets(result.finalResume, "ai-generated", state.careerEvidence) },
               isFinalResumeStale: false,
               hasManualEdits: false,
             }),
@@ -455,7 +543,7 @@ export const useResumeStore = create<ResumeStore>()(
         set((state) => {
           if (!state.analysisResult) return state;
           return updateActiveDocument(state, {
-            analysisResult: { ...state.analysisResult, finalResume: resume },
+            analysisResult: { ...state.analysisResult, finalResume: normalizeFinalResumeBullets(resume, options?.manual ? "manual" : "ai-generated", state.careerEvidence) },
             isFinalResumeStale: false,
             hasManualEdits: options?.manual === true,
           });
@@ -484,15 +572,38 @@ export const useResumeStore = create<ResumeStore>()(
       setFollowUpBullet: (id, bullet) =>
         set((state) => {
           if (!state.analysisResult) return state;
-          return updateActiveDocument(state, {
-            analysisResult: {
-              ...state.analysisResult,
-              followUpQuestions: state.analysisResult.followUpQuestions.map((q) =>
-                q.id === id ? { ...q, generatedBullet: bullet } : q
-              ),
-            },
-            isFinalResumeStale: true,
-          });
+          const question = state.analysisResult.followUpQuestions.find((item) => item.id === id);
+          const timestamp = nowISO();
+          const candidate: CareerEvidence | null = question
+            ? {
+                id: createId(),
+                type: "achievement",
+                title: question.purpose || "补充经历",
+                organization: "",
+                role: "",
+                period: "",
+                description: bullet,
+                metrics: bullet.match(/\d+(?:\.\d+)?\s*(?:%|％|万|千|百|家|人|次|项|天|月|年|倍)/g) ?? [],
+                skills: [],
+                status: "candidate",
+                sourceType: "follow-up",
+                sourceDocumentId: state.activeDocumentId,
+                createdAt: timestamp,
+                updatedAt: timestamp,
+              }
+            : null;
+          return {
+            ...updateActiveDocument(state, {
+              analysisResult: {
+                ...state.analysisResult,
+                followUpQuestions: state.analysisResult.followUpQuestions.map((q) =>
+                  q.id === id ? { ...q, generatedBullet: bullet } : q
+                ),
+              },
+              isFinalResumeStale: true,
+            }),
+            careerEvidence: candidate ? [...state.careerEvidence, candidate] : state.careerEvidence,
+          };
         }),
 
       getStepStatus: (step) => {
@@ -501,6 +612,11 @@ export const useResumeStore = create<ResumeStore>()(
         const currentIndex = WORKFLOW_STEPS.findIndex(
           (item) => item.id === currentStep
         );
+
+        if (step === "evidence") {
+          if (currentStep === "evidence") return "active";
+          return get().careerEvidence.some((item) => item.status === "confirmed") ? "completed" : "pending";
+        }
 
         if (step === "input") {
           if (currentStep === "input") return "active";
@@ -517,54 +633,48 @@ export const useResumeStore = create<ResumeStore>()(
     }),
     {
       name: RESUME_STORAGE_KEY,
-      version: 3,
+      version: 4,
       skipHydration: true,
       storage: createJSONStorage<ResumeLibraryState>(() => safeLocalStorage),
       partialize: (state) => ({
-        schemaVersion: 3,
+        schemaVersion: 4,
         documents: state.documents,
         activeDocumentId: state.activeDocumentId,
+        careerEvidence: state.careerEvidence,
       }),
       migrate: (persistedState) => {
         const persisted = persistedState as Partial<ResumeLibraryState> & {
           documents?: Array<Partial<ResumeDocument> & { schemaVersion?: number }>;
         };
         const documents = Array.isArray(persisted.documents)
-          ? (persisted.documents.map((document) => ({
-              ...document,
-              schemaVersion: 3 as const,
-              sourceResume: document.sourceResume ?? null,
-              importMetadata: document.importMetadata ?? null,
-              layoutConfig: sanitizeLayoutConfig(document.layoutConfig),
-            })) as ResumeDocument[])
+          ? persisted.documents.map((document) => migrateDocument(document))
           : [];
         return {
-          schemaVersion: 3,
+          schemaVersion: 4,
           documents,
           activeDocumentId: persisted.activeDocumentId ?? documents[0]?.id ?? "",
+          careerEvidence: Array.isArray(persisted.careerEvidence)
+            ? persisted.careerEvidence
+            : [],
         };
       },
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<ResumeLibraryState>;
         const documents = Array.isArray(persisted.documents)
-          ? persisted.documents.filter(
-              (document): document is ResumeDocument =>
-                document?.schemaVersion === 3 &&
-                typeof document.id === "string" &&
-                typeof document.title === "string"
-            )
+          ? persisted.documents
+              .filter((document) => typeof document?.id === "string" && typeof document.title === "string")
+              .map((document) => migrateDocument(document))
           : [];
 
         if (documents.length === 0) return currentState;
 
         const active =
-          documents.find(
-            (document) => document.id === persisted.activeDocumentId
-          ) ?? documents[0];
+          documents.find((document) => document.id === persisted.activeDocumentId) ?? documents[0];
 
         return {
           ...currentState,
           documents,
+          careerEvidence: Array.isArray(persisted.careerEvidence) ? persisted.careerEvidence : [],
           activeDocumentId: active.id,
           ...workingStateFromDocument(active),
         };

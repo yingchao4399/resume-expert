@@ -8,3 +8,7 @@ data/recordings/*
 !data/recordings/.gitkeep
 *.log
 *.tsbuildinfo
+
+# Playwright artifacts
+playwright-report/
+test-results/

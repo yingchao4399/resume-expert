@@ -9,8 +9,10 @@ import { EmptyState, SectionTitle } from "@/components/shared/ui-helpers";
 import { ResumeDocumentView } from "@/components/resume/resume-document-view";
 import { ResumeEditor } from "@/components/resume/resume-editor";
 import { ResumeTemplateStudio } from "@/components/resume/resume-template-studio";
+import { ResumeSourceTrace } from "@/components/resume/resume-source-trace";
 import { useResumeStore } from "@/store/resume-store";
-import type { FinalResume } from "@/types/resume";
+import type { FinalResume, ResumeBulletValue } from "@/types/resume";
+import { getBulletText, normalizeResumeBullet } from "@/lib/evidence/resume-evidence";
 
 function cloneResume(resume: FinalResume): FinalResume {
   return JSON.parse(JSON.stringify(resume)) as FinalResume;
@@ -18,6 +20,12 @@ function cloneResume(resume: FinalResume): FinalResume {
 
 function cleanList(values: string[]): string[] {
   return values.map((value) => value.trim()).filter(Boolean);
+}
+
+function cleanBullets(values: ResumeBulletValue[]) {
+  return values
+    .map((value) => ({ ...normalizeResumeBullet(value), text: getBulletText(value).trim() }))
+    .filter((value) => Boolean(value.text));
 }
 
 function cleanResume(resume: FinalResume): FinalResume {
@@ -36,7 +44,7 @@ function cleanResume(resume: FinalResume): FinalResume {
         company: work.company.trim(),
         role: work.role.trim(),
         period: work.period.trim(),
-        bullets: cleanList(work.bullets),
+        bullets: cleanBullets(work.bullets),
       }))
       .filter(
         (work) =>
@@ -47,7 +55,7 @@ function cleanResume(resume: FinalResume): FinalResume {
         name: project.name.trim(),
         role: project.role.trim(),
         period: project.period.trim(),
-        bullets: cleanList(project.bullets),
+        bullets: cleanBullets(project.bullets),
       }))
       .filter(
         (project) =>
@@ -72,6 +80,7 @@ export function FinalResumeStep() {
     isFinalResumeStale,
     hasManualEdits,
     layoutConfig,
+    careerEvidence,
     setFinalResume,
     setLayoutConfig,
     setCurrentStep,
@@ -173,6 +182,7 @@ export function FinalResumeStep() {
           <Card className="mb-6">
             <CardContent className="p-6">
               <ResumeDocumentView resume={finalResume} layoutConfig={layoutConfig} />
+              <ResumeSourceTrace resume={finalResume} evidence={careerEvidence} />
             </CardContent>
           </Card>
           <div className="flex justify-end">

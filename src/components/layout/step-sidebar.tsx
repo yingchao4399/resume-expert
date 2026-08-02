@@ -9,6 +9,7 @@ import {
   FileSearch,
   FileText,
   GitCompare,
+  Database,
   Mic,
   MessageSquare,
   Sparkles,
@@ -21,6 +22,7 @@ import { WORKFLOW_GROUPS } from "@/config/workflow";
 
 const STEP_ICONS: Record<StepId, React.ElementType> = {
   input: FileText,
+  evidence: Database,
   "jd-analysis": FileSearch,
   diagnosis: Target,
   match: GitCompare,

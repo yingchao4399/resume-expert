@@ -74,18 +74,31 @@ export const optimizedItemSchema = z.object({
   riskWarning: z.string(),
 });
 
+const resumeBulletSchema = z.union([
+  z.string(),
+  z.object({
+    id: z.string(),
+    text: z.string(),
+    sourceType: z.enum(["imported", "ai-generated", "manual"]),
+    evidenceIds: z.array(z.string()),
+    originalText: z.string(),
+    aiText: z.string(),
+    manualText: z.string(),
+  }),
+]);
+
 const workExperienceSchema = z.object({
   company: z.string(),
   role: z.string(),
   period: z.string(),
-  bullets: z.array(z.string()),
+  bullets: z.array(resumeBulletSchema),
 });
 
 const projectExperienceSchema = z.object({
   name: z.string(),
   role: z.string(),
   period: z.string(),
-  bullets: z.array(z.string()),
+  bullets: z.array(resumeBulletSchema),
 });
 
 export const finalResumeSchema = z.object({

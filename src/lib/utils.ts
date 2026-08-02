@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { getBulletText } from "@/lib/evidence/resume-evidence";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -37,13 +38,13 @@ export function formatResumeAsText(resume: import("@/types/resume").FinalResume)
   lines.push("工作经历");
   resume.workExperience.forEach((w) => {
     lines.push(`${w.company} | ${w.role} | ${w.period}`);
-    w.bullets.forEach((b) => lines.push(`  • ${b}`));
+    w.bullets.forEach((b) => lines.push(`  • ${getBulletText(b)}`));
     lines.push("");
   });
   lines.push("项目经历");
   resume.projectExperience.forEach((p) => {
     lines.push(`${p.name} | ${p.role} | ${p.period}`);
-    p.bullets.forEach((b) => lines.push(`  • ${b}`));
+    p.bullets.forEach((b) => lines.push(`  • ${getBulletText(b)}`));
     lines.push("");
   });
   lines.push("技能工具");

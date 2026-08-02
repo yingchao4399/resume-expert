@@ -9,8 +9,10 @@ import { Textarea } from "@/components/ui/textarea";
 import type {
   FinalResume,
   ProjectExperience,
+  ResumeBulletValue,
   WorkExperience,
 } from "@/types/resume";
+import { createResumeBullet, getBulletText, updateResumeBulletText } from "@/lib/evidence/resume-evidence";
 
 interface ResumeEditorProps {
   value: FinalResume;
@@ -168,7 +170,7 @@ export function ResumeEditor({ value, onChange }: ResumeEditorProps) {
   );
 }
 
-function ExperienceEditor<T extends { period: string; bullets: string[] }>({
+function ExperienceEditor<T extends { period: string; bullets: ResumeBulletValue[] }>({
   title,
   items,
   labels,
@@ -245,13 +247,13 @@ function ExperienceEditor<T extends { period: string; bullets: string[] }>({
                   <div key={bulletIndex} className="flex items-start gap-2">
                     <Textarea
                       className="min-h-20"
-                      value={bullet}
+                      value={getBulletText(bullet)}
                       onChange={(event) =>
                         updateItem(index, {
                           ...item,
                           bullets: item.bullets.map((current, currentIndex) =>
                             currentIndex === bulletIndex
-                              ? event.target.value
+                              ? updateResumeBulletText(current, event.target.value)
                               : current
                           ),
                         })
@@ -283,7 +285,7 @@ function ExperienceEditor<T extends { period: string; bullets: string[] }>({
                   onClick={() =>
                     updateItem(index, {
                       ...item,
-                      bullets: [...item.bullets, ""],
+                      bullets: [...item.bullets, createResumeBullet("", "manual")],
                     })
                   }
                 >

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 export type StepId =
   | "input"
+  | "evidence"
   | "jd-analysis"
   | "diagnosis"
   | "match"
@@ -94,14 +95,46 @@ export interface WorkExperience {
   company: string;
   role: string;
   period: string;
-  bullets: string[];
+  bullets: ResumeBulletValue[];
 }
 
 export interface ProjectExperience {
   name: string;
   role: string;
   period: string;
-  bullets: string[];
+  bullets: ResumeBulletValue[];
+}
+
+export type ResumeBulletSource = "imported" | "ai-generated" | "manual";
+
+export interface ResumeBullet {
+  id: string;
+  text: string;
+  sourceType: ResumeBulletSource;
+  evidenceIds: string[];
+  originalText: string;
+  aiText: string;
+  manualText: string;
+}
+
+/** String values are accepted only while migrating V1/V2 persisted and AI data. */
+export type ResumeBulletValue = string | ResumeBullet;
+
+export interface CareerEvidence {
+  id: string;
+  type: "work" | "project" | "achievement" | "skill";
+  title: string;
+  organization: string;
+  role: string;
+  period: string;
+  description: string;
+  metrics: string[];
+  skills: string[];
+  status: "candidate" | "confirmed";
+  sourceType: "resume-import" | "manual" | "follow-up";
+  sourceDocumentId: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface FinalResume {
@@ -184,7 +217,7 @@ export interface StepConfig {
   icon?: ReactNode;
 }
 export interface ResumeDocument {
-  schemaVersion: 3;
+  schemaVersion: 4;
   id: string;
   title: string;
   createdAt: string;
@@ -201,9 +234,10 @@ export interface ResumeDocument {
 }
 
 export interface ResumeLibraryState {
-  schemaVersion: 3;
+  schemaVersion: 4;
   documents: ResumeDocument[];
   activeDocumentId: string;
+  careerEvidence: CareerEvidence[];
 }
 
 export interface ATSAssessment {
