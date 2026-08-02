@@ -57,3 +57,13 @@
   }
 }
 
+
+.resume-sections {
+  display: grid;
+  gap: var(--resume-section-gap, 18px);
+}
+
+.resume-document p,
+.resume-document li {
+  overflow-wrap: anywhere;
+}

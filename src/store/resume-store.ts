@@ -11,6 +11,7 @@ import type {
   FinalResume,
   OptimizeStyle,
   ResumeImportMetadata,
+  ResumeLayoutConfig,
   ResumeDocument,
   ResumeLibraryState,
   StepId,
@@ -19,6 +20,7 @@ import type {
 } from "@/types/resume";
 import type { AIMode } from "@/lib/ai/types";
 import { WORKFLOW_STEPS } from "@/config/workflow";
+import { getDefaultLayoutConfig, sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
 
 export const RESUME_STORAGE_KEY = "resume-expert-library";
 export const RESUME_STORAGE_ERROR_EVENT = "resume-expert-storage-error";
@@ -35,6 +37,7 @@ interface ResumeStore {
   analysisResult: AnalysisResult | null;
   sourceResume: FinalResume | null;
   importMetadata: ResumeImportMetadata | null;
+  layoutConfig: ResumeLayoutConfig;
   analysisError: string | null;
   aiMode: AIMode | null;
   optimizeStyle: OptimizeStyle;
@@ -53,6 +56,7 @@ interface ResumeStore {
 
   setUserInput: (input: Partial<UserInput>) => void;
   setImportedResume: (text: string, sourceResume: FinalResume | null, metadata: ResumeImportMetadata) => void;
+  setLayoutConfig: (config: ResumeLayoutConfig) => void;
   loadExampleData: () => void;
   setCurrentStep: (step: StepId) => void;
   setAnalyzing: (analyzing: boolean) => void;
@@ -169,7 +173,7 @@ function suggestedTitle(input: UserInput): string {
 export function createEmptyDocument(id = createId()): ResumeDocument {
   const timestamp = nowISO();
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id,
     title: "未命名简历",
     createdAt: timestamp,
@@ -179,6 +183,7 @@ export function createEmptyDocument(id = createId()): ResumeDocument {
     analysisResult: null,
     sourceResume: null,
     importMetadata: null,
+    layoutConfig: getDefaultLayoutConfig(),
     optimizeStyle: "ai-product",
     isFinalResumeStale: false,
     hasManualEdits: false,
@@ -192,6 +197,7 @@ function workingStateFromDocument(document: ResumeDocument) {
     analysisResult: document.analysisResult,
     sourceResume: document.sourceResume,
     importMetadata: document.importMetadata,
+    layoutConfig: document.layoutConfig,
     optimizeStyle: document.optimizeStyle,
     isFinalResumeStale: document.isFinalResumeStale,
     hasManualEdits: document.hasManualEdits,
@@ -397,6 +403,9 @@ export const useResumeStore = create<ResumeStore>()(
           })
         ),
 
+      setLayoutConfig: (config) =>
+        set((state) => updateActiveDocument(state, { layoutConfig: sanitizeLayoutConfig(config) })),
+
       loadExampleData: () =>
         set((state) =>
           updateActiveDocument(state, {
@@ -508,11 +517,11 @@ export const useResumeStore = create<ResumeStore>()(
     }),
     {
       name: RESUME_STORAGE_KEY,
-      version: 2,
+      version: 3,
       skipHydration: true,
       storage: createJSONStorage<ResumeLibraryState>(() => safeLocalStorage),
       partialize: (state) => ({
-        schemaVersion: 2,
+        schemaVersion: 3,
         documents: state.documents,
         activeDocumentId: state.activeDocumentId,
       }),
@@ -523,13 +532,14 @@ export const useResumeStore = create<ResumeStore>()(
         const documents = Array.isArray(persisted.documents)
           ? (persisted.documents.map((document) => ({
               ...document,
-              schemaVersion: 2 as const,
+              schemaVersion: 3 as const,
               sourceResume: document.sourceResume ?? null,
               importMetadata: document.importMetadata ?? null,
+              layoutConfig: sanitizeLayoutConfig(document.layoutConfig),
             })) as ResumeDocument[])
           : [];
         return {
-          schemaVersion: 2,
+          schemaVersion: 3,
           documents,
           activeDocumentId: persisted.activeDocumentId ?? documents[0]?.id ?? "",
         };
@@ -539,7 +549,7 @@ export const useResumeStore = create<ResumeStore>()(
         const documents = Array.isArray(persisted.documents)
           ? persisted.documents.filter(
               (document): document is ResumeDocument =>
-                document?.schemaVersion === 2 &&
+                document?.schemaVersion === 3 &&
                 typeof document.id === "string" &&
                 typeof document.title === "string"
             )

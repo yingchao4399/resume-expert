@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronRight, Pencil, Save, X } from "lucide-react";
+import { ChevronRight, Palette, Pencil, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState, SectionTitle } from "@/components/shared/ui-helpers";
 import { ResumeDocumentView } from "@/components/resume/resume-document-view";
 import { ResumeEditor } from "@/components/resume/resume-editor";
+import { ResumeTemplateStudio } from "@/components/resume/resume-template-studio";
 import { useResumeStore } from "@/store/resume-store";
 import type { FinalResume } from "@/types/resume";
 
@@ -70,11 +71,14 @@ export function FinalResumeStep() {
     analysisResult,
     isFinalResumeStale,
     hasManualEdits,
+    layoutConfig,
     setFinalResume,
+    setLayoutConfig,
     setCurrentStep,
   } = useResumeStore();
   const finalResume = analysisResult?.finalResume ?? null;
   const [editing, setEditing] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
   const [draft, setDraft] = useState<FinalResume | null>(
     finalResume ? cloneResume(finalResume) : null
   );
@@ -112,10 +116,16 @@ export function FinalResumeStep() {
           description="预览或直接编辑最终内容，修改会保存在当前岗位版本中"
         />
         {!editing && (
-          <Button variant="outline" size="sm" onClick={beginEditing}>
-            <Pencil className="h-3.5 w-3.5" />
-            编辑简历
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setTemplateOpen(true)}>
+              <Palette className="h-3.5 w-3.5" />
+              模板与排版
+            </Button>
+    <Button variant="outline" size="sm" onClick={beginEditing}>
+      <Pencil className="h-3.5 w-3.5" />
+      编辑简历
+    </Button>
+          </div>
         )}
       </div>
 
@@ -162,7 +172,7 @@ export function FinalResumeStep() {
         <>
           <Card className="mb-6">
             <CardContent className="p-6">
-              <ResumeDocumentView resume={finalResume} />
+              <ResumeDocumentView resume={finalResume} layoutConfig={layoutConfig} />
             </CardContent>
           </Card>
           <div className="flex justify-end">
@@ -177,6 +187,13 @@ export function FinalResumeStep() {
           </div>
         </>
       )}
+      <ResumeTemplateStudio
+        open={templateOpen}
+        onOpenChange={setTemplateOpen}
+        resume={finalResume}
+        value={layoutConfig}
+        onSave={setLayoutConfig}
+      />
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { ResumeDocumentView } from "@/components/resume/resume-document-view";
 import { useResumeStore } from "@/store/resume-store";
 
 export default function PrintResumePage() {
-  const { analysisResult, hasHydrated, userInput } = useResumeStore();
+  const { analysisResult, hasHydrated, userInput, layoutConfig } = useResumeStore();
 
 
   useEffect(() => {
@@ -34,6 +34,7 @@ export default function PrintResumePage() {
 
   return (
     <main className="min-h-screen bg-neutral-100 py-6 print:bg-white print:py-0">
+      <style>{`@page { size: A4; margin: ${layoutConfig.pageMargin}mm; }`}</style>
       <div className="print-controls mx-auto mb-4 flex max-w-[210mm] items-center justify-between rounded-lg border bg-white px-4 py-3">
         <div>
           <p className="text-sm font-medium">A4 简历打印预览</p>
@@ -47,8 +48,11 @@ export default function PrintResumePage() {
         </Button>
       </div>
 
-      <div className="print-page mx-auto min-h-[297mm] w-[210mm] bg-white px-[16mm] py-[14mm] shadow-sm print:min-h-0 print:w-auto print:px-0 print:py-0 print:shadow-none">
-        <ResumeDocumentView resume={analysisResult.finalResume} />
+      <div
+        className="print-page mx-auto min-h-[297mm] w-[210mm] bg-white shadow-sm print:min-h-0 print:w-auto print:p-0 print:shadow-none"
+        style={{ padding: `${layoutConfig.pageMargin}mm` }}
+      >
+        <ResumeDocumentView resume={analysisResult.finalResume} layoutConfig={layoutConfig} />
         <p className="print-controls mt-8 text-center text-xs text-neutral-400">
           当前目标岗位：{userInput.targetRole || "未填写"}
         </p>

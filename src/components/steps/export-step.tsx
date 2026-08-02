@@ -39,6 +39,7 @@ export function ExportStep() {
     userInput,
     copied,
     isFinalResumeStale,
+    layoutConfig,
     setCopied,
     setCurrentStep,
   } = useResumeStore();
@@ -83,7 +84,7 @@ export function ExportStep() {
     setExporting(true);
     setExportError(null);
     try {
-      await downloadResumeDocx(finalResume, userInput.targetRole);
+      await downloadResumeDocx(finalResume, userInput.targetRole, layoutConfig);
     } catch (error) {
       setExportError(
         error instanceof Error ? error.message : "Word 文件生成失败"
@@ -197,6 +198,7 @@ export function ExportStep() {
               </DialogHeader>
               <ResumeDocumentView
                 resume={finalResume}
+                layoutConfig={layoutConfig}
                 className="rounded-md border p-6"
               />
               <div className="flex justify-end">

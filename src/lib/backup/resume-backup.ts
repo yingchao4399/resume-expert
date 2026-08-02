@@ -8,6 +8,7 @@ import {
   userInputSchema,
 } from "@/lib/ai/schemas";
 import type { ResumeDocument } from "@/types/resume";
+import { sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
 
 const importMetadataSchema = z.object({
   sourceType: z.enum(["text", "pdf", "docx"]),
@@ -29,8 +30,21 @@ const stepIdSchema = z.enum([
   "export",
 ]);
 
+const layoutConfigSchema = z.object({
+  templateId: z.enum(["ats-classic", "modern-clean", "compact-professional"]),
+  fontFamily: z.enum(["microsoft-yahei", "songti", "arial", "calibri"]),
+  baseFontSize: z.number(),
+  lineHeight: z.number(),
+  sectionSpacing: z.number(),
+  pageMargin: z.number(),
+  accentColor: z.string(),
+  bulletStyle: z.enum(["disc", "dash", "square"]),
+  sectionOrder: z.array(z.enum(["jobIntent", "summary", "coreSkills", "workExperience", "projectExperience", "skillsAndTools", "education"])),
+  hiddenSections: z.array(z.enum(["jobIntent", "summary", "coreSkills", "workExperience", "projectExperience", "skillsAndTools", "education"])),
+});
+
 const documentSchema = z.object({
-  schemaVersion: z.union([z.literal(1), z.literal(2)]),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   id: z.string().min(1),
   title: z.string().min(1),
   createdAt: z.string(),
@@ -40,6 +54,7 @@ const documentSchema = z.object({
   analysisResult: analysisResultSchema.nullable(),
   sourceResume: finalResumeSchema.nullable().optional(),
   importMetadata: importMetadataSchema.nullable().optional(),
+  layoutConfig: layoutConfigSchema.optional(),
   optimizeStyle: optimizeStyleSchema,
   isFinalResumeStale: z.boolean(),
   hasManualEdits: z.boolean(),
@@ -77,9 +92,10 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
     exportedAt: parsed.data.exportedAt,
     documents: parsed.data.documents.map((document) => ({
       ...document,
-      schemaVersion: 2,
+      schemaVersion: 3,
       sourceResume: document.sourceResume ?? null,
       importMetadata: document.importMetadata ?? null,
+      layoutConfig: sanitizeLayoutConfig(document.layoutConfig),
     })),
   };
 }

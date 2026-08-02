@@ -12,7 +12,7 @@ describe("resume backup", () => {
 
     expect(parsed.documents).toHaveLength(1);
     expect(parsed.documents[0].id).toBe("backup-test");
-    expect(parsed.documents[0].schemaVersion).toBe(2);
+    expect(parsed.documents[0].schemaVersion).toBe(3);
     expect(parsed.documents[0].sourceResume).toBeNull();
   });
 
@@ -28,7 +28,7 @@ describe("resume backup", () => {
 
     expect(parsed.documents[0]).toMatchObject({
       id: "legacy-test",
-      schemaVersion: 2,
+      schemaVersion: 3,
       sourceResume: null,
       importMetadata: null,
     });

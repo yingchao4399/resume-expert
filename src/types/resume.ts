@@ -131,6 +131,29 @@ export interface ResumeImportMetadata {
   warnings: string[];
 }
 
+export type ResumeTemplateId = "ats-classic" | "modern-clean" | "compact-professional";
+export type ResumeSectionId =
+  | "jobIntent"
+  | "summary"
+  | "coreSkills"
+  | "workExperience"
+  | "projectExperience"
+  | "skillsAndTools"
+  | "education";
+
+export interface ResumeLayoutConfig {
+  templateId: ResumeTemplateId;
+  fontFamily: "microsoft-yahei" | "songti" | "arial" | "calibri";
+  baseFontSize: number;
+  lineHeight: number;
+  sectionSpacing: number;
+  pageMargin: number;
+  accentColor: string;
+  bulletStyle: "disc" | "dash" | "square";
+  sectionOrder: ResumeSectionId[];
+  hiddenSections: ResumeSectionId[];
+}
+
 export interface InterviewQuestion {
   question: string;
   suggestedAnswer: string;
@@ -161,7 +184,7 @@ export interface StepConfig {
   icon?: ReactNode;
 }
 export interface ResumeDocument {
-  schemaVersion: 2;
+  schemaVersion: 3;
   id: string;
   title: string;
   createdAt: string;
@@ -171,13 +194,14 @@ export interface ResumeDocument {
   analysisResult: AnalysisResult | null;
   sourceResume: FinalResume | null;
   importMetadata: ResumeImportMetadata | null;
+  layoutConfig: ResumeLayoutConfig;
   optimizeStyle: OptimizeStyle;
   isFinalResumeStale: boolean;
   hasManualEdits: boolean;
 }
 
 export interface ResumeLibraryState {
-  schemaVersion: 2;
+  schemaVersion: 3;
   documents: ResumeDocument[];
   activeDocumentId: string;
 }
