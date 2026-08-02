@@ -1,0 +1,9 @@
+node_modules
+.next
+.pnpm-store
+out
+.env*.local
+.ai-user-config.json
+data/recordings/*
+!data/recordings/.gitkeep
+*.log
