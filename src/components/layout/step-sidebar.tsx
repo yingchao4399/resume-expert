@@ -2,6 +2,7 @@
 
 import {
   Brain,
+  BriefcaseBusiness,
   Check,
   Circle,
   ClipboardList,
@@ -32,6 +33,7 @@ const STEP_ICONS: Record<StepId, React.ElementType> = {
   optimize: Sparkles,
   "final-resume": ClipboardList,
   interview: Brain,
+  applications: BriefcaseBusiness,
   export: Download,
   "interview-recording": Mic,
 };

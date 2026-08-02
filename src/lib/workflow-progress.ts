@@ -22,7 +22,7 @@ const STAGE_STEPS: Record<WorkflowStageId, StepId[]> = {
   materials: ["input", "evidence"],
   analysis: ["jd-analysis", "diagnosis", "match", "follow-up", "interview"],
   creation: ["optimize", "final-resume"],
-  delivery: ["export"],
+  delivery: ["applications", "export"],
 };
 
 export function getWorkflowProgress(input: ProgressInput): WorkflowStageProgress[] {
@@ -62,7 +62,7 @@ export function getWorkflowProgress(input: ProgressInput): WorkflowStageProgress
       id: "delivery",
       status: active("delivery") ? (finalReady ? "active" : "blocked") : "pending",
       blocker: finalReady ? null : "最终简历未就绪，暂不能导出",
-      nextStep: finalReady ? "export" : analysisReady ? "optimize" : "input",
+      nextStep: finalReady ? "applications" : analysisReady ? "optimize" : "input",
       actionLabel: finalReady ? "ATS 与导出" : "解决阻塞",
     },
   ];

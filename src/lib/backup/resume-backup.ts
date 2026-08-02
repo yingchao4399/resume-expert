@@ -6,8 +6,10 @@ import {
   finalResumeSchema,
   optimizeStyleSchema,
   userInputSchema,
+  interviewAnalysisResultSchema,
 } from "@/lib/ai/schemas";
-import type { CareerEvidence, ResumeDocument } from "@/types/resume";
+import type { CareerEvidence, JobApplication, ResumeDocument } from "@/types/resume";
+import type { InterviewReviewRecord } from "@/types/interview";
 import { sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
 
 const importMetadataSchema = z.object({
@@ -28,6 +30,7 @@ const stepIdSchema = z.enum([
   "interview-recording",
   "final-resume",
   "interview",
+  "applications",
   "export",
 ]);
 
@@ -78,26 +81,46 @@ const careerEvidenceSchema = z.object({
   updatedAt: z.string(),
 });
 
+const jobApplicationSchema = z.object({
+  id: z.string().min(1), company: z.string(), role: z.string(), jdUrl: z.string(), jdText: z.string(),
+  status: z.enum(["准备中", "已投递", "笔试", "面试", "Offer", "结束"]),
+  appliedAt: z.string(), nextStepAt: z.string(), notes: z.string(), resumeDocumentId: z.string().nullable(),
+  createdAt: z.string(), updatedAt: z.string(),
+});
+
+const interviewReviewSchema = z.object({
+  id: z.string().min(1), applicationId: z.string().nullable(), resumeDocumentId: z.string().nullable(),
+  transcriptText: z.string(), result: interviewAnalysisResultSchema,
+  recording: z.object({ id: z.string(), fileName: z.string(), fileSize: z.number(), durationSec: z.number().optional(), uploadedAt: z.string() }).nullable(),
+  createdAt: z.string(), updatedAt: z.string(),
+});
+
 const backupSchema = z.object({
-  backupVersion: z.literal(1),
+  backupVersion: z.union([z.literal(1), z.literal(2)]),
   exportedAt: z.string(),
   documents: z.array(documentSchema).min(1),
   careerEvidence: z.array(careerEvidenceSchema).optional().default([]),
+  jobApplications: z.array(jobApplicationSchema).optional().default([]),
+  interviewReviews: z.array(interviewReviewSchema).optional().default([]),
 });
 
 export interface ResumeBackup {
-  backupVersion: 1;
+  backupVersion: 2;
   exportedAt: string;
   documents: ResumeDocument[];
   careerEvidence: CareerEvidence[];
+  jobApplications: JobApplication[];
+  interviewReviews: InterviewReviewRecord[];
 }
 
-export function createResumeBackup(documents: ResumeDocument[], careerEvidence: CareerEvidence[] = []): ResumeBackup {
+export function createResumeBackup(documents: ResumeDocument[], careerEvidence: CareerEvidence[] = [], jobApplications: JobApplication[] = [], interviewReviews: InterviewReviewRecord[] = []): ResumeBackup {
   return {
-    backupVersion: 1,
+    backupVersion: 2,
     exportedAt: new Date().toISOString(),
     documents: structuredClone(documents),
     careerEvidence: structuredClone(careerEvidence),
+    jobApplications: structuredClone(jobApplications),
+    interviewReviews: structuredClone(interviewReviews),
   };
 }
 
@@ -109,7 +132,7 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
     throw new Error(`备份文件结构无效（${path}）：${issue?.message ?? "未知错误"}`);
   }
   return {
-    backupVersion: 1,
+    backupVersion: 2,
     exportedAt: parsed.data.exportedAt,
     documents: parsed.data.documents.map((document) => ({
       ...document,
@@ -119,6 +142,8 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
       layoutConfig: sanitizeLayoutConfig(document.layoutConfig),
     })),
     careerEvidence: parsed.data.careerEvidence,
+    jobApplications: parsed.data.jobApplications,
+    interviewReviews: parsed.data.interviewReviews,
   };
 }
 
@@ -135,9 +160,11 @@ export async function readResumeBackup(file: File): Promise<ResumeBackup> {
 export function downloadResumeBackup(
   documents: ResumeDocument[],
   careerEvidence: CareerEvidence[] = [],
+  jobApplications: JobApplication[] = [],
+  interviewReviews: InterviewReviewRecord[] = [],
   fileName = "resume-expert-backup.json"
 ): void {
-  const blob = new Blob([JSON.stringify(createResumeBackup(documents, careerEvidence), null, 2)], {
+  const blob = new Blob([JSON.stringify(createResumeBackup(documents, careerEvidence, jobApplications, interviewReviews), null, 2)], {
     type: "application/json;charset=utf-8",
   });
   const url = URL.createObjectURL(blob);

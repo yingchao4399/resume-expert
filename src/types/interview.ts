@@ -127,6 +127,14 @@ export interface InterviewSummary {
   resultPrediction?: string; // 结果预判
 }
 
+export interface InterviewRecordingMetadata {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  durationSec?: number;
+  uploadedAt: string;
+}
+
 // 完整分析结果
 export interface InterviewAnalysisResult {
   recordingId: string;
@@ -142,4 +150,15 @@ export interface InterviewAnalysisResult {
   mindMap: MindMapNode;
   fishbone: FishboneAnalysis;
   summary: InterviewSummary;
+}
+
+export interface InterviewReviewRecord {
+  id: string;
+  applicationId: string | null;
+  resumeDocumentId: string | null;
+  transcriptText: string;
+  result: InterviewAnalysisResult;
+  recording: InterviewRecordingMetadata | null;
+  createdAt: string;
+  updatedAt: string;
 }

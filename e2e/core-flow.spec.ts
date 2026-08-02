@@ -52,7 +52,7 @@ function stateFor(templateId = "ats-classic") {
 }
 
 async function seed(page: Page, templateId = "ats-classic") {
-  await page.addInitScript((value) => localStorage.setItem("resume-expert-library", JSON.stringify(value)), stateFor(templateId));
+  await page.addInitScript((value) => { if (!localStorage.getItem("resume-expert-library")) localStorage.setItem("resume-expert-library", JSON.stringify(value)); }, stateFor(templateId));
 }
 
 test("loads example data and keeps an evidence item after reload", async ({ page }) => {
@@ -69,6 +69,20 @@ test("loads example data and keeps an evidence item after reload", async ({ page
   await page.reload();
   await page.getByRole("button", { name: /经历证据库/ }).click();
   await expect(page.getByText("客户上线提效")).toBeVisible();
+});
+
+test("persists a job application linked to the selected resume", async ({ page }) => {
+  await seed(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: /投递与进展/ }).click();
+  await page.getByRole("button", { name: "新增投递" }).click();
+  await page.getByLabel("公司").fill("未来科技");
+  await page.getByLabel("岗位").fill("高级产品经理");
+  await page.getByRole("button", { name: "保存投递" }).click();
+  await expect(page.getByText("未来科技 · 高级产品经理")).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: /投递与进展/ }).click();
+  await expect(page.getByText("未来科技 · 高级产品经理")).toBeVisible();
 });
 
 for (const templateId of ["ats-classic", "modern-clean", "compact-professional"]) {

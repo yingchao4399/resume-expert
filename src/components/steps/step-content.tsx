@@ -12,6 +12,7 @@ import { InterviewRecordingStep } from "@/components/steps/interview-recording-s
 import { FinalResumeStep } from "@/components/steps/final-resume-step";
 import { InterviewStep } from "@/components/steps/interview-step";
 import { ExportStep } from "@/components/steps/export-step";
+import { ApplicationsStep } from "@/components/steps/applications-step";
 
 export function StepContent() {
   const currentStep = useResumeStore((s) => s.currentStep);
@@ -37,6 +38,8 @@ export function StepContent() {
       return <FinalResumeStep />;
     case "interview":
       return <InterviewStep />;
+    case "applications":
+      return <ApplicationsStep />;
     case "export":
       return <ExportStep />;
     default:

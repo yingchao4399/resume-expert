@@ -8,12 +8,19 @@ describe("resume backup", () => {
     document.title = "产品经理简历";
     document.userInput.originalResume = "一份用于测试的原始简历文本，包含足够长度。";
 
-    const parsed = parseResumeBackup(createResumeBackup([document]));
+    const application = {
+      id: "application-1", company: "示例公司", role: "产品经理", jdUrl: "", jdText: "", status: "已投递" as const,
+      appliedAt: "2026-08-03", nextStepAt: "", notes: "", resumeDocumentId: document.id,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    };
+    const parsed = parseResumeBackup(createResumeBackup([document], [], [application]));
 
     expect(parsed.documents).toHaveLength(1);
     expect(parsed.documents[0].id).toBe("backup-test");
     expect(parsed.documents[0].schemaVersion).toBe(4);
     expect(parsed.documents[0].sourceResume).toBeNull();
+    expect(parsed.backupVersion).toBe(2);
+    expect(parsed.jobApplications[0]).toMatchObject({ id: "application-1", resumeDocumentId: "backup-test" });
   });
 
   it("migrates version 1 documents without losing resume data", () => {

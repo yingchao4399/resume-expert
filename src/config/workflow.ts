@@ -43,7 +43,10 @@ export const WORKFLOW_STAGES: readonly WorkflowStageConfig[] = [
     id: "delivery",
     label: "交付",
     description: "ATS 检查、导出与备份",
-    steps: [{ id: "export", label: "ATS 与导出" }],
+    steps: [
+      { id: "applications", label: "投递与进展" },
+      { id: "export", label: "ATS 与导出" },
+    ],
   },
 ];
 

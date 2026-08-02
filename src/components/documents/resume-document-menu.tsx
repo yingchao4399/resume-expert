@@ -18,6 +18,7 @@ export function ResumeDocumentMenu() {
   const {
     documents,
     activeDocumentId,
+    jobApplications,
     hasHydrated,
     createDocument,
     duplicateDocument,
@@ -33,6 +34,7 @@ export function ResumeDocumentMenu() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   const [title, setTitle] = useState(active?.title ?? "");
+  const referenceCount = jobApplications.filter((item) => item.resumeDocumentId === activeDocumentId).length;
 
   useEffect(() => {
     setTitle(active?.title ?? "");
@@ -144,7 +146,7 @@ export function ResumeDocumentMenu() {
           <DialogHeader>
             <DialogTitle>删除当前简历版本？</DialogTitle>
             <DialogDescription>
-              “{active?.title ?? "当前版本"}”及其分析结果会从浏览器中永久删除。
+              “{active?.title ?? "当前版本"}”及其分析结果会从浏览器中永久删除。{referenceCount > 0 ? `该版本正被 ${referenceCount} 条投递记录引用；确认后投递记录会保留，但简历关联将解除。` : ""}
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">

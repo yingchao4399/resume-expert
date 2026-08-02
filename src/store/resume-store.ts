@@ -10,6 +10,7 @@ import type {
   AnalysisResult,
   CareerEvidence,
   FinalResume,
+  JobApplication,
   OptimizeStyle,
   ResumeImportMetadata,
   ResumeLayoutConfig,
@@ -20,6 +21,7 @@ import type {
   UserInput,
 } from "@/types/resume";
 import type { AIMode } from "@/lib/ai/types";
+import type { InterviewReviewRecord } from "@/types/interview";
 import { WORKFLOW_STEPS } from "@/config/workflow";
 import { getDefaultLayoutConfig, sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
 import { buildEvidenceCandidates, normalizeFinalResumeBullets } from "@/lib/evidence/resume-evidence";
@@ -31,6 +33,8 @@ interface ResumeStore {
   documents: ResumeDocument[];
   activeDocumentId: string;
   careerEvidence: CareerEvidence[];
+  jobApplications: JobApplication[];
+  interviewReviews: InterviewReviewRecord[];
   hasHydrated: boolean;
   storageError: string | null;
 
@@ -55,11 +59,16 @@ interface ResumeStore {
   selectDocument: (id: string) => void;
   setStorageError: (error: string | null) => void;
   markHydrated: () => void;
-  importDocuments: (documents: ResumeDocument[], mode: "merge" | "replace", evidence?: CareerEvidence[]) => void;
+  importDocuments: (documents: ResumeDocument[], mode: "merge" | "replace", evidence?: CareerEvidence[], applications?: JobApplication[], reviews?: InterviewReviewRecord[]) => void;
   addCareerEvidence: (evidence: Omit<CareerEvidence, "id" | "createdAt" | "updatedAt">) => void;
   confirmCareerEvidence: (id: string) => void;
   updateCareerEvidence: (id: string, patch: Partial<CareerEvidence>) => void;
   deleteCareerEvidence: (id: string) => void;
+  addJobApplication: (application: Omit<JobApplication, "id" | "createdAt" | "updatedAt">) => void;
+  updateJobApplication: (id: string, patch: Partial<JobApplication>) => void;
+  deleteJobApplication: (id: string) => void;
+  saveInterviewReview: (review: Omit<InterviewReviewRecord, "id" | "createdAt" | "updatedAt">) => void;
+  deleteInterviewReview: (id: string) => void;
 
   setUserInput: (input: Partial<UserInput>) => void;
   setImportedResume: (text: string, sourceResume: FinalResume | null, metadata: ResumeImportMetadata) => void;
@@ -301,6 +310,8 @@ export const useResumeStore = create<ResumeStore>()(
       documents: [initialDocument],
       activeDocumentId: initialDocument.id,
       careerEvidence: [],
+      jobApplications: [],
+      interviewReviews: [],
       hasHydrated: false,
       storageError: null,
 
@@ -348,12 +359,24 @@ export const useResumeStore = create<ResumeStore>()(
           const remaining = state.documents.filter(
             (document) => document.id !== targetId
           );
+          const jobApplications = state.jobApplications.map((application) =>
+            application.resumeDocumentId === targetId
+              ? { ...application, resumeDocumentId: null, updatedAt: nowISO() }
+              : application
+          );
+          const interviewReviews = state.interviewReviews.map((review) =>
+            review.resumeDocumentId === targetId
+              ? { ...review, resumeDocumentId: null, updatedAt: nowISO() }
+              : review
+          );
 
           if (remaining.length === 0) {
             const document = createEmptyDocument();
             return {
               documents: [document],
               activeDocumentId: document.id,
+              jobApplications,
+              interviewReviews,
               ...workingStateFromDocument(document),
             };
           }
@@ -369,6 +392,8 @@ export const useResumeStore = create<ResumeStore>()(
           return {
             documents: remaining,
             activeDocumentId: nextActive.id,
+            jobApplications,
+            interviewReviews,
             ...workingStateFromDocument(nextActive),
           };
         }),
@@ -386,10 +411,11 @@ export const useResumeStore = create<ResumeStore>()(
       setStorageError: (error) => set({ storageError: error }),
       markHydrated: () => set({ hasHydrated: true }),
 
-      importDocuments: (documents, mode, evidence = []) =>
+      importDocuments: (documents, mode, evidence = [], applications = [], reviews = []) =>
         set((state) => {
           if (documents.length === 0) return state;
           const idMap = new Map<string, string>();
+          const applicationIdMap = new Map<string, string>();
           const imported = documents.map((document) => {
             const nextId = mode === "merge" ? createId() : document.id;
             idMap.set(document.id, nextId);
@@ -403,18 +429,32 @@ export const useResumeStore = create<ResumeStore>()(
           const importedEvidence = evidence.map((item) => ({
             ...structuredClone(item),
             id: mode === "merge" ? createId() : item.id,
-            sourceDocumentId: item.sourceDocumentId
-              ? idMap.get(item.sourceDocumentId) ?? item.sourceDocumentId
-              : null,
+            sourceDocumentId: item.sourceDocumentId ? idMap.get(item.sourceDocumentId) ?? item.sourceDocumentId : null,
             updatedAt: nowISO(),
           }));
-          const nextDocuments = mode === "replace" ? imported : [...state.documents, ...imported];
+          const importedApplications = applications.map((item) => {
+            const nextId = mode === "merge" ? createId() : item.id;
+            applicationIdMap.set(item.id, nextId);
+            return {
+              ...structuredClone(item),
+              id: nextId,
+              resumeDocumentId: item.resumeDocumentId ? idMap.get(item.resumeDocumentId) ?? item.resumeDocumentId : null,
+              updatedAt: nowISO(),
+            };
+          });
+          const importedReviews = reviews.map((item) => ({
+            ...structuredClone(item),
+            id: mode === "merge" ? createId() : item.id,
+            applicationId: item.applicationId ? applicationIdMap.get(item.applicationId) ?? item.applicationId : null,
+            resumeDocumentId: item.resumeDocumentId ? idMap.get(item.resumeDocumentId) ?? item.resumeDocumentId : null,
+            updatedAt: nowISO(),
+          }));
           const active = imported[0];
           return {
-            documents: nextDocuments,
-            careerEvidence: mode === "replace"
-              ? importedEvidence
-              : [...state.careerEvidence, ...importedEvidence],
+            documents: mode === "replace" ? imported : [...state.documents, ...imported],
+            careerEvidence: mode === "replace" ? importedEvidence : [...state.careerEvidence, ...importedEvidence],
+            jobApplications: mode === "replace" ? importedApplications : [...state.jobApplications, ...importedApplications],
+            interviewReviews: mode === "replace" ? importedReviews : [...state.interviewReviews, ...importedReviews],
             activeDocumentId: active.id,
             ...workingStateFromDocument(active),
           };
@@ -448,6 +488,50 @@ export const useResumeStore = create<ResumeStore>()(
       deleteCareerEvidence: (id) =>
         set((state) => ({
           careerEvidence: state.careerEvidence.filter((item) => item.id !== id),
+        })),
+
+      addJobApplication: (application) =>
+        set((state) => {
+          const timestamp = nowISO();
+          return {
+            jobApplications: [
+              ...state.jobApplications,
+              { ...application, id: createId(), createdAt: timestamp, updatedAt: timestamp },
+            ],
+          };
+        }),
+
+      updateJobApplication: (id, patch) =>
+        set((state) => ({
+          jobApplications: state.jobApplications.map((item) =>
+            item.id === id ? { ...item, ...patch, id: item.id, updatedAt: nowISO() } : item
+          ),
+        })),
+
+      deleteJobApplication: (id) =>
+        set((state) => ({
+          jobApplications: state.jobApplications.filter((item) => item.id !== id),
+          interviewReviews: state.interviewReviews.map((review) =>
+            review.applicationId === id
+              ? { ...review, applicationId: null, updatedAt: nowISO() }
+              : review
+          ),
+        })),
+
+      saveInterviewReview: (review) =>
+        set((state) => {
+          const timestamp = nowISO();
+          return {
+            interviewReviews: [
+              ...state.interviewReviews,
+              { ...review, id: createId(), createdAt: timestamp, updatedAt: timestamp },
+            ],
+          };
+        }),
+
+      deleteInterviewReview: (id) =>
+        set((state) => ({
+          interviewReviews: state.interviewReviews.filter((item) => item.id !== id),
         })),
 
       setUserInput: (input) =>
@@ -633,14 +717,16 @@ export const useResumeStore = create<ResumeStore>()(
     }),
     {
       name: RESUME_STORAGE_KEY,
-      version: 4,
+      version: 5,
       skipHydration: true,
       storage: createJSONStorage<ResumeLibraryState>(() => safeLocalStorage),
       partialize: (state) => ({
-        schemaVersion: 4,
+        schemaVersion: 5,
         documents: state.documents,
         activeDocumentId: state.activeDocumentId,
         careerEvidence: state.careerEvidence,
+        jobApplications: state.jobApplications,
+        interviewReviews: state.interviewReviews,
       }),
       migrate: (persistedState) => {
         const persisted = persistedState as Partial<ResumeLibraryState> & {
@@ -650,12 +736,14 @@ export const useResumeStore = create<ResumeStore>()(
           ? persisted.documents.map((document) => migrateDocument(document))
           : [];
         return {
-          schemaVersion: 4,
+          schemaVersion: 5,
           documents,
           activeDocumentId: persisted.activeDocumentId ?? documents[0]?.id ?? "",
           careerEvidence: Array.isArray(persisted.careerEvidence)
             ? persisted.careerEvidence
             : [],
+          jobApplications: Array.isArray(persisted.jobApplications) ? persisted.jobApplications : [],
+          interviewReviews: Array.isArray(persisted.interviewReviews) ? persisted.interviewReviews : [],
         };
       },
       merge: (persistedState, currentState) => {
@@ -675,6 +763,8 @@ export const useResumeStore = create<ResumeStore>()(
           ...currentState,
           documents,
           careerEvidence: Array.isArray(persisted.careerEvidence) ? persisted.careerEvidence : [],
+          jobApplications: Array.isArray(persisted.jobApplications) ? persisted.jobApplications : [],
+          interviewReviews: Array.isArray(persisted.interviewReviews) ? persisted.interviewReviews : [],
           activeDocumentId: active.id,
           ...workingStateFromDocument(active),
         };

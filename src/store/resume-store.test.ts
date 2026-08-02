@@ -12,6 +12,8 @@ describe("resume document library", () => {
       documents: [document],
       activeDocumentId: document.id,
       careerEvidence: [],
+      jobApplications: [],
+      interviewReviews: [],
       userInput: document.userInput,
       currentStep: document.currentStep,
       analysisResult: document.analysisResult,
@@ -83,5 +85,16 @@ describe("resume document library", () => {
 
     expect(useResumeStore.getState().documents[0].title).toBe("已持久化版本");
     Reflect.deleteProperty(globalThis, "window");
+  });
+
+  it("keeps application records and unlinks a deleted resume", () => {
+    useResumeStore.getState().addJobApplication({
+      company: "示例公司", role: "产品经理", jdUrl: "", jdText: "", status: "已投递",
+      appliedAt: "2026-08-03", nextStepAt: "", notes: "", resumeDocumentId: "test-document",
+    });
+    expect(useResumeStore.getState().jobApplications[0].resumeDocumentId).toBe("test-document");
+    useResumeStore.getState().deleteDocument("test-document");
+    expect(useResumeStore.getState().jobApplications).toHaveLength(1);
+    expect(useResumeStore.getState().jobApplications[0].resumeDocumentId).toBeNull();
   });
 });

@@ -22,6 +22,7 @@ import type {
   DialogueTurn,
   FailurePoint,
   KnowledgePoint,
+  InterviewRecordingMetadata,
 } from "@/types/interview";
 import { MindMap } from "@/components/interview/mind-map";
 import { Fishbone } from "@/components/interview/fishbone";
@@ -68,9 +69,11 @@ const SAMPLE_TRANSCRIPT = `面试官：你好，先简单自我介绍一下，�
 求职者：MVP 我可能先覆盖 top 10 高频问题。效果嘛……看客户满意度吧。准确率召回率这个，我可能需要再研究一下。`;
 
 export function InterviewRecordingStep() {
-  const { userInput, setCurrentStep } = useResumeStore();
+  const { userInput, activeDocumentId, jobApplications, interviewReviews, saveInterviewReview, deleteInterviewReview, setCurrentStep } = useResumeStore();
   const [recordingId, setRecordingId] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [recordingMeta, setRecordingMeta] = useState<InterviewRecordingMetadata | null>(null);
+  const [applicationId, setApplicationId] = useState("");
   const [transcriptText, setTranscriptText] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -87,6 +90,7 @@ export function InterviewRecordingStep() {
       const uploaded = await uploadInterviewRecording(file);
       setRecordingId(uploaded.id);
       setFileName(uploaded.fileName);
+      setRecordingMeta({ id: uploaded.id, fileName: uploaded.fileName, fileSize: uploaded.fileSize, uploadedAt: new Date().toISOString() });
     } catch (err) {
       setError(err instanceof Error ? err.message : "上传失败");
     } finally {
@@ -108,6 +112,7 @@ export function InterviewRecordingStep() {
         targetRole: userInput.targetRole,
       });
       setResult(res);
+      saveInterviewReview({ applicationId: applicationId || null, resumeDocumentId: activeDocumentId || null, transcriptText: transcriptText.trim(), result: res, recording: recordingMeta });
     } catch (err) {
       setError(err instanceof Error ? err.message : "分析失败");
     } finally {
@@ -122,12 +127,38 @@ export function InterviewRecordingStep() {
         description="粘贴面试对话文本后进行 AI 分析；录音上传目前仅用于本地保存"
       />
 
+      {interviewReviews.length > 0 && (
+        <Card className="mb-4">
+          <CardHeader className="pb-3"><CardTitle className="text-sm">已保存复盘记录</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {[...interviewReviews].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((record) => {
+              const application = jobApplications.find((item) => item.id === record.applicationId);
+              return <div key={record.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2 text-xs">
+                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setTranscriptText(record.transcriptText); setResult(record.result); setApplicationId(record.applicationId ?? ""); setRecordingMeta(record.recording); setRecordingId(record.recording?.id ?? null); setFileName(record.recording?.fileName ?? null); }}>
+                  <span className="font-medium">{application ? `${application.company} · ${application.role}` : "未关联投递"}</span>
+                  <span className="ml-2 text-neutral-500">{new Date(record.createdAt).toLocaleString("zh-CN")} · {record.result.performance.overallScore} 分</span>
+                </button>
+                <Button variant="ghost" size="sm" className="text-red-600" onClick={() => deleteInterviewReview(record.id)}>删除</Button>
+              </div>;
+            })}
+          </CardContent>
+        </Card>
+      )}
+
       {/* 输入区 */}
       <Card className="mb-6">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm">1. 录音上传与对话文本</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div>
+            <Label className="mb-1.5 block text-xs text-neutral-500">关联投递记录（可选）</Label>
+            <select className="h-9 w-full max-w-md rounded-md border border-neutral-200 bg-white px-3 text-sm" value={applicationId} onChange={(event) => setApplicationId(event.target.value)}>
+              <option value="">不关联投递</option>
+              {jobApplications.map((item) => <option key={item.id} value={item.id}>{item.company} · {item.role} · {item.status}</option>)}
+            </select>
+          </div>
+
           {/* 上传 */}
           <div>
             <Label className="mb-1.5 block text-xs text-neutral-500">录音文件（音频，本地存储）</Label>

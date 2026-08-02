@@ -11,6 +11,7 @@ export type StepId =
   | "interview-recording"
   | "final-resume"
   | "interview"
+  | "applications"
   | "export";
 
 export type StepStatus = "pending" | "active" | "completed" | "disabled";
@@ -233,11 +234,30 @@ export interface ResumeDocument {
   hasManualEdits: boolean;
 }
 
+export type JobApplicationStatus = "准备中" | "已投递" | "笔试" | "面试" | "Offer" | "结束";
+
+export interface JobApplication {
+  id: string;
+  company: string;
+  role: string;
+  jdUrl: string;
+  jdText: string;
+  status: JobApplicationStatus;
+  appliedAt: string;
+  nextStepAt: string;
+  notes: string;
+  resumeDocumentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ResumeLibraryState {
-  schemaVersion: 4;
+  schemaVersion: 5;
   documents: ResumeDocument[];
   activeDocumentId: string;
   careerEvidence: CareerEvidence[];
+  jobApplications: JobApplication[];
+  interviewReviews: import("@/types/interview").InterviewReviewRecord[];
 }
 
 export interface ATSAssessment {
