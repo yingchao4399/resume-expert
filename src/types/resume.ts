@@ -124,6 +124,13 @@ export interface FinalResume {
   };
 }
 
+export interface ResumeImportMetadata {
+  sourceType: "text" | "pdf" | "docx";
+  fileName: string;
+  importedAt: string;
+  warnings: string[];
+}
+
 export interface InterviewQuestion {
   question: string;
   suggestedAnswer: string;
@@ -154,7 +161,7 @@ export interface StepConfig {
   icon?: ReactNode;
 }
 export interface ResumeDocument {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;
   title: string;
   createdAt: string;
@@ -162,13 +169,15 @@ export interface ResumeDocument {
   userInput: UserInput;
   currentStep: StepId;
   analysisResult: AnalysisResult | null;
+  sourceResume: FinalResume | null;
+  importMetadata: ResumeImportMetadata | null;
   optimizeStyle: OptimizeStyle;
   isFinalResumeStale: boolean;
   hasManualEdits: boolean;
 }
 
 export interface ResumeLibraryState {
-  schemaVersion: 1;
+  schemaVersion: 2;
   documents: ResumeDocument[];
   activeDocumentId: string;
 }

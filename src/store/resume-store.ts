@@ -8,7 +8,9 @@ import {
 } from "zustand/middleware";
 import type {
   AnalysisResult,
+  FinalResume,
   OptimizeStyle,
+  ResumeImportMetadata,
   ResumeDocument,
   ResumeLibraryState,
   StepId,
@@ -31,6 +33,8 @@ interface ResumeStore {
   currentStep: StepId;
   isAnalyzing: boolean;
   analysisResult: AnalysisResult | null;
+  sourceResume: FinalResume | null;
+  importMetadata: ResumeImportMetadata | null;
   analysisError: string | null;
   aiMode: AIMode | null;
   optimizeStyle: OptimizeStyle;
@@ -45,8 +49,10 @@ interface ResumeStore {
   selectDocument: (id: string) => void;
   setStorageError: (error: string | null) => void;
   markHydrated: () => void;
+  importDocuments: (documents: ResumeDocument[], mode: "merge" | "replace") => void;
 
   setUserInput: (input: Partial<UserInput>) => void;
+  setImportedResume: (text: string, sourceResume: FinalResume | null, metadata: ResumeImportMetadata) => void;
   loadExampleData: () => void;
   setCurrentStep: (step: StepId) => void;
   setAnalyzing: (analyzing: boolean) => void;
@@ -163,7 +169,7 @@ function suggestedTitle(input: UserInput): string {
 export function createEmptyDocument(id = createId()): ResumeDocument {
   const timestamp = nowISO();
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id,
     title: "未命名简历",
     createdAt: timestamp,
@@ -171,6 +177,8 @@ export function createEmptyDocument(id = createId()): ResumeDocument {
     userInput: { ...defaultUserInput },
     currentStep: "input",
     analysisResult: null,
+    sourceResume: null,
+    importMetadata: null,
     optimizeStyle: "ai-product",
     isFinalResumeStale: false,
     hasManualEdits: false,
@@ -182,6 +190,8 @@ function workingStateFromDocument(document: ResumeDocument) {
     userInput: document.userInput,
     currentStep: document.currentStep,
     analysisResult: document.analysisResult,
+    sourceResume: document.sourceResume,
+    importMetadata: document.importMetadata,
     optimizeStyle: document.optimizeStyle,
     isFinalResumeStale: document.isFinalResumeStale,
     hasManualEdits: document.hasManualEdits,
@@ -341,6 +351,24 @@ export const useResumeStore = create<ResumeStore>()(
       setStorageError: (error) => set({ storageError: error }),
       markHydrated: () => set({ hasHydrated: true }),
 
+      importDocuments: (documents, mode) =>
+        set((state) => {
+          if (documents.length === 0) return state;
+          const imported = documents.map((document) => ({
+            ...structuredClone(document),
+            id: mode === "merge" ? createId() : document.id,
+            title: mode === "merge" ? `${document.title} ? ??` : document.title,
+            updatedAt: nowISO(),
+          }));
+          const nextDocuments = mode === "replace" ? imported : [...state.documents, ...imported];
+          const active = imported[0];
+          return {
+            documents: nextDocuments,
+            activeDocumentId: active.id,
+            ...workingStateFromDocument(active),
+          };
+        }),
+
       setUserInput: (input) =>
         set((state) => {
           const userInput = { ...state.userInput, ...input };
@@ -356,12 +384,27 @@ export const useResumeStore = create<ResumeStore>()(
           });
         }),
 
+      setImportedResume: (text, sourceResume, metadata) =>
+        set((state) =>
+          updateActiveDocument(state, {
+            userInput: { ...state.userInput, originalResume: text },
+            sourceResume,
+            importMetadata: metadata,
+            analysisResult: null,
+            currentStep: "input",
+            isFinalResumeStale: false,
+            hasManualEdits: false,
+          })
+        ),
+
       loadExampleData: () =>
         set((state) =>
           updateActiveDocument(state, {
             title: suggestedTitle(EXAMPLE_USER_INPUT),
             userInput: { ...EXAMPLE_USER_INPUT },
             analysisResult: null,
+            sourceResume: null,
+            importMetadata: null,
             currentStep: "input",
             isFinalResumeStale: false,
             hasManualEdits: false,
@@ -465,20 +508,38 @@ export const useResumeStore = create<ResumeStore>()(
     }),
     {
       name: RESUME_STORAGE_KEY,
-      version: 1,
+      version: 2,
       skipHydration: true,
       storage: createJSONStorage<ResumeLibraryState>(() => safeLocalStorage),
       partialize: (state) => ({
-        schemaVersion: 1,
+        schemaVersion: 2,
         documents: state.documents,
         activeDocumentId: state.activeDocumentId,
       }),
+      migrate: (persistedState) => {
+        const persisted = persistedState as Partial<ResumeLibraryState> & {
+          documents?: Array<Partial<ResumeDocument> & { schemaVersion?: number }>;
+        };
+        const documents = Array.isArray(persisted.documents)
+          ? (persisted.documents.map((document) => ({
+              ...document,
+              schemaVersion: 2 as const,
+              sourceResume: document.sourceResume ?? null,
+              importMetadata: document.importMetadata ?? null,
+            })) as ResumeDocument[])
+          : [];
+        return {
+          schemaVersion: 2,
+          documents,
+          activeDocumentId: persisted.activeDocumentId ?? documents[0]?.id ?? "",
+        };
+      },
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<ResumeLibraryState>;
         const documents = Array.isArray(persisted.documents)
           ? persisted.documents.filter(
               (document): document is ResumeDocument =>
-                document?.schemaVersion === 1 &&
+                document?.schemaVersion === 2 &&
                 typeof document.id === "string" &&
                 typeof document.title === "string"
             )

@@ -1,6 +1,7 @@
 "use client";
 
-import { Loader2, Sparkles, Wand2 } from "lucide-react";
+import { useState } from "react";
+import { FileUp, Loader2, Sparkles, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,15 +15,18 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SectionTitle } from "@/components/shared/ui-helpers";
+import { ResumeImportDialog } from "@/components/import/resume-import-dialog";
 import { useResumeStore } from "@/store/resume-store";
 import { runResumeAnalysis } from "@/services/ai/resumeAgent";
 import type { CompanyType, JobStage } from "@/types/resume";
 
 export function InputStep() {
+  const [importOpen, setImportOpen] = useState(false);
   const {
     optimizeStyle,
     userInput,
     setUserInput,
+    setImportedResume,
     loadExampleData,
     isAnalyzing,
     analysisError,
@@ -65,6 +69,10 @@ export function InputStep() {
         <Button variant="outline" size="sm" onClick={loadExampleData}>
           <Wand2 className="h-3.5 w-3.5" />
           使用示例数据
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+          <FileUp className="h-3.5 w-3.5" />
+          导入 PDF / DOCX
         </Button>
         <Button size="sm" onClick={handleAnalyze} disabled={!canAnalyze || isAnalyzing}>
           {isAnalyzing ? (
@@ -205,6 +213,12 @@ export function InputStep() {
           </CardContent>
         </Card>
       </div>
+
+      <ResumeImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onConfirm={setImportedResume}
+      />
     </div>
   );
 }

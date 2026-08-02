@@ -163,6 +163,12 @@ export const finalResumeResultSchema = z.object({
   finalResume: finalResumeSchema,
 });
 
+export const structureResumeRequestSchema = z.object({
+  text: z.string().trim().min(20, "??????").max(100000, "???????? 100000 ?"),
+});
+
+export const structureResumeResultSchema = finalResumeResultSchema;
+
 export const analyzeRequestSchema = z.object({
   input: userInputSchema.refine(
     (input) =>

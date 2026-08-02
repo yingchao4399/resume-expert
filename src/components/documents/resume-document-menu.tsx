@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CopyPlus, FilePlus2, Pencil, Trash2 } from "lucide-react";
+import { ArchiveRestore, CopyPlus, FilePlus2, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useResumeStore } from "@/store/resume-store";
+import { ResumeBackupDialog } from "@/components/documents/resume-backup-dialog";
 
 export function ResumeDocumentMenu() {
   const {
@@ -30,6 +31,7 @@ export function ResumeDocumentMenu() {
   );
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [backupOpen, setBackupOpen] = useState(false);
   const [title, setTitle] = useState(active?.title ?? "");
 
   useEffect(() => {
@@ -83,6 +85,16 @@ export function ResumeDocumentMenu() {
           variant="ghost"
           size="sm"
           className="hidden h-8 w-8 p-0 sm:inline-flex"
+          title="备份与恢复"
+          onClick={() => setBackupOpen(true)}
+        >
+          <ArchiveRestore className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="hidden h-8 w-8 p-0 sm:inline-flex"
           title="重命名"
           onClick={() => setRenameOpen(true)}
         >
@@ -99,6 +111,8 @@ export function ResumeDocumentMenu() {
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
+
+      <ResumeBackupDialog open={backupOpen} onOpenChange={setBackupOpen} />
 
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent className="max-w-sm">

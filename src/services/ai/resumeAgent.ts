@@ -57,6 +57,13 @@ export async function runResumeAnalysis(
   return data.result;
 }
 
+export async function structureImportedResume(text: string): Promise<{
+  finalResume: AnalysisResult["finalResume"];
+  mode: "mock" | "llm";
+}> {
+  return postJSON("/api/import/structure", { text });
+}
+
 export async function regenerateOptimizedItems(
   input: UserInput,
   style: OptimizeStyle
