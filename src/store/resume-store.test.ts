@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createEmptyDocument,
   RESUME_STORAGE_KEY,
+  RESUME_RECOVERY_KEY,
   useResumeStore,
 } from "@/store/resume-store";
 
@@ -109,5 +110,38 @@ describe("resume document library", () => {
     useResumeStore.getState().unlinkInterviewRecording("rec-1");
     expect(useResumeStore.getState().interviewReviews).toHaveLength(1);
     expect(useResumeStore.getState().interviewReviews[0].recording).toBeNull();
+  });
+
+  it("protects unsaved drafts when switching documents", () => {
+    const values = new Map<string, string>();
+    const confirm = vi.fn(() => false);
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: { confirm, dispatchEvent: () => true, localStorage: { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) } },
+    });
+    useResumeStore.getState().createDocument();
+    const firstId = useResumeStore.getState().documents[0].id;
+    const activeId = useResumeStore.getState().activeDocumentId;
+    useResumeStore.getState().setDirtyScope("resume");
+    useResumeStore.getState().selectDocument(firstId);
+    expect(useResumeStore.getState().activeDocumentId).toBe(activeId);
+    expect(confirm).toHaveBeenCalledOnce();
+    Reflect.deleteProperty(globalThis, "window");
+  });
+
+  it("preserves corrupt persisted data in a recovery slot and locks overwrite", async () => {
+    const values = new Map<string, string>([[RESUME_STORAGE_KEY, "{broken-json"]]);
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: { confirm: () => true, dispatchEvent: () => true, localStorage: { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) } },
+    });
+    await useResumeStore.persist.rehydrate();
+    useResumeStore.getState().markHydrated();
+    expect(useResumeStore.getState().recoveryAvailable).toBe(true);
+    expect(values.get(RESUME_RECOVERY_KEY)).toContain("{broken-json");
+    useResumeStore.getState().renameDocument("不应覆盖异常数据");
+    expect(values.get(RESUME_STORAGE_KEY)).toBe("{broken-json");
+    useResumeStore.getState().clearCorruptStorage();
+    Reflect.deleteProperty(globalThis, "window");
   });
 });

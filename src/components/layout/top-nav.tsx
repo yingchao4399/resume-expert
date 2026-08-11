@@ -5,7 +5,7 @@ import { FileText, Settings2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fetchAIStatus } from "@/services/ai/resumeAgent";
-import { useResumeStore } from "@/store/resume-store";
+import { RESUME_STORAGE_STATUS_EVENT, useResumeStore } from "@/store/resume-store";
 import { AISettingsDialog } from "@/components/settings/ai-settings-dialog";
 import { ResumeDocumentMenu } from "@/components/documents/resume-document-menu";
 
@@ -13,6 +13,7 @@ export function TopNav() {
   const { aiMode, setAiMode } = useResumeStore();
   const [mockReason, setMockReason] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [saveState, setSaveState] = useState<{ status: "idle" | "saving" | "saved" | "error"; savedAt?: string }>({ status: "idle" });
 
   const refreshStatus = useCallback(() => {
     fetchAIStatus()
@@ -44,6 +45,15 @@ export function TopNav() {
     return () => window.removeEventListener("resume-expert-open-ai-settings", openSettings);
   }, []);
 
+  useEffect(() => {
+    const handleStorageStatus = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      setSaveState(event.detail);
+    };
+    window.addEventListener(RESUME_STORAGE_STATUS_EVENT, handleStorageStatus);
+    return () => window.removeEventListener(RESUME_STORAGE_STATUS_EVENT, handleStorageStatus);
+  }, []);
+
   return (
     <>
       <header className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-neutral-200 bg-white px-4 py-2">
@@ -58,6 +68,15 @@ export function TopNav() {
             JD 定制简历优化 Agent
           </span>
           <ResumeDocumentMenu />
+          <span className={`hidden text-[10px] lg:inline ${saveState.status === "error" ? "text-red-600" : "text-neutral-400"}`} role="status" aria-live="polite">
+            {saveState.status === "saving"
+              ? "保存中…"
+              : saveState.status === "saved" && saveState.savedAt
+                ? `已保存 ${new Date(saveState.savedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`
+                : saveState.status === "error"
+                  ? "保存失败"
+                  : "本地保存"}
+          </span>
           {aiMode && (
             <Badge
               variant={aiMode === "llm" ? "success" : "secondary"}

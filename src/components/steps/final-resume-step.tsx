@@ -84,6 +84,8 @@ export function FinalResumeStep() {
     setFinalResume,
     setLayoutConfig,
     setCurrentStep,
+    dirtyScope,
+    setDirtyScope,
   } = useResumeStore();
   const finalResume = analysisResult?.finalResume ?? null;
   const [editing, setEditing] = useState(false);
@@ -107,14 +109,17 @@ export function FinalResumeStep() {
   };
 
   const cancelEditing = () => {
+    if (dirtyScope === "resume" && !window.confirm("简历内容还有未保存修改，确定取消吗？")) return;
     setDraft(cloneResume(finalResume));
     setEditing(false);
+    setDirtyScope(null);
   };
 
   const saveEditing = () => {
     if (!draft) return;
     setFinalResume(cleanResume(draft), { manual: true });
     setEditing(false);
+    setDirtyScope(null);
   };
 
   return (
@@ -163,7 +168,7 @@ export function FinalResumeStep() {
         <>
           <Card className="mb-6">
             <CardContent className="p-6">
-              <ResumeEditor value={draft} onChange={setDraft} />
+              <ResumeEditor value={draft} onChange={(resume) => { setDraft(resume); setDirtyScope("resume"); }} />
             </CardContent>
           </Card>
           <div className="flex justify-end gap-2">

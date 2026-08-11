@@ -41,6 +41,7 @@ import type {
   ResumeSectionId,
   ResumeTemplateId,
 } from "@/types/resume";
+import { useResumeStore } from "@/store/resume-store";
 
 interface ResumeTemplateStudioProps {
   open: boolean;
@@ -52,6 +53,7 @@ interface ResumeTemplateStudioProps {
 
 export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave }: ResumeTemplateStudioProps) {
   const [draft, setDraft] = useState(value);
+  const { dirtyScope, setDirtyScope } = useResumeStore();
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -66,6 +68,7 @@ export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave
   const changeTemplate = (templateId: ResumeTemplateId) => {
     if (templateId === draft.templateId) return;
     if (!window.confirm("切换模板会恢复该模板的视觉默认值，但保留区块顺序和显隐。是否继续？")) return;
+    setDirtyScope("layout");
     setDraft({
       ...getDefaultLayoutConfig(templateId),
       sectionOrder: draft.sectionOrder,
@@ -73,10 +76,14 @@ export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave
     });
   };
 
-  const update = (patch: Partial<ResumeLayoutConfig>) => setDraft((current) => ({ ...current, ...patch }));
+  const update = (patch: Partial<ResumeLayoutConfig>) => {
+    setDirtyScope("layout");
+    setDraft((current) => ({ ...current, ...patch }));
+  };
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
+    setDirtyScope("layout");
     setDraft((current) => {
       const from = current.sectionOrder.indexOf(active.id as ResumeSectionId);
       const to = current.sectionOrder.indexOf(over.id as ResumeSectionId);
@@ -85,7 +92,11 @@ export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(nextOpen) => {
+      if (!nextOpen && dirtyScope === "layout" && !window.confirm("排版设置还有未保存修改，确定关闭吗？")) return;
+      if (!nextOpen) setDirtyScope(null);
+      onOpenChange(nextOpen);
+    }}>
       <DialogContent className="max-h-[94vh] max-w-6xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>模板与统一排版</DialogTitle>
@@ -171,13 +182,14 @@ export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave
             <Button
               variant="outline"
               className="w-full"
-              onClick={() =>
+              onClick={() => {
+                setDirtyScope("layout");
                 setDraft({
                   ...getDefaultLayoutConfig(draft.templateId),
                   sectionOrder: draft.sectionOrder,
                   hiddenSections: draft.hiddenSections,
-                })
-              }
+                });
+              }}
             >
               <RotateCcw className="h-4 w-4" /> 恢复视觉默认值
             </Button>
@@ -194,10 +206,15 @@ export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave
         </div>
 
         <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
+          <Button variant="outline" onClick={() => {
+            if (dirtyScope === "layout" && !window.confirm("排版设置还有未保存修改，确定取消吗？")) return;
+            setDirtyScope(null);
+            onOpenChange(false);
+          }}>取消</Button>
           <Button
             onClick={() => {
               onSave(safeDraft);
+              setDirtyScope(null);
               onOpenChange(false);
             }}
           >

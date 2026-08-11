@@ -1,21 +1,23 @@
 "use client";
 
-import { useEffect } from "react";
-import { X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, Download, RotateCcw, Trash2, X } from "lucide-react";
 import { StepSidebar } from "@/components/layout/step-sidebar";
 import { TopNav } from "@/components/layout/top-nav";
 import { StepContent } from "@/components/steps/step-content";
 import { Button } from "@/components/ui/button";
 import {
   RESUME_STORAGE_ERROR_EVENT,
+  downloadRecoveryData,
   useResumeStore,
 } from "@/store/resume-store";
 
 export function AppShell() {
-  const { storageError, setStorageError } = useResumeStore();
+  const { storageError, setStorageError, recoveryAvailable, recoveryReason, attemptStorageRecovery, clearCorruptStorage, dirtyScope } = useResumeStore();
+  const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    void useResumeStore.persist.rehydrate();
+    void Promise.resolve(useResumeStore.persist.rehydrate()).finally(() => useResumeStore.getState().markHydrated());
     const handleStorageError = (event: Event) => {
       const message =
         event instanceof CustomEvent && typeof event.detail === "string"
@@ -35,9 +37,31 @@ export function AppShell() {
       );
   }, [setStorageError]);
 
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirtyScope) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [dirtyScope]);
+
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <TopNav />
+      {recoveryAvailable && (
+        <div className="shrink-0 border-b border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900" role="alert" aria-live="assertive">
+          <div className="flex flex-wrap items-center gap-2">
+            <AlertTriangle className="h-4 w-4" />
+            <span className="flex-1">检测到损坏或非法的本地数据，自动覆盖已锁定。{recoveryReason ? `原因：${recoveryReason}` : ""}</span>
+            <Button variant="outline" size="sm" onClick={() => downloadRecoveryData()}><Download className="h-3.5 w-3.5" />下载异常数据</Button>
+            <Button variant="outline" size="sm" onClick={() => setRecoveryMessage(attemptStorageRecovery() ? "已恢复可识别的简历文档。" : "自动恢复失败，请先下载异常数据后再决定是否清空。")}><RotateCcw className="h-3.5 w-3.5" />尝试恢复</Button>
+            <Button variant="destructive" size="sm" onClick={() => { if (window.confirm("确认清空损坏存储并创建空白草稿？此操作不会保留恢复槽，请先下载异常数据。")) clearCorruptStorage(); }}><Trash2 className="h-3.5 w-3.5" />确认清空</Button>
+          </div>
+          {recoveryMessage && <p className="mt-2" role="status">{recoveryMessage}</p>}
+        </div>
+      )}
       {storageError && (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
           <span>{storageError}</span>

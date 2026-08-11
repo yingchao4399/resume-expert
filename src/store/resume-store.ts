@@ -26,9 +26,24 @@ import type { InterviewReviewRecord } from "@/types/interview";
 import { WORKFLOW_STEPS } from "@/config/workflow";
 import { getDefaultLayoutConfig, sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
 import { buildEvidenceCandidates, normalizeFinalResumeBullets } from "@/lib/evidence/resume-evidence";
+import { parseResumeBackup } from "@/lib/backup/resume-backup";
 
 export const RESUME_STORAGE_KEY = "resume-expert-library";
 export const RESUME_STORAGE_ERROR_EVENT = "resume-expert-storage-error";
+export const RESUME_STORAGE_STATUS_EVENT = "resume-expert-storage-status";
+export const RESUME_RECOVERY_KEY = `${RESUME_STORAGE_KEY}-recovery`;
+
+export type UnsavedScope = "resume" | "layout";
+
+interface RecoveryRecord {
+  capturedAt: string;
+  reason: string;
+  raw: string;
+}
+
+let pendingRecovery: RecoveryRecord | null = null;
+let storageWriteUnlocked = false;
+let savedStatusTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface ResumeStore {
   documents: ResumeDocument[];
@@ -38,6 +53,9 @@ interface ResumeStore {
   interviewReviews: InterviewReviewRecord[];
   hasHydrated: boolean;
   storageError: string | null;
+  recoveryAvailable: boolean;
+  recoveryReason: string | null;
+  dirtyScope: UnsavedScope | null;
 
   userInput: UserInput;
   currentStep: StepId;
@@ -60,6 +78,9 @@ interface ResumeStore {
   selectDocument: (id: string) => void;
   setStorageError: (error: string | null) => void;
   markHydrated: () => void;
+  setDirtyScope: (scope: UnsavedScope | null) => void;
+  attemptStorageRecovery: () => boolean;
+  clearCorruptStorage: () => void;
   importDocuments: (documents: ResumeDocument[], mode: "merge" | "replace", evidence?: CareerEvidence[], applications?: JobApplication[], reviews?: InterviewReviewRecord[]) => void;
   addCareerEvidence: (evidence: Omit<CareerEvidence, "id" | "createdAt" | "updatedAt">) => void;
   confirmCareerEvidence: (id: string) => void;
@@ -188,6 +209,25 @@ function suggestedTitle(input: UserInput): string {
     : "未命名简历";
 }
 
+function confirmUnsavedChanges(state: ResumeStore): boolean {
+  if (!state.dirtyScope || typeof window === "undefined") return true;
+  const label = state.dirtyScope === "resume" ? "简历内容" : "排版设置";
+  return window.confirm(`${label}还有未保存修改，离开后将丢失。是否继续？`);
+}
+
+export function downloadRecoveryData(): boolean {
+  const recovery = readRecoveryRecord();
+  if (!recovery || typeof document === "undefined") return false;
+  const blob = new Blob([recovery.raw], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `resume-expert-corrupt-${new Date().toISOString().slice(0, 10)}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  return true;
+}
+
 export function createEmptyDocument(id = createId()): ResumeDocument {
   const timestamp = nowISO();
   return {
@@ -258,10 +298,70 @@ function emitStorageError(message: string) {
   }
 }
 
+function emitStorageStatus(status: "saving" | "saved" | "error", savedAt?: string) {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(RESUME_STORAGE_STATUS_EVENT, { detail: { status, savedAt } }));
+  }
+}
+
+function readRecoveryRecord(): RecoveryRecord | null {
+  try {
+    const raw = window.localStorage.getItem(RESUME_RECOVERY_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<RecoveryRecord>;
+    return typeof parsed.raw === "string" && typeof parsed.reason === "string"
+      ? { raw: parsed.raw, reason: parsed.reason, capturedAt: parsed.capturedAt ?? nowISO() }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function validatePersistedLibrary(raw: string): void {
+  const parsed = JSON.parse(raw) as { state?: Partial<ResumeLibraryState>; version?: number };
+  if (!parsed || typeof parsed !== "object" || !parsed.state || !Array.isArray(parsed.state.documents)) {
+    throw new Error("持久化数据缺少文档库结构");
+  }
+  parseResumeBackup({
+    backupVersion: 2,
+    exportedAt: nowISO(),
+    documents: parsed.state.documents,
+    careerEvidence: parsed.state.careerEvidence ?? [],
+    jobApplications: parsed.state.jobApplications ?? [],
+    interviewReviews: parsed.state.interviewReviews ?? [],
+  });
+}
+
+function preserveCorruptStorage(raw: string, error: unknown): RecoveryRecord {
+  const record = {
+    capturedAt: nowISO(),
+    reason: error instanceof Error ? error.message : "本地数据结构无效",
+    raw,
+  };
+  window.localStorage.setItem(RESUME_RECOVERY_KEY, JSON.stringify(record));
+  pendingRecovery = record;
+  return record;
+}
+
 const safeLocalStorage: StateStorage = {
   getItem(name) {
     try {
-      return window.localStorage.getItem(name);
+      const existingRecovery = readRecoveryRecord();
+      if (existingRecovery) {
+        pendingRecovery = existingRecovery;
+        return null;
+      }
+      const value = window.localStorage.getItem(name);
+      if (value) {
+        try {
+          validatePersistedLibrary(value);
+        } catch (error) {
+          preserveCorruptStorage(value, error);
+          emitStorageError("检测到异常本地数据，已进入恢复模式并锁定自动覆盖。");
+          return null;
+        }
+      }
+      return value;
     } catch {
       emitStorageError("无法读取浏览器本地数据，请检查隐私模式或存储权限。");
       return null;
@@ -269,9 +369,18 @@ const safeLocalStorage: StateStorage = {
   },
   setItem(name, value) {
     try {
+      if (!storageWriteUnlocked && readRecoveryRecord()) {
+        emitStorageError("恢复模式下已暂停自动保存，请先下载、恢复或确认清空异常数据。");
+        emitStorageStatus("error");
+        return;
+      }
+      emitStorageStatus("saving");
       window.localStorage.setItem(name, value);
+      if (savedStatusTimer) clearTimeout(savedStatusTimer);
+      savedStatusTimer = setTimeout(() => emitStorageStatus("saved", nowISO()), 120);
     } catch {
       emitStorageError("本地保存失败，浏览器存储空间可能已满。请先导出重要简历。");
+      emitStorageStatus("error");
     }
   },
   removeItem(name) {
@@ -334,22 +443,29 @@ export const useResumeStore = create<ResumeStore>()(
       interviewReviews: [],
       hasHydrated: false,
       storageError: null,
+      recoveryAvailable: false,
+      recoveryReason: null,
+      dirtyScope: null,
 
       ...workingStateFromDocument(initialDocument),
       isAnalyzing: false,
       aiMode: null,
 
-      createDocument: () => {
-        const document = createEmptyDocument();
-        set((state) => ({
-          documents: [...state.documents, document],
-          activeDocumentId: document.id,
-          ...workingStateFromDocument(document),
-        }));
-      },
+      createDocument: () =>
+        set((state) => {
+          if (!confirmUnsavedChanges(state)) return state;
+          const document = createEmptyDocument();
+          return {
+            documents: [...state.documents, document],
+            activeDocumentId: document.id,
+            dirtyScope: null,
+            ...workingStateFromDocument(document),
+          };
+        }),
 
       duplicateDocument: () =>
         set((state) => {
+          if (!confirmUnsavedChanges(state)) return state;
           const source = getActiveDocument(state);
           const timestamp = nowISO();
           const document: ResumeDocument = {
@@ -362,6 +478,7 @@ export const useResumeStore = create<ResumeStore>()(
           return {
             documents: [...state.documents, document],
             activeDocumentId: document.id,
+            dirtyScope: null,
             ...workingStateFromDocument(document),
           };
         }),
@@ -422,14 +539,71 @@ export const useResumeStore = create<ResumeStore>()(
         set((state) => {
           const document = state.documents.find((item) => item.id === id);
           if (!document || document.id === state.activeDocumentId) return state;
+          if (!confirmUnsavedChanges(state)) return state;
           return {
             activeDocumentId: document.id,
+            dirtyScope: null,
             ...workingStateFromDocument(document),
           };
         }),
 
       setStorageError: (error) => set({ storageError: error }),
-      markHydrated: () => set({ hasHydrated: true }),
+      markHydrated: () => set({
+        hasHydrated: true,
+        recoveryAvailable: Boolean(pendingRecovery),
+        recoveryReason: pendingRecovery?.reason ?? null,
+      }),
+      setDirtyScope: (scope) => set({ dirtyScope: scope }),
+      attemptStorageRecovery: () => {
+        const recovery = readRecoveryRecord();
+        if (!recovery) return false;
+        try {
+          const parsed = JSON.parse(recovery.raw) as { state?: Partial<ResumeLibraryState> };
+          const candidates = Array.isArray(parsed.state?.documents) ? parsed.state.documents : [];
+          const recoveredDocuments: ResumeDocument[] = [];
+          for (const candidate of candidates) {
+            try {
+              const backup = parseResumeBackup({ backupVersion: 2, exportedAt: nowISO(), documents: [candidate] });
+              recoveredDocuments.push(...backup.documents);
+            } catch {
+              // Keep recovering other independent documents.
+            }
+          }
+          if (recoveredDocuments.length === 0) return false;
+          const activeDocumentId = recoveredDocuments.some((item) => item.id === parsed.state?.activeDocumentId)
+            ? parsed.state?.activeDocumentId as string
+            : recoveredDocuments[0].id;
+          const recoveredValue = JSON.stringify({
+            state: { schemaVersion: 6, documents: recoveredDocuments, activeDocumentId, careerEvidence: [], jobApplications: [], interviewReviews: [] },
+            version: 6,
+          });
+          validatePersistedLibrary(recoveredValue);
+          storageWriteUnlocked = true;
+          window.localStorage.setItem(RESUME_STORAGE_KEY, recoveredValue);
+          window.localStorage.removeItem(RESUME_RECOVERY_KEY);
+          storageWriteUnlocked = false;
+          pendingRecovery = null;
+          set({ recoveryAvailable: false, recoveryReason: null, storageError: null });
+          queueMicrotask(() => void useResumeStore.persist.rehydrate());
+          return true;
+        } catch {
+          storageWriteUnlocked = false;
+          return false;
+        }
+      },
+      clearCorruptStorage: () => {
+        storageWriteUnlocked = true;
+        window.localStorage.removeItem(RESUME_RECOVERY_KEY);
+        window.localStorage.removeItem(RESUME_STORAGE_KEY);
+        pendingRecovery = null;
+        const document = createEmptyDocument();
+        set({
+          documents: [document], activeDocumentId: document.id, recoveryAvailable: false,
+          recoveryReason: null, storageError: null, dirtyScope: null,
+          ...workingStateFromDocument(document),
+        });
+        storageWriteUnlocked = false;
+      },
 
       importDocuments: (documents, mode, evidence = [], applications = [], reviews = []) =>
         set((state) => {
@@ -622,7 +796,11 @@ export const useResumeStore = create<ResumeStore>()(
         ),
 
       setCurrentStep: (step) =>
-        set((state) => updateActiveDocument(state, { currentStep: step })),
+        set((state) => {
+          if (step === state.currentStep) return state;
+          if (!confirmUnsavedChanges(state)) return state;
+          return { ...updateActiveDocument(state, { currentStep: step }), dirtyScope: null };
+        }),
 
       setAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
 

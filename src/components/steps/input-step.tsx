@@ -109,6 +109,7 @@ export function InputStep() {
         <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert" aria-live="assertive">
           <p>{analysisError}</p>
           <Button className="mt-2" variant="outline" size="sm" onClick={handleAnalyze}>重试分析</Button>
+          <Button className="ml-2 mt-2" variant="ghost" size="sm" onClick={() => window.dispatchEvent(new Event("resume-expert-open-ai-settings"))}>打开 AI 设置</Button>
         </div>
       )}
 
@@ -123,6 +124,7 @@ export function InputStep() {
               <Label htmlFor="targetRole">目标岗位</Label>
               <Input
                 id="targetRole"
+                aria-invalid={showValidation && !userInput.targetRole.trim()}
                 placeholder="如：AI 产品经理"
                 value={userInput.targetRole}
                 onChange={(e) => setUserInput({ targetRole: e.target.value })}

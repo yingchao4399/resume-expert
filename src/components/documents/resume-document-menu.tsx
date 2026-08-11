@@ -68,6 +68,7 @@ export function ResumeDocumentMenu() {
           size="sm"
           className="h-8 w-8 p-0"
           title="新建简历"
+          aria-label="新建简历"
           onClick={createDocument}
         >
           <FilePlus2 className="h-3.5 w-3.5" />
@@ -78,6 +79,7 @@ export function ResumeDocumentMenu() {
           size="sm"
           className="hidden h-8 w-8 p-0 sm:inline-flex"
           title="复制当前版本"
+          aria-label="复制当前版本"
           onClick={duplicateDocument}
         >
           <CopyPlus className="h-3.5 w-3.5" />
@@ -88,6 +90,7 @@ export function ResumeDocumentMenu() {
           size="sm"
           className="hidden h-8 w-8 p-0 sm:inline-flex"
           title="备份与恢复"
+          aria-label="备份与恢复"
           onClick={() => setBackupOpen(true)}
         >
           <ArchiveRestore className="h-3.5 w-3.5" />
@@ -98,6 +101,7 @@ export function ResumeDocumentMenu() {
           size="sm"
           className="hidden h-8 w-8 p-0 sm:inline-flex"
           title="重命名"
+          aria-label="重命名当前简历版本"
           onClick={() => setRenameOpen(true)}
         >
           <Pencil className="h-3.5 w-3.5" />
@@ -108,6 +112,7 @@ export function ResumeDocumentMenu() {
           size="sm"
           className="hidden h-8 w-8 p-0 text-red-600 hover:text-red-700 sm:inline-flex"
           title="删除当前版本"
+          aria-label="删除当前简历版本"
           onClick={() => setDeleteOpen(true)}
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -123,6 +128,8 @@ export function ResumeDocumentMenu() {
             <DialogDescription>名称仅保存在当前浏览器中。</DialogDescription>
           </DialogHeader>
           <Input
+            id="resume-version-title"
+            aria-label="简历版本名称"
             value={title}
             autoFocus
             onChange={(event) => setTitle(event.target.value)}
