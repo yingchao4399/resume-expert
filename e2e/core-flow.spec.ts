@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
 
 const resume = {
   personalInfo: { name: "张明", email: "ming@example.com", phone: "13800000000", location: "上海" },
@@ -23,7 +25,7 @@ const layoutDefaults = {
   hiddenSections: [],
 };
 
-function stateFor(templateId = "ats-classic") {
+function stateFor(templateId = "ats-classic", finalResumeStatus: "draft" | "confirmed" | "stale" = "confirmed") {
   const document = {
     schemaVersion: 5,
     id: "e2e-document",
@@ -38,14 +40,14 @@ function stateFor(templateId = "ats-classic") {
     analysisResult: {
       jdAnalysis: { responsibilities: [], hardRequirements: [], implicitRequirements: [], keywords: ["产品规划"], idealCandidate: "", coreCompetencies: [] },
       diagnosis: { overallScore: 80, dimensionScores: [], mainIssues: [], prioritySuggestions: [] },
-      matchItems: [], followUpQuestions: [], optimizedItems: [], finalResume: resume,
+      matchItems: [], followUpQuestions: [], optimizedItems: [], finalResume: structuredClone(resume),
       interviewPrep: { likelyQuestions: [], evidenceToPrepare: [], possibleExaggerations: [], dataToSupplement: [], selfIntroduction: "" },
     },
-    sourceResume: resume,
+    sourceResume: structuredClone(resume),
     importMetadata: null,
     layoutConfig: { ...layoutDefaults, templateId },
     optimizeStyle: "ai-product",
-    finalResumeStatus: "confirmed",
+    finalResumeStatus,
     hasManualEdits: false,
   };
   return { state: { schemaVersion: 6, documents: [document], activeDocumentId: document.id, careerEvidence: [], jobApplications: [], interviewReviews: [] }, version: 6 };
@@ -85,8 +87,136 @@ test("persists a job application linked to the selected resume", async ({ page }
   await expect(page.getByText("未来科技 · 高级产品经理")).toBeVisible();
 });
 
+test("keeps creation pending until the final resume is generated", async ({ page }) => {
+  const analysis = stateFor().state.documents[0].analysisResult;
+  await page.route("**/api/analyze", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ result: analysis, mode: "mock" }) }));
+  await page.route("**/api/finalize", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ finalResume: resume, mode: "mock" }) }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "使用示例数据" }).click();
+  await page.getByRole("button", { name: "开始分析", exact: true }).click();
+  await expect(page.getByText("最终简历尚未生成确认")).toBeVisible();
+  await page.getByRole("button", { name: /AI 优化 3\.1/ }).click();
+  await page.getByRole("button", { name: "确认并生成最终简历" }).click();
+  await expect(page.getByRole("heading", { name: "最终简历" })).toBeVisible();
+});
+
+test("uses the same deterministic ATS score in sidebar and delivery", async ({ page }) => {
+  await seed(page);
+  await page.goto("/");
+  const sidebarScore = await page.getByTestId("sidebar-ats-score").innerText();
+  await page.getByRole("button", { name: /ATS 与导出 4\.2/ }).click();
+  const exportScore = await page.getByTestId("export-ats-score").innerText();
+  expect(sidebarScore.replace("/100", "").trim()).toBe(exportScore.trim());
+});
+
+test("asks before leaving a manually edited resume draft", async ({ page }) => {
+  await seed(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "编辑简历" }).click();
+  await page.getByLabel("姓名").fill("未保存姓名");
+  let dialogMessage = "";
+  page.once("dialog", async (dialog) => { dialogMessage = dialog.message(); await dialog.dismiss(); });
+  await page.getByRole("button", { name: /面试准备/ }).click();
+  await expect(page.getByRole("heading", { name: "最终简历" })).toBeVisible();
+  expect(dialogMessage).toContain("未保存修改");
+});
+
+for (const fixture of ["chinese-cid-resume.pdf", "chinese-ttf-resume.pdf", "chinese-resume.docx", "multi-page-resume.pdf"]) {
+  test(`extracts Chinese text from ${fixture}`, async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "导入 PDF / DOCX" }).click();
+    await page.locator('input[type="file"]').setInputFiles(path.join(process.cwd(), "e2e", "fixtures", fixture));
+    const dialog = page.getByRole("dialog", { name: "导入已有简历" });
+    await expect(dialog.locator("textarea").first()).toHaveValue(/张明/, { timeout: 20_000 });
+    if (fixture === "multi-page-resume.pdf") await expect(dialog.locator("textarea").first()).toHaveValue(/第 2 页/);
+  });
+}
+
+test("preserves corrupt browser data in recovery mode", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("resume-expert-library", "{broken-json"));
+  await page.goto("/");
+  await expect(page.getByText(/检测到损坏或非法的本地数据/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "下载异常数据" })).toBeVisible();
+});
+
+test("supports recording range playback and deletion", async ({ request }) => {
+  const audio = Buffer.from("ID3fixture-audio-content");
+  const upload = await request.post("/api/interview-recording/upload", {
+    multipart: { file: { name: "fixture.mp3", mimeType: "audio/mpeg", buffer: audio } },
+  });
+  expect(upload.ok()).toBeTruthy();
+  const { id } = await upload.json() as { id: string };
+  const range = await request.get(`/api/interview-recording/${id}`, { headers: { Range: "bytes=3-9" } });
+  expect(range.status()).toBe(206);
+  expect(range.headers()["content-range"]).toContain("bytes 3-9/");
+  expect((await range.body()).length).toBe(7);
+  expect((await request.delete(`/api/interview-recording/${id}`)).ok()).toBeTruthy();
+  expect((await request.get(`/api/interview-recording/${id}`)).status()).toBe(404);
+});
+
+test("rejects invalid AI connection settings without calling a provider", async ({ request }) => {
+  const response = await request.post("/api/ai/test", { data: { provider: "deepseek", baseUrl: "bad-url", model: "deepseek-chat", apiKey: "sk-abcdef1234567890", useMock: false } });
+  expect(response.status()).toBe(400);
+  expect((await response.json()).error).toContain("Base URL");
+});
+
+test("exports a DOCX that can be imported again", async ({ page }) => {
+  await seed(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: /ATS 与导出 4\.2/ }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "下载 DOCX" }).click();
+  const download = await downloadPromise;
+  const exportPath = path.join(process.cwd(), "test-results", "v1.6-export.docx");
+  await download.saveAs(exportPath);
+  expect((await fs.promises.stat(exportPath)).size).toBeGreaterThan(5_000);
+
+  await page.getByRole("button", { name: /岗位与简历材料 1\.1/ }).click();
+  await page.getByRole("button", { name: "导入 PDF / DOCX" }).click();
+  await page.locator('input[type="file"]').setInputFiles(exportPath);
+  await expect(page.getByRole("dialog", { name: "导入已有简历" }).locator("textarea").first()).toHaveValue(/张明/, { timeout: 20_000 });
+});
+
+test("prints with one 16 mm margin and no empty multi-page output", async ({ page }) => {
+  await seed(page);
+  await page.goto("/print?documentId=e2e-document");
+  const singlePageBuffer = await page.pdf({ printBackground: true, preferCSSPageSize: true });
+  await fs.promises.writeFile(path.join(process.cwd(), "test-results", "print-16mm-single.pdf"), singlePageBuffer);
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const singlePagePdf = await pdfjs.getDocument({ data: new Uint8Array(singlePageBuffer) }).promise;
+  expect(singlePagePdf.numPages).toBe(1);
+  const firstContent = await (await singlePagePdf.getPage(1)).getTextContent();
+  const textItems = firstContent.items.filter((item): item is Extract<(typeof firstContent.items)[number], { str: string }> => "str" in item && Boolean(item.str.trim()));
+  const minimumX = Math.min(...textItems.map((item) => item.transform[4]));
+  expect(minimumX).toBeGreaterThan(44);
+  expect(minimumX).toBeLessThan(47);
+  expect(textItems.map((item) => item.str).join(" ")).not.toContain("AI 设置");
+
+  const multiPageState = stateFor();
+  multiPageState.state.documents[0].analysisResult.finalResume.workExperience = Array.from({ length: 24 }, (_, index) => ({
+    company: `示例科技 ${index + 1}`,
+    role: "产品经理",
+    period: "2021 - 至今",
+    bullets: [`主导第 ${index + 1} 个流程重构项目，效率提升 40%`],
+  }));
+  await page.evaluate((value) => localStorage.setItem("resume-expert-library", JSON.stringify(value)), multiPageState);
+  await page.reload();
+  const multiPageBuffer = await page.pdf({ printBackground: true, preferCSSPageSize: true });
+  await fs.promises.writeFile(path.join(process.cwd(), "test-results", "print-16mm-multi.pdf"), multiPageBuffer);
+  const multiPagePdf = await pdfjs.getDocument({ data: new Uint8Array(multiPageBuffer) }).promise;
+  expect(multiPagePdf.numPages).toBeGreaterThan(1);
+  for (let pageNumber = 1; pageNumber <= multiPagePdf.numPages; pageNumber += 1) {
+    const content = await (await multiPagePdf.getPage(pageNumber)).getTextContent();
+    expect(content.items.some((item) => "str" in item && Boolean(item.str.trim()))).toBeTruthy();
+    if (pageNumber === 1) {
+      expect(content.items.some((item) => "str" in item && item.str.includes("工作经历"))).toBeTruthy();
+    }
+  }
+});
+
 for (const templateId of ["ats-classic", "modern-clean", "compact-professional"]) {
   test(`renders A4 ${templateId}`, async ({ page }) => {
+    test.skip(process.platform !== "win32", "Pixel baselines are generated with Windows Chinese fonts.");
     await seed(page, templateId);
     await page.goto("/print?documentId=e2e-document");
     await expect(page.locator(".resume-document")).toBeVisible();

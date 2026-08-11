@@ -26,7 +26,7 @@ export function ATSAssessmentCard({
             </p>
           </div>
           <div className="text-right">
-            <span className="text-3xl font-semibold tabular-nums">
+            <span data-testid="export-ats-score" className="text-3xl font-semibold tabular-nums">
               {assessment.overallScore}
             </span>
             <span className="text-sm text-neutral-400">/100</span>

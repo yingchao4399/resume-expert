@@ -52,7 +52,14 @@
     color: #111 !important;
   }
 
-  .resume-document section,
+  .resume-document .resume-section {
+    break-inside: auto !important;
+  }
+
+  .resume-document .resume-section > h3 {
+    break-after: avoid;
+  }
+
   .resume-document li {
     break-inside: avoid;
   }

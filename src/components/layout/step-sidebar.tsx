@@ -139,7 +139,7 @@ export function StepSidebar() {
       {atsAssessment && (
         <div className="border-t border-neutral-200 p-3">
           <p className="text-xs text-neutral-400">ATS 就绪度参考</p>
-          <p className="text-2xl font-semibold tabular-nums text-neutral-900">{atsAssessment.overallScore}<span className="text-sm font-normal text-neutral-400">/100</span></p>
+          <p data-testid="sidebar-ats-score" className="text-2xl font-semibold tabular-nums text-neutral-900">{atsAssessment.overallScore}<span className="text-sm font-normal text-neutral-400">/100</span></p>
         </div>
       )}
     </aside>
