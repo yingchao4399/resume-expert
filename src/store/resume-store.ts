@@ -1,434 +1,52 @@
 "use client";
 
 import { create } from "zustand";
-import {
-  createJSONStorage,
-  persist,
-  type StateStorage,
-} from "zustand/middleware";
-import type {
-  AnalysisResult,
-  CareerEvidence,
-  FinalResumeStatus,
-  FinalResume,
-  JobApplication,
-  OptimizeStyle,
-  ResumeImportMetadata,
-  ResumeLayoutConfig,
-  ResumeDocument,
-  ResumeLibraryState,
-  StepId,
-  StepStatus,
-  UserInput,
-} from "@/types/resume";
-import type { AIMode } from "@/lib/ai/types";
-import type { InterviewReviewRecord } from "@/types/interview";
+import { createJSONStorage, persist } from "zustand/middleware";
+import type { CareerEvidence, ResumeDocument, ResumeLibraryState } from "@/types/resume";
 import { WORKFLOW_STEPS } from "@/config/workflow";
-import { getDefaultLayoutConfig, sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
+import { sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
 import { buildEvidenceCandidates, normalizeFinalResumeBullets } from "@/lib/evidence/resume-evidence";
 import { parseResumeBackup } from "@/lib/backup/resume-backup";
+import { EXAMPLE_USER_INPUT } from "@/store/resume-store-example";
+import type { ResumeStore } from "@/store/resume-store.types";
+import {
+  createEmptyDocument,
+  createId,
+  getActiveDocument,
+  nowISO,
+  suggestedTitle,
+  updateActiveDocument,
+  workingStateFromDocument,
+} from "@/store/resume-store-document";
+import {
+  RESUME_RECOVERY_KEY,
+  RESUME_STORAGE_KEY,
+  clearPendingRecovery,
+  emitStorageError,
+  getPendingRecovery,
+  lockStorageWrites,
+  migrateDocument,
+  type LegacyResumeDocument,
+  readRecoveryRecord,
+  safeLocalStorage,
+  unlockStorageWrites,
+  validatePersistedLibrary,
+} from "@/store/resume-store-persistence";
 
-export const RESUME_STORAGE_KEY = "resume-expert-library";
-export const RESUME_STORAGE_ERROR_EVENT = "resume-expert-storage-error";
-export const RESUME_STORAGE_STATUS_EVENT = "resume-expert-storage-status";
-export const RESUME_RECOVERY_KEY = `${RESUME_STORAGE_KEY}-recovery`;
-
-export type UnsavedScope = "resume" | "layout";
-
-interface RecoveryRecord {
-  capturedAt: string;
-  reason: string;
-  raw: string;
-}
-
-let pendingRecovery: RecoveryRecord | null = null;
-let storageWriteUnlocked = false;
-let savedStatusTimer: ReturnType<typeof setTimeout> | null = null;
-
-interface ResumeStore {
-  documents: ResumeDocument[];
-  activeDocumentId: string;
-  careerEvidence: CareerEvidence[];
-  jobApplications: JobApplication[];
-  interviewReviews: InterviewReviewRecord[];
-  hasHydrated: boolean;
-  storageError: string | null;
-  recoveryAvailable: boolean;
-  recoveryReason: string | null;
-  dirtyScope: UnsavedScope | null;
-
-  userInput: UserInput;
-  currentStep: StepId;
-  isAnalyzing: boolean;
-  analysisResult: AnalysisResult | null;
-  sourceResume: FinalResume | null;
-  importMetadata: ResumeImportMetadata | null;
-  layoutConfig: ResumeLayoutConfig;
-  analysisError: string | null;
-  aiMode: AIMode | null;
-  optimizeStyle: OptimizeStyle;
-  finalResumeStatus: FinalResumeStatus;
-  hasManualEdits: boolean;
-  copied: boolean;
-
-  createDocument: () => void;
-  duplicateDocument: () => void;
-  renameDocument: (title: string) => void;
-  deleteDocument: (id?: string) => void;
-  selectDocument: (id: string) => void;
-  setStorageError: (error: string | null) => void;
-  markHydrated: () => void;
-  setDirtyScope: (scope: UnsavedScope | null) => void;
-  attemptStorageRecovery: () => boolean;
-  clearCorruptStorage: () => void;
-  importDocuments: (documents: ResumeDocument[], mode: "merge" | "replace", evidence?: CareerEvidence[], applications?: JobApplication[], reviews?: InterviewReviewRecord[]) => void;
-  addCareerEvidence: (evidence: Omit<CareerEvidence, "id" | "createdAt" | "updatedAt">) => void;
-  confirmCareerEvidence: (id: string) => void;
-  updateCareerEvidence: (id: string, patch: Partial<CareerEvidence>) => void;
-  deleteCareerEvidence: (id: string) => void;
-  addJobApplication: (application: Omit<JobApplication, "id" | "createdAt" | "updatedAt">) => void;
-  updateJobApplication: (id: string, patch: Partial<JobApplication>) => void;
-  deleteJobApplication: (id: string) => void;
-  saveInterviewReview: (review: Omit<InterviewReviewRecord, "id" | "createdAt" | "updatedAt">) => void;
-  deleteInterviewReview: (id: string) => void;
-  unlinkInterviewRecording: (recordingId: string) => void;
-
-  setUserInput: (input: Partial<UserInput>) => void;
-  setImportedResume: (text: string, sourceResume: FinalResume | null, metadata: ResumeImportMetadata) => void;
-  setLayoutConfig: (config: ResumeLayoutConfig) => void;
-  loadExampleData: () => void;
-  setCurrentStep: (step: StepId) => void;
-  setAnalyzing: (analyzing: boolean) => void;
-  setAnalysisResult: (result: AnalysisResult) => void;
-  setOptimizedItems: (items: AnalysisResult["optimizedItems"]) => void;
-  setFinalResume: (
-    resume: AnalysisResult["finalResume"],
-    options?: { manual?: boolean }
-  ) => void;
-  setAnalysisError: (error: string | null) => void;
-  setAiMode: (mode: AIMode | null) => void;
-  setOptimizeStyle: (style: OptimizeStyle) => void;
-  updateFollowUpAnswer: (id: string, answer: string) => void;
-  setFollowUpBullet: (id: string, bullet: string) => void;
-  getStepStatus: (step: StepId) => StepStatus;
-  setCopied: (copied: boolean) => void;
-}
-
-export const defaultUserInput: UserInput = {
-  targetRole: "",
-  industry: "",
-  companyType: "中型公司",
-  jobStage: "社招-中级",
-  highlightSkills: "",
-  jobDescription: "",
-  originalResume: "",
-  additionalInfo: "",
-};
-
-const EXAMPLE_USER_INPUT: UserInput = {
-  targetRole: "AI 产品经理",
-  industry: "企业服务 / SaaS / AI",
-  companyType: "中型公司",
-  jobStage: "转行",
-  highlightSkills: "AI 产品规划、Prompt 设计、数据驱动、ToB 需求分析、跨团队协作",
-  jobDescription: `【岗位职责】
-1. 负责 AI 功能的产品规划与迭代，包括智能问答、文档理解、工作流自动化等模块
-2. 深入理解 B 端客户业务场景，将 AI 能力转化为可落地的产品方案
-3. 与算法、工程团队协作，推动 AI 功能从 POC 到规模化上线
-4. 建立 AI 产品效果评估体系，通过数据驱动持续优化
-5. 跟踪 AI 行业趋势，输出竞品分析与产品策略
-
-【任职要求】
-1. 3年以上产品经理经验，有 ToB SaaS 或企业服务产品经验
-2. 了解 LLM 基本原理，有 AI 产品或智能化功能落地经验者优先
-3. 具备优秀的需求分析和逻辑思维能力，能将复杂业务抽象为产品方案
-4. 有数据报表、ERP/WMS 等系统产品经验者优先
-5. 良好的跨部门沟通能力和项目管理能力
-6. 本科及以上学历，计算机或相关专业优先`,
-  originalResume: `张明 | 产品经理 | 3.5年经验
-
-【个人信息】
-电话：138****5678 | 邮箱：zhangming@email.com | 上海
-
-【职业摘要】
-3.5年 B 端产品经理经验，主导 ERP 库存管理、WMS 仓储系统及经营数据报表平台的产品设计与迭代。擅长需求调研、流程梳理与跨部门协作，具备从 0 到 1 搭建数据产品的经验。
-
-【工作经历】
-某 SaaS 公司 | 产品经理 | 2021.06 - 至今
-• 负责 WMS 仓储管理系统核心模块，服务 50+ 企业客户
-• 主导库存盘点功能重构，盘点效率提升 40%
-• 设计经营数据报表平台，支持 20+ 自定义报表模板
-• 协调研发、测试、实施团队，按时交付 3 个 major 版本
-
-某软件公司 | 产品助理 | 2020.07 - 2021.05
-• 参与 ERP 采购模块需求分析与原型设计
-• 编写 PRD 文档，跟进开发进度与 UAT 测试
-• 收集客户反馈，优化订单审批流程
-
-【项目经历】
-经营数据报表平台 | 产品负责人 | 2022.03 - 2023.06
-• 从 0 到 1 搭建 BI 报表平台，覆盖销售、库存、财务三大主题
-• 设计拖拽式报表配置器，降低业务人员使用门槛
-• 上线后月活用户 200+，报表生成效率提升 60%
-
-WMS 智能补货 | 产品经理 | 2023.01 - 2023.09
-• 基于历史销售数据设计补货策略模型
-• 推动补货建议功能上线，缺货率下降 25%
-
-【技能】
-Axure、Figma、SQL、Jira、Confluence、数据分析
-
-【教育】
-某大学 | 信息管理与信息系统 | 本科 | 2016-2020`,
-  additionalInfo:
-    "最近自学了 Prompt Engineering 和 LangChain 基础，做过一个内部文档问答 Demo。希望突出数据产品背景和 ToB 经验，弱化纯执行类描述。",
-};
-
-function createId(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  return `resume-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function nowISO(): string {
-  return new Date().toISOString();
-}
-
-function dateLabel(): string {
-  return new Date().toLocaleDateString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-}
-
-function suggestedTitle(input: UserInput): string {
-  return input.targetRole.trim()
-    ? `${input.targetRole.trim()} · ${dateLabel()}`
-    : "未命名简历";
-}
+export { defaultUserInput } from "@/store/resume-store-example";
+export { createEmptyDocument } from "@/store/resume-store-document";
+export {
+  RESUME_RECOVERY_KEY,
+  RESUME_STORAGE_ERROR_EVENT,
+  RESUME_STORAGE_KEY,
+  RESUME_STORAGE_STATUS_EVENT,
+  downloadRecoveryData,
+} from "@/store/resume-store-persistence";
 
 function confirmUnsavedChanges(state: ResumeStore): boolean {
   if (!state.dirtyScope || typeof window === "undefined") return true;
   const label = state.dirtyScope === "resume" ? "简历内容" : "排版设置";
   return window.confirm(`${label}还有未保存修改，离开后将丢失。是否继续？`);
-}
-
-export function downloadRecoveryData(): boolean {
-  const recovery = readRecoveryRecord();
-  if (!recovery || typeof document === "undefined") return false;
-  const blob = new Blob([recovery.raw], { type: "application/json;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `resume-expert-corrupt-${new Date().toISOString().slice(0, 10)}.json`;
-  anchor.click();
-  URL.revokeObjectURL(url);
-  return true;
-}
-
-export function createEmptyDocument(id = createId()): ResumeDocument {
-  const timestamp = nowISO();
-  return {
-    schemaVersion: 5,
-    id,
-    title: "未命名简历",
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    userInput: { ...defaultUserInput },
-    currentStep: "input",
-    analysisResult: null,
-    sourceResume: null,
-    importMetadata: null,
-    layoutConfig: getDefaultLayoutConfig(),
-    optimizeStyle: "ai-product",
-    finalResumeStatus: "draft",
-    hasManualEdits: false,
-  };
-}
-
-function workingStateFromDocument(document: ResumeDocument) {
-  return {
-    userInput: document.userInput,
-    currentStep: document.currentStep,
-    analysisResult: document.analysisResult,
-    sourceResume: document.sourceResume,
-    importMetadata: document.importMetadata,
-    layoutConfig: document.layoutConfig,
-    optimizeStyle: document.optimizeStyle,
-    finalResumeStatus: document.finalResumeStatus,
-    hasManualEdits: document.hasManualEdits,
-    analysisError: null,
-    copied: false,
-  };
-}
-
-function getActiveDocument(state: ResumeStore): ResumeDocument {
-  return (
-    state.documents.find((document) => document.id === state.activeDocumentId) ??
-    state.documents[0]
-  );
-}
-
-function updateActiveDocument(
-  state: ResumeStore,
-  patch: Partial<ResumeDocument>
-): Partial<ResumeStore> {
-  const active = getActiveDocument(state);
-  const next: ResumeDocument = {
-    ...active,
-    ...patch,
-    updatedAt: nowISO(),
-  };
-
-  return {
-    documents: state.documents.map((document) =>
-      document.id === next.id ? next : document
-    ),
-    ...workingStateFromDocument(next),
-  };
-}
-
-function emitStorageError(message: string) {
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent(RESUME_STORAGE_ERROR_EVENT, { detail: message })
-    );
-  }
-}
-
-function emitStorageStatus(status: "saving" | "saved" | "error", savedAt?: string) {
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent(RESUME_STORAGE_STATUS_EVENT, { detail: { status, savedAt } }));
-  }
-}
-
-function readRecoveryRecord(): RecoveryRecord | null {
-  try {
-    const raw = window.localStorage.getItem(RESUME_RECOVERY_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<RecoveryRecord>;
-    return typeof parsed.raw === "string" && typeof parsed.reason === "string"
-      ? { raw: parsed.raw, reason: parsed.reason, capturedAt: parsed.capturedAt ?? nowISO() }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function validatePersistedLibrary(raw: string): void {
-  const parsed = JSON.parse(raw) as { state?: Partial<ResumeLibraryState>; version?: number };
-  if (!parsed || typeof parsed !== "object" || !parsed.state || !Array.isArray(parsed.state.documents)) {
-    throw new Error("持久化数据缺少文档库结构");
-  }
-  parseResumeBackup({
-    backupVersion: 2,
-    exportedAt: nowISO(),
-    documents: parsed.state.documents,
-    careerEvidence: parsed.state.careerEvidence ?? [],
-    jobApplications: parsed.state.jobApplications ?? [],
-    interviewReviews: parsed.state.interviewReviews ?? [],
-  });
-}
-
-function preserveCorruptStorage(raw: string, error: unknown): RecoveryRecord {
-  const record = {
-    capturedAt: nowISO(),
-    reason: error instanceof Error ? error.message : "本地数据结构无效",
-    raw,
-  };
-  window.localStorage.setItem(RESUME_RECOVERY_KEY, JSON.stringify(record));
-  pendingRecovery = record;
-  return record;
-}
-
-const safeLocalStorage: StateStorage = {
-  getItem(name) {
-    try {
-      const existingRecovery = readRecoveryRecord();
-      if (existingRecovery) {
-        pendingRecovery = existingRecovery;
-        return null;
-      }
-      const value = window.localStorage.getItem(name);
-      if (value) {
-        try {
-          validatePersistedLibrary(value);
-        } catch (error) {
-          preserveCorruptStorage(value, error);
-          emitStorageError("检测到异常本地数据，已进入恢复模式并锁定自动覆盖。");
-          return null;
-        }
-      }
-      return value;
-    } catch {
-      emitStorageError("无法读取浏览器本地数据，请检查隐私模式或存储权限。");
-      return null;
-    }
-  },
-  setItem(name, value) {
-    try {
-      if (!storageWriteUnlocked && readRecoveryRecord()) {
-        emitStorageError("恢复模式下已暂停自动保存，请先下载、恢复或确认清空异常数据。");
-        emitStorageStatus("error");
-        return;
-      }
-      emitStorageStatus("saving");
-      window.localStorage.setItem(name, value);
-      if (savedStatusTimer) clearTimeout(savedStatusTimer);
-      savedStatusTimer = setTimeout(() => emitStorageStatus("saved", nowISO()), 120);
-    } catch {
-      emitStorageError("本地保存失败，浏览器存储空间可能已满。请先导出重要简历。");
-      emitStorageStatus("error");
-    }
-  },
-  removeItem(name) {
-    try {
-      window.localStorage.removeItem(name);
-    } catch {
-      emitStorageError("无法清除浏览器本地数据，请检查存储权限。");
-    }
-  },
-};
-
-type LegacyResumeDocument = Partial<ResumeDocument> & {
-  schemaVersion?: number;
-  isFinalResumeStale?: boolean;
-};
-
-function migrateDocument(document: LegacyResumeDocument): ResumeDocument {
-  const base = createEmptyDocument(typeof document.id === "string" ? document.id : createId());
-  const sourceResume = document.sourceResume
-    ? normalizeFinalResumeBullets(document.sourceResume, "imported")
-    : null;
-  const analysisResult = document.analysisResult
-    ? {
-        ...document.analysisResult,
-        finalResume: normalizeFinalResumeBullets(document.analysisResult.finalResume, "ai-generated"),
-      }
-    : null;
-  const finalResumeStatus: FinalResumeStatus =
-    document.finalResumeStatus === "draft" ||
-    document.finalResumeStatus === "confirmed" ||
-    document.finalResumeStatus === "stale"
-      ? document.finalResumeStatus
-      : document.isFinalResumeStale
-        ? "stale"
-        : analysisResult?.finalResume
-          ? "confirmed"
-          : "draft";
-  const { isFinalResumeStale: _legacyStale, ...documentWithoutLegacyStatus } = document;
-  void _legacyStale;
-  return {
-    ...base,
-    ...documentWithoutLegacyStatus,
-    schemaVersion: 5,
-    sourceResume,
-    analysisResult,
-    finalResumeStatus,
-    layoutConfig: sanitizeLayoutConfig(document.layoutConfig),
-  } as ResumeDocument;
 }
 
 const initialDocument = createEmptyDocument("initial-draft");
@@ -548,11 +166,14 @@ export const useResumeStore = create<ResumeStore>()(
         }),
 
       setStorageError: (error) => set({ storageError: error }),
-      markHydrated: () => set({
-        hasHydrated: true,
-        recoveryAvailable: Boolean(pendingRecovery),
-        recoveryReason: pendingRecovery?.reason ?? null,
-      }),
+      markHydrated: () => {
+        const recovery = getPendingRecovery();
+        set({
+          hasHydrated: true,
+          recoveryAvailable: Boolean(recovery),
+          recoveryReason: recovery?.reason ?? null,
+        });
+      },
       setDirtyScope: (scope) => set({ dirtyScope: scope }),
       attemptStorageRecovery: () => {
         const recovery = readRecoveryRecord();
@@ -578,31 +199,31 @@ export const useResumeStore = create<ResumeStore>()(
             version: 6,
           });
           validatePersistedLibrary(recoveredValue);
-          storageWriteUnlocked = true;
+          unlockStorageWrites();
           window.localStorage.setItem(RESUME_STORAGE_KEY, recoveredValue);
           window.localStorage.removeItem(RESUME_RECOVERY_KEY);
-          storageWriteUnlocked = false;
-          pendingRecovery = null;
+          lockStorageWrites();
+          clearPendingRecovery();
           set({ recoveryAvailable: false, recoveryReason: null, storageError: null });
           queueMicrotask(() => void useResumeStore.persist.rehydrate());
           return true;
         } catch {
-          storageWriteUnlocked = false;
+          lockStorageWrites();
           return false;
         }
       },
       clearCorruptStorage: () => {
-        storageWriteUnlocked = true;
+        unlockStorageWrites();
         window.localStorage.removeItem(RESUME_RECOVERY_KEY);
         window.localStorage.removeItem(RESUME_STORAGE_KEY);
-        pendingRecovery = null;
+        clearPendingRecovery();
         const document = createEmptyDocument();
         set({
           documents: [document], activeDocumentId: document.id, recoveryAvailable: false,
           recoveryReason: null, storageError: null, dirtyScope: null,
           ...workingStateFromDocument(document),
         });
-        storageWriteUnlocked = false;
+        lockStorageWrites();
       },
 
       importDocuments: (documents, mode, evidence = [], applications = [], reviews = []) =>

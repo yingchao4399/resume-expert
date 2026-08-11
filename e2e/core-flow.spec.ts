@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
+import { runMockInterviewAnalysis } from "../src/services/ai/interviewAgent.mock";
 
 const resume = {
   personalInfo: { name: "张明", email: "ming@example.com", phone: "13800000000", location: "上海" },
@@ -55,6 +56,10 @@ function stateFor(templateId = "ats-classic", finalResumeStatus: "draft" | "conf
 
 async function seed(page: Page, templateId = "ats-classic") {
   await page.addInitScript((value) => { if (!localStorage.getItem("resume-expert-library")) localStorage.setItem("resume-expert-library", JSON.stringify(value)); }, stateFor(templateId));
+}
+
+async function waitForLibraryHydration(page: Page) {
+  await expect(page.locator('select[aria-label]').first()).toBeEnabled();
 }
 
 test("loads example data and keeps an evidence item after reload", async ({ page }) => {
@@ -154,6 +159,35 @@ test("supports recording range playback and deletion", async ({ request }) => {
   expect((await request.get(`/api/interview-recording/${id}`)).status()).toBe(404);
 });
 
+test("persists, reopens and deletes an interview review", async ({ page }) => {
+  await seed(page);
+  const result = await runMockInterviewAnalysis("原始简历", "产品经理");
+  await page.route("**/api/interview-recording/analyze", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ result, mode: "mock" }),
+    })
+  );
+
+  await page.goto("/");
+  await waitForLibraryHydration(page);
+  await page.getByRole("button", { name: /对话诊断/ }).click();
+  await page.getByRole("button", { name: "使用示例对话" }).click();
+  await page.getByRole("button", { name: "开始 AI 诊断分析" }).click();
+  await expect(page.getByText("已保存复盘记录")).toBeVisible();
+  await expect(page.getByText("面试摘要总结")).toBeVisible();
+
+  await page.reload();
+  await waitForLibraryHydration(page);
+  await page.getByRole("button", { name: /对话诊断/ }).click();
+  await expect(page.getByText("已保存复盘记录")).toBeVisible();
+  await page.getByRole("button", { name: /未关联投递.*分/ }).click();
+  await expect(page.getByText("面试摘要总结")).toBeVisible();
+  await page.getByRole("button", { name: "删除", exact: true }).click();
+  await expect(page.getByText("已保存复盘记录")).toBeHidden();
+});
+
 test("rejects invalid AI connection settings without calling a provider", async ({ request }) => {
   const response = await request.post("/api/ai/test", { data: { provider: "deepseek", baseUrl: "bad-url", model: "deepseek-chat", apiKey: "sk-abcdef1234567890", useMock: false } });
   expect(response.status()).toBe(400);
@@ -180,6 +214,8 @@ test("exports a DOCX that can be imported again", async ({ page }) => {
 test("prints with one 16 mm margin and no empty multi-page output", async ({ page }) => {
   await seed(page);
   await page.goto("/print?documentId=e2e-document");
+  await expect(page.locator(".resume-document")).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
   const singlePageBuffer = await page.pdf({ printBackground: true, preferCSSPageSize: true });
   await fs.promises.writeFile(path.join(process.cwd(), "test-results", "print-16mm-single.pdf"), singlePageBuffer);
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -201,6 +237,8 @@ test("prints with one 16 mm margin and no empty multi-page output", async ({ pag
   }));
   await page.evaluate((value) => localStorage.setItem("resume-expert-library", JSON.stringify(value)), multiPageState);
   await page.reload();
+  await expect(page.locator(".resume-document")).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
   const multiPageBuffer = await page.pdf({ printBackground: true, preferCSSPageSize: true });
   await fs.promises.writeFile(path.join(process.cwd(), "test-results", "print-16mm-multi.pdf"), multiPageBuffer);
   const multiPagePdf = await pdfjs.getDocument({ data: new Uint8Array(multiPageBuffer) }).promise;
