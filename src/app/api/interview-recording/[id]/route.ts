@@ -20,7 +20,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const { id } = await context.params;
   const filePath = findRecording(id);
   if (!filePath) return NextResponse.json({ error: "录音不存在" }, { status: 404 });
-  const stat = fs.statSync(filePath);
+  const stat = fs.statSync(/* turbopackIgnore: true */ filePath);
   const mime = MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
   const range = request.headers.get("range");
   let start = 0;
@@ -32,7 +32,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     ({ start, end } = parsed);
     status = 206;
   }
-  const stream = fs.createReadStream(filePath, { start, end });
+  const stream = fs.createReadStream(/* turbopackIgnore: true */ filePath, { start, end });
   return new Response(Readable.toWeb(stream) as ReadableStream, {
     status,
     headers: {

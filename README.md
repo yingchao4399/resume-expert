@@ -40,7 +40,7 @@
 
 ## 快速开始
 
-项目统一使用 npm 和 `package-lock.json`。
+项目统一使用 Node.js 24 LTS、npm 和 `package-lock.json`。
 
 ```bash
 npm install
@@ -49,7 +49,7 @@ npm run dev
 
 打开 [http://localhost:3000](http://localhost:3000)。
 
-如果当前终端找不到 `npm`，请先安装 Node.js LTS，并重新打开终端。
+如果当前终端找不到 `npm`，请先安装 Node.js 24 LTS，并重新打开终端。
 
 ## 使用流程
 
@@ -110,6 +110,7 @@ API Key 输入框只粘贴服务商控制台生成的 Key 本身，不要包含�
 npm run lint
 npm run typecheck
 npm test
+npm run audit:prod
 npm run test:e2e
 npm run build
 ```
