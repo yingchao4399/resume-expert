@@ -48,7 +48,7 @@ const layoutConfigSchema = z.object({
 });
 
 const documentSchema = z.object({
-  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
   id: z.string().min(1),
   title: z.string().min(1),
   createdAt: z.string(),
@@ -60,7 +60,8 @@ const documentSchema = z.object({
   importMetadata: importMetadataSchema.nullable().optional(),
   layoutConfig: layoutConfigSchema.optional(),
   optimizeStyle: optimizeStyleSchema,
-  isFinalResumeStale: z.boolean(),
+  finalResumeStatus: z.enum(["draft", "confirmed", "stale"]).optional(),
+  isFinalResumeStale: z.boolean().optional(),
   hasManualEdits: z.boolean(),
 });
 
@@ -134,13 +135,24 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
   return {
     backupVersion: 2,
     exportedAt: parsed.data.exportedAt,
-    documents: parsed.data.documents.map((document) => ({
-      ...document,
-      schemaVersion: 4,
-      sourceResume: document.sourceResume ?? null,
-      importMetadata: document.importMetadata ?? null,
-      layoutConfig: sanitizeLayoutConfig(document.layoutConfig),
-    })),
+    documents: parsed.data.documents.map((document) => {
+      const finalResumeStatus = document.finalResumeStatus ??
+        (document.isFinalResumeStale
+          ? "stale"
+          : document.analysisResult?.finalResume
+            ? "confirmed"
+            : "draft");
+      const { isFinalResumeStale: _legacyStatus, ...currentDocument } = document;
+      void _legacyStatus;
+      return {
+        ...currentDocument,
+        schemaVersion: 5,
+        sourceResume: document.sourceResume ?? null,
+        importMetadata: document.importMetadata ?? null,
+        layoutConfig: sanitizeLayoutConfig(document.layoutConfig),
+        finalResumeStatus,
+      };
+    }),
     careerEvidence: parsed.data.careerEvidence,
     jobApplications: parsed.data.jobApplications,
     interviewReviews: parsed.data.interviewReviews,

@@ -12,7 +12,7 @@ describe("workflow progress", () => {
   });
 
   it("reports actionable material blockers", () => {
-    const progress = getWorkflowProgress({ currentStep: "input", userInput: defaultUserInput, analysisResult: null, isFinalResumeStale: false });
+    const progress = getWorkflowProgress({ currentStep: "input", userInput: defaultUserInput, analysisResult: null, finalResumeStatus: "draft" });
     expect(progress[0].status).toBe("active");
     expect(progress[0].blocker).toContain("目标岗位");
     expect(progress[1].blocker).toContain("材料未齐");

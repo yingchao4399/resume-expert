@@ -38,7 +38,7 @@ export function OptimizeStep() {
     careerEvidence,
     optimizeStyle,
     setOptimizeStyle,
-    isFinalResumeStale,
+    finalResumeStatus,
     hasManualEdits,
     setOptimizedItems,
     setFinalResume,
@@ -68,7 +68,7 @@ export function OptimizeStep() {
 
 
   const handleContinue = async () => {
-    if (!isFinalResumeStale) {
+    if (finalResumeStatus === "confirmed") {
       setCurrentStep("final-resume");
       return;
     }
@@ -171,13 +171,21 @@ export function OptimizeStep() {
       </Card>
 
       <div className="flex flex-col items-end gap-2">
-        {isFinalResumeStale && (
+        {finalResumeStatus !== "confirmed" && (
           <p className="text-xs text-amber-700">
-            已检测到新的补充经历或优化风格，生成后才会写入最终简历。
+            {finalResumeStatus === "stale"
+              ? "已检测到新的补充经历、材料或优化风格，重新生成后才可交付。"
+              : "分析结果只是草稿，请生成最终简历后再进入交付。"}
           </p>
         )}
         <Button size="sm" onClick={handleContinue} disabled={regenerating || finalizing}>
-          {finalizing ? "正在生成最终简历..." : isFinalResumeStale ? "应用补充并生成最终简历" : "下一步：最终简历"}
+          {finalizing
+            ? "正在生成最终简历..."
+            : finalResumeStatus === "stale"
+              ? "应用补充并重新生成最终简历"
+              : finalResumeStatus === "draft"
+                ? "确认并生成最终简历"
+                : "下一步：最终简历"}
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>

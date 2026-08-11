@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { FileUp, Loader2, Sparkles, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,11 +37,24 @@ export function InputStep() {
     setAnalysisError,
     setCurrentStep,
   } = useResumeStore();
+  const [showValidation, setShowValidation] = useState(false);
+
+  const missingFields = useMemo(
+    () => [
+      !userInput.targetRole.trim() && { id: "targetRole", label: "目标岗位" },
+      !userInput.jobDescription.trim() && { id: "jobDescription", label: "目标 JD" },
+      !userInput.originalResume.trim() && { id: "originalResume", label: "原始简历" },
+    ].filter(Boolean) as Array<{ id: string; label: string }>,
+    [userInput]
+  );
 
   const handleAnalyze = async () => {
-    if (!userInput.targetRole || !userInput.jobDescription || !userInput.originalResume) {
+    if (missingFields.length > 0) {
+      setShowValidation(true);
+      document.getElementById(missingFields[0].id)?.focus();
       return;
     }
+    setShowValidation(false);
     setAnalyzing(true);
     setAnalysisError(null);
     try {
@@ -54,11 +67,6 @@ export function InputStep() {
       setAnalyzing(false);
     }
   };
-
-  const canAnalyze =
-    userInput.targetRole.trim() &&
-    userInput.jobDescription.trim() &&
-    userInput.originalResume.trim();
 
   return (
     <div>
@@ -76,7 +84,7 @@ export function InputStep() {
           <FileUp className="h-3.5 w-3.5" />
           导入 PDF / DOCX
         </Button>
-        <Button size="sm" onClick={handleAnalyze} disabled={!canAnalyze || isAnalyzing}>
+        <Button size="sm" onClick={handleAnalyze} disabled={isAnalyzing}>
           {isAnalyzing ? (
             <>
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -91,9 +99,16 @@ export function InputStep() {
         </Button>
       </div>
 
+      {showValidation && missingFields.length > 0 && (
+        <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="alert" aria-live="assertive">
+          请先补齐：{missingFields.map((field) => field.label).join("、")}。
+        </div>
+      )}
+
       {analysisError && (
-        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {analysisError}
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert" aria-live="assertive">
+          <p>{analysisError}</p>
+          <Button className="mt-2" variant="outline" size="sm" onClick={handleAnalyze}>重试分析</Button>
         </div>
       )}
 
@@ -123,12 +138,12 @@ export function InputStep() {
               />
             </div>
             <div className="space-y-2">
-              <Label>公司类型</Label>
+              <Label htmlFor="companyType">公司类型</Label>
               <Select
                 value={userInput.companyType}
                 onValueChange={(v) => setUserInput({ companyType: v as CompanyType })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="companyType">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -141,12 +156,12 @@ export function InputStep() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>求职阶段</Label>
+              <Label htmlFor="jobStage">求职阶段</Label>
               <Select
                 value={userInput.jobStage}
                 onValueChange={(v) => setUserInput({ jobStage: v as JobStage })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="jobStage">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -176,7 +191,10 @@ export function InputStep() {
             <CardDescription>粘贴完整岗位描述，Agent 将解析职责与要求</CardDescription>
           </CardHeader>
           <CardContent>
+            <Label htmlFor="jobDescription" className="sr-only">目标 JD</Label>
             <Textarea
+              id="jobDescription"
+              aria-invalid={showValidation && !userInput.jobDescription.trim()}
               className="min-h-[200px] font-mono text-xs leading-relaxed"
               placeholder="粘贴岗位 JD..."
               value={userInput.jobDescription}
@@ -191,7 +209,10 @@ export function InputStep() {
             <CardDescription>粘贴当前简历全文</CardDescription>
           </CardHeader>
           <CardContent>
+            <Label htmlFor="originalResume" className="sr-only">原始简历</Label>
             <Textarea
+              id="originalResume"
+              aria-invalid={showValidation && !userInput.originalResume.trim()}
               className="min-h-[240px] font-mono text-xs leading-relaxed"
               placeholder="粘贴简历内容..."
               value={userInput.originalResume}
@@ -206,7 +227,9 @@ export function InputStep() {
             <CardDescription>项目细节、转型动机、特殊说明等</CardDescription>
           </CardHeader>
           <CardContent>
+            <Label htmlFor="additionalInfo" className="sr-only">补充信息</Label>
             <Textarea
+              id="additionalInfo"
               className="min-h-[100px] text-sm"
               placeholder="补充 Agent 需要了解的信息..."
               value={userInput.additionalInfo}

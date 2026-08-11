@@ -30,7 +30,10 @@ export function DiagnosisStep() {
 
       <div className="mb-6 grid gap-4 sm:grid-cols-[160px_1fr]">
         <Card className="flex items-center justify-center py-6">
-          <ScoreRing score={diagnosis.overallScore} />
+          <div className="text-center">
+            <ScoreRing score={diagnosis.overallScore} />
+            <p className="mt-2 text-xs text-neutral-500">AI 简历诊断分</p>
+          </div>
         </Card>
 
         <Card>

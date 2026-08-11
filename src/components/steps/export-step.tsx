@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Check,
   Copy,
@@ -38,21 +38,16 @@ export function ExportStep() {
     analysisResult,
     userInput,
     copied,
-    isFinalResumeStale,
+    finalResumeStatus,
     layoutConfig,
     setCopied,
     setCurrentStep,
   } = useResumeStore();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [allowStale, setAllowStale] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
   const finalResume = analysisResult?.finalResume;
-  useEffect(() => {
-    setAllowStale(false);
-  }, [finalResume, isFinalResumeStale]);
-
   const assessment = useMemo(
     () =>
       analysisResult
@@ -66,7 +61,7 @@ export function ExportStep() {
   }
 
   const resumeText = formatResumeAsText(finalResume);
-  const exportBlocked = isFinalResumeStale && !allowStale;
+  const exportBlocked = finalResumeStatus !== "confirmed";
 
   const handleCopy = async () => {
     if (exportBlocked) return;
@@ -109,9 +104,13 @@ export function ExportStep() {
         description="下载 ATS 友好 Word，或通过浏览器打印保存为 PDF"
       />
 
-      {isFinalResumeStale && (
+      {exportBlocked && (
         <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <p>当前内容尚未应用最新补充或优化风格，导出已暂时锁定。</p>
+          <p>
+            {finalResumeStatus === "stale"
+              ? "当前内容尚未应用最新补充、材料或优化风格，交付已锁定。"
+              : "当前内容仍是分析草稿，请先生成并确认最终简历。"}
+          </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button
               variant="outline"
@@ -119,13 +118,6 @@ export function ExportStep() {
               onClick={() => setCurrentStep("optimize")}
             >
               返回重新生成
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setAllowStale(true)}
-            >
-              我确认使用当前版本
             </Button>
           </div>
         </div>

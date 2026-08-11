@@ -25,7 +25,7 @@ const layoutDefaults = {
 
 function stateFor(templateId = "ats-classic") {
   const document = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     id: "e2e-document",
     title: "产品经理版本",
     createdAt: "2026-08-03T00:00:00.000Z",
@@ -45,10 +45,10 @@ function stateFor(templateId = "ats-classic") {
     importMetadata: null,
     layoutConfig: { ...layoutDefaults, templateId },
     optimizeStyle: "ai-product",
-    isFinalResumeStale: false,
+    finalResumeStatus: "confirmed",
     hasManualEdits: false,
   };
-  return { state: { schemaVersion: 4, documents: [document], activeDocumentId: document.id, careerEvidence: [] }, version: 4 };
+  return { state: { schemaVersion: 6, documents: [document], activeDocumentId: document.id, careerEvidence: [], jobApplications: [], interviewReviews: [] }, version: 6 };
 }
 
 async function seed(page: Page, templateId = "ats-classic") {

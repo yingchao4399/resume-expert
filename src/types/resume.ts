@@ -217,8 +217,10 @@ export interface StepConfig {
   label: string;
   icon?: ReactNode;
 }
+export type FinalResumeStatus = "draft" | "confirmed" | "stale";
+
 export interface ResumeDocument {
-  schemaVersion: 4;
+  schemaVersion: 5;
   id: string;
   title: string;
   createdAt: string;
@@ -230,7 +232,7 @@ export interface ResumeDocument {
   importMetadata: ResumeImportMetadata | null;
   layoutConfig: ResumeLayoutConfig;
   optimizeStyle: OptimizeStyle;
-  isFinalResumeStale: boolean;
+  finalResumeStatus: FinalResumeStatus;
   hasManualEdits: boolean;
 }
 
@@ -252,7 +254,7 @@ export interface JobApplication {
 }
 
 export interface ResumeLibraryState {
-  schemaVersion: 5;
+  schemaVersion: 6;
   documents: ResumeDocument[];
   activeDocumentId: string;
   careerEvidence: CareerEvidence[];

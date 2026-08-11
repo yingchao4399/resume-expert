@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { cloneElement, useId, useMemo, useState, type ReactElement } from "react";
 import { ExternalLink, FileText, Plus, Trash2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -67,14 +67,14 @@ export function ApplicationsStep() {
               <p className="mt-1 text-xs text-neutral-500">投递：{item.appliedAt || "未填写"} · 下一步：{item.nextStepAt || "未填写"}</p>
             </div>
             <div className="flex gap-1">{item.jdUrl && <Button variant="ghost" size="sm" asChild><a href={item.jdUrl} target="_blank" rel="noreferrer"><ExternalLink className="h-3.5 w-3.5" />JD</a></Button>}
-              <Button variant="ghost" size="sm" className="text-red-600" onClick={() => { if (window.confirm("删除投递记录后，关联的面试复盘会保留但解除关联。是否继续？")) deleteJobApplication(item.id); }}><Trash2 className="h-3.5 w-3.5" /></Button></div>
+              <Button aria-label={`删除 ${item.company} ${item.role} 投递记录`} variant="ghost" size="sm" className="text-red-600" onClick={() => { if (window.confirm("删除投递记录后，关联的面试复盘会保留但解除关联。是否继续？")) deleteJobApplication(item.id); }}><Trash2 className="h-3.5 w-3.5" /></Button></div>
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             <Field label="状态"><select className="h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm" value={item.status} onChange={(event) => updateJobApplication(item.id, { status: event.target.value as JobApplicationStatus })}>{JOB_APPLICATION_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></Field>
             <Field label="下一步日期"><Input type="date" value={item.nextStepAt} onChange={(event) => updateJobApplication(item.id, { nextStepAt: event.target.value })} /></Field>
             <Field label="关联简历"><ResumeSelect value={item.resumeDocumentId ?? ""} documents={documents} onChange={(resumeDocumentId) => updateJobApplication(item.id, { resumeDocumentId: resumeDocumentId || null })} /></Field>
           </div>
-          <Textarea className="mt-3 min-h-16" placeholder="跟进备注" value={item.notes} onChange={(event) => updateJobApplication(item.id, { notes: event.target.value })} />
+          <Textarea aria-label={`${item.company} ${item.role} 跟进备注`} className="mt-3 min-h-16" placeholder="跟进备注" value={item.notes} onChange={(event) => updateJobApplication(item.id, { notes: event.target.value })} />
           <div className="mt-2 flex justify-end">{linked ? <Button variant="outline" size="sm" onClick={() => { selectDocument(linked.id); setCurrentStep("final-resume"); }}><FileText className="h-3.5 w-3.5" />打开 {linked.title}</Button> : <span className="text-xs text-amber-700">未关联简历版本</span>}</div>
         </CardContent></Card>;
       })}
@@ -83,5 +83,5 @@ export function ApplicationsStep() {
 }
 
 function Stat({ label, value, suffix }: { label: string; value: number; suffix: string }) { return <Card><CardContent className="p-4"><p className="text-xs text-neutral-500">{label}</p><p className="mt-1 text-2xl font-semibold tabular-nums">{value}<span className="ml-1 text-xs font-normal text-neutral-400">{suffix}</span></p></CardContent></Card>; }
-function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>; }
+function Field({ label, children }: { label: string; children: ReactElement<{ id?: string }> }) { const generatedId = useId(); const id = children.props.id ?? `application-field-${generatedId.replace(/:/g, "")}`; return <div className="space-y-1.5"><Label htmlFor={id}>{label}</Label>{cloneElement(children, { id })}</div>; }
 function ResumeSelect({ value, documents, onChange }: { value: string; documents: Array<{ id: string; title: string }>; onChange: (value: string) => void }) { return <select className="h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}><option value="">不关联</option>{documents.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select>; }

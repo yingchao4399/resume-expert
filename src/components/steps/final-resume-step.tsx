@@ -77,7 +77,7 @@ export function FinalResumeStep() {
   const {
     activeDocumentId,
     analysisResult,
-    isFinalResumeStale,
+    finalResumeStatus,
     hasManualEdits,
     layoutConfig,
     careerEvidence,
@@ -138,7 +138,7 @@ export function FinalResumeStep() {
         )}
       </div>
 
-      {isFinalResumeStale && (
+      {finalResumeStatus === "stale" && (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <span>这份简历尚未应用最新的补充经历或优化风格。</span>
           <Button

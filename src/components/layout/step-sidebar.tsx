@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+
 import {
   Brain,
   BriefcaseBusiness,
@@ -22,6 +24,7 @@ import { useResumeStore } from "@/store/resume-store";
 import type { StepId } from "@/types/resume";
 import { INTERVIEW_REVIEW_STEPS, WORKFLOW_STAGES } from "@/config/workflow";
 import { getWorkflowProgress, type WorkflowStageStatus } from "@/lib/workflow-progress";
+import { calculateATSAssessment } from "@/lib/ats";
 
 const STEP_ICONS: Record<StepId, React.ElementType> = {
   input: FileText,
@@ -52,9 +55,13 @@ export function StepSidebar() {
     analysisResult,
     userInput,
     currentStep,
-    isFinalResumeStale,
+    finalResumeStatus,
   } = useResumeStore();
-  const progress = getWorkflowProgress({ currentStep, userInput, analysisResult, isFinalResumeStale });
+  const progress = getWorkflowProgress({ currentStep, userInput, analysisResult, finalResumeStatus });
+  const atsAssessment = useMemo(
+    () => (analysisResult ? calculateATSAssessment(userInput, analysisResult) : null),
+    [analysisResult, userInput]
+  );
   const progressById = new Map(progress.map((item) => [item.id, item]));
 
   return (
@@ -129,10 +136,10 @@ export function StepSidebar() {
           })}
         </section>
       </nav>
-      {analysisResult && (
+      {atsAssessment && (
         <div className="border-t border-neutral-200 p-3">
           <p className="text-xs text-neutral-400">ATS 就绪度参考</p>
-          <p className="text-2xl font-semibold tabular-nums text-neutral-900">{analysisResult.diagnosis.overallScore}<span className="text-sm font-normal text-neutral-400">/100</span></p>
+          <p className="text-2xl font-semibold tabular-nums text-neutral-900">{atsAssessment.overallScore}<span className="text-sm font-normal text-neutral-400">/100</span></p>
         </div>
       )}
     </aside>

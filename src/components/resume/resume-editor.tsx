@@ -1,5 +1,6 @@
 "use client";
 
+import { cloneElement, useId, type ReactElement } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -209,6 +210,7 @@ function ExperienceEditor<T extends { period: string; bullets: ResumeBulletValue
                 size="sm"
                 className="h-8 text-red-600"
                 onClick={() => onChange(items.filter((_, itemIndex) => itemIndex !== index))}
+                aria-label={`删除${title} ${index + 1}`}
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 删除
@@ -242,10 +244,11 @@ function ExperienceEditor<T extends { period: string; bullets: ResumeBulletValue
                 </Field>
               </div>
               <div className="space-y-2">
-                <Label>成果描述</Label>
+                <p className="text-sm font-medium">成果描述</p>
                 {item.bullets.map((bullet, bulletIndex) => (
                   <div key={bulletIndex} className="flex items-start gap-2">
                     <Textarea
+                      aria-label={`${title} ${index + 1} 成果描述 ${bulletIndex + 1}`}
                       className="min-h-20"
                       value={getBulletText(bullet)}
                       onChange={(event) =>
@@ -349,12 +352,14 @@ function Field({
   children,
 }: {
   label: string;
-  children: React.ReactNode;
+  children: ReactElement<{ id?: string }>;
 }) {
+  const generatedId = useId();
+  const fieldId = children.props.id ?? `resume-field-${generatedId.replace(/:/g, "")}`;
   return (
     <div className="space-y-1.5">
-      <Label>{label}</Label>
-      {children}
+      <Label htmlFor={fieldId}>{label}</Label>
+      {cloneElement(children, { id: fieldId })}
     </div>
   );
 }

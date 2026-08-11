@@ -9,6 +9,7 @@ import {
 import type {
   AnalysisResult,
   CareerEvidence,
+  FinalResumeStatus,
   FinalResume,
   JobApplication,
   OptimizeStyle,
@@ -48,7 +49,7 @@ interface ResumeStore {
   analysisError: string | null;
   aiMode: AIMode | null;
   optimizeStyle: OptimizeStyle;
-  isFinalResumeStale: boolean;
+  finalResumeStatus: FinalResumeStatus;
   hasManualEdits: boolean;
   copied: boolean;
 
@@ -189,7 +190,7 @@ function suggestedTitle(input: UserInput): string {
 export function createEmptyDocument(id = createId()): ResumeDocument {
   const timestamp = nowISO();
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     id,
     title: "未命名简历",
     createdAt: timestamp,
@@ -201,7 +202,7 @@ export function createEmptyDocument(id = createId()): ResumeDocument {
     importMetadata: null,
     layoutConfig: getDefaultLayoutConfig(),
     optimizeStyle: "ai-product",
-    isFinalResumeStale: false,
+    finalResumeStatus: "draft",
     hasManualEdits: false,
   };
 }
@@ -215,7 +216,7 @@ function workingStateFromDocument(document: ResumeDocument) {
     importMetadata: document.importMetadata,
     layoutConfig: document.layoutConfig,
     optimizeStyle: document.optimizeStyle,
-    isFinalResumeStale: document.isFinalResumeStale,
+    finalResumeStatus: document.finalResumeStatus,
     hasManualEdits: document.hasManualEdits,
     analysisError: null,
     copied: false,
@@ -281,7 +282,12 @@ const safeLocalStorage: StateStorage = {
   },
 };
 
-function migrateDocument(document: Partial<ResumeDocument>): ResumeDocument {
+type LegacyResumeDocument = Partial<ResumeDocument> & {
+  schemaVersion?: number;
+  isFinalResumeStale?: boolean;
+};
+
+function migrateDocument(document: LegacyResumeDocument): ResumeDocument {
   const base = createEmptyDocument(typeof document.id === "string" ? document.id : createId());
   const sourceResume = document.sourceResume
     ? normalizeFinalResumeBullets(document.sourceResume, "imported")
@@ -292,12 +298,25 @@ function migrateDocument(document: Partial<ResumeDocument>): ResumeDocument {
         finalResume: normalizeFinalResumeBullets(document.analysisResult.finalResume, "ai-generated"),
       }
     : null;
+  const finalResumeStatus: FinalResumeStatus =
+    document.finalResumeStatus === "draft" ||
+    document.finalResumeStatus === "confirmed" ||
+    document.finalResumeStatus === "stale"
+      ? document.finalResumeStatus
+      : document.isFinalResumeStale
+        ? "stale"
+        : analysisResult?.finalResume
+          ? "confirmed"
+          : "draft";
+  const { isFinalResumeStale: _legacyStale, ...documentWithoutLegacyStatus } = document;
+  void _legacyStale;
   return {
     ...base,
-    ...document,
-    schemaVersion: 4,
+    ...documentWithoutLegacyStatus,
+    schemaVersion: 5,
     sourceResume,
     analysisResult,
+    finalResumeStatus,
     layoutConfig: sanitizeLayoutConfig(document.layoutConfig),
   } as ResumeDocument;
 }
@@ -545,7 +564,7 @@ export const useResumeStore = create<ResumeStore>()(
           return updateActiveDocument(state, {
             userInput,
             title,
-            isFinalResumeStale: Boolean(state.analysisResult),
+            finalResumeStatus: state.analysisResult ? "stale" : "draft",
           });
         }),
 
@@ -568,7 +587,7 @@ export const useResumeStore = create<ResumeStore>()(
               importMetadata: metadata,
               analysisResult: null,
               currentStep: "input",
-              isFinalResumeStale: false,
+              finalResumeStatus: "draft",
               hasManualEdits: false,
             }),
             careerEvidence: [...retained, ...candidates],
@@ -587,7 +606,7 @@ export const useResumeStore = create<ResumeStore>()(
             sourceResume: null,
             importMetadata: null,
             currentStep: "input",
-            isFinalResumeStale: false,
+            finalResumeStatus: "draft",
             hasManualEdits: false,
           })
         ),
@@ -607,7 +626,7 @@ export const useResumeStore = create<ResumeStore>()(
                   ? suggestedTitle(state.userInput)
                   : active.title,
               analysisResult: { ...result, finalResume: normalizeFinalResumeBullets(result.finalResume, "ai-generated", state.careerEvidence) },
-              isFinalResumeStale: false,
+              finalResumeStatus: "draft",
               hasManualEdits: false,
             }),
             analysisError: null,
@@ -619,7 +638,7 @@ export const useResumeStore = create<ResumeStore>()(
           if (!state.analysisResult) return state;
           return updateActiveDocument(state, {
             analysisResult: { ...state.analysisResult, optimizedItems: items },
-            isFinalResumeStale: true,
+            finalResumeStatus: "stale",
           });
         }),
 
@@ -628,7 +647,7 @@ export const useResumeStore = create<ResumeStore>()(
           if (!state.analysisResult) return state;
           return updateActiveDocument(state, {
             analysisResult: { ...state.analysisResult, finalResume: normalizeFinalResumeBullets(resume, options?.manual ? "manual" : "ai-generated", state.careerEvidence) },
-            isFinalResumeStale: false,
+            finalResumeStatus: "confirmed",
             hasManualEdits: options?.manual === true,
           });
         }),
@@ -637,7 +656,12 @@ export const useResumeStore = create<ResumeStore>()(
       setAiMode: (mode) => set({ aiMode: mode }),
 
       setOptimizeStyle: (style) =>
-        set((state) => updateActiveDocument(state, { optimizeStyle: style })),
+        set((state) =>
+          updateActiveDocument(state, {
+            optimizeStyle: style,
+            finalResumeStatus: state.analysisResult ? "stale" : "draft",
+          })
+        ),
 
       updateFollowUpAnswer: (id, answer) =>
         set((state) => {
@@ -649,7 +673,7 @@ export const useResumeStore = create<ResumeStore>()(
                 q.id === id ? { ...q, userAnswer: answer } : q
               ),
             },
-            isFinalResumeStale: true,
+            finalResumeStatus: "stale",
           });
         }),
 
@@ -684,7 +708,7 @@ export const useResumeStore = create<ResumeStore>()(
                   q.id === id ? { ...q, generatedBullet: bullet } : q
                 ),
               },
-              isFinalResumeStale: true,
+              finalResumeStatus: "stale",
             }),
             careerEvidence: candidate ? [...state.careerEvidence, candidate] : state.careerEvidence,
           };
@@ -717,11 +741,11 @@ export const useResumeStore = create<ResumeStore>()(
     }),
     {
       name: RESUME_STORAGE_KEY,
-      version: 5,
+      version: 6,
       skipHydration: true,
       storage: createJSONStorage<ResumeLibraryState>(() => safeLocalStorage),
       partialize: (state) => ({
-        schemaVersion: 5,
+        schemaVersion: 6,
         documents: state.documents,
         activeDocumentId: state.activeDocumentId,
         careerEvidence: state.careerEvidence,
@@ -730,13 +754,13 @@ export const useResumeStore = create<ResumeStore>()(
       }),
       migrate: (persistedState) => {
         const persisted = persistedState as Partial<ResumeLibraryState> & {
-          documents?: Array<Partial<ResumeDocument> & { schemaVersion?: number }>;
+          documents?: LegacyResumeDocument[];
         };
         const documents = Array.isArray(persisted.documents)
           ? persisted.documents.map((document) => migrateDocument(document))
           : [];
         return {
-          schemaVersion: 5,
+          schemaVersion: 6,
           documents,
           activeDocumentId: persisted.activeDocumentId ?? documents[0]?.id ?? "",
           careerEvidence: Array.isArray(persisted.careerEvidence)

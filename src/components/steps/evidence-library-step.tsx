@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { cloneElement, useId, useMemo, useState, type ReactElement } from "react";
 import { Check, Pencil, Plus, Save, ShieldCheck, Trash2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -161,8 +161,8 @@ export function EvidenceLibraryStep() {
                           <Button size="sm" onClick={() => confirmCareerEvidence(item.id)}><Check className="h-3.5 w-3.5" />核对无误</Button>
                         )}
                         {item.status === "confirmed" && <ShieldCheck className="mt-2 h-4 w-4 text-emerald-600" aria-label="已核验" />}
-                        <Button variant="ghost" size="sm" onClick={() => beginEdit(item)}><Pencil className="h-3.5 w-3.5" /></Button>
-                        <Button variant="ghost" size="sm" className="text-red-600" onClick={() => { if (window.confirm("确定删除这条证据？已生成的岗位简历不会被自动改写。")) deleteCareerEvidence(item.id); }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                        <Button aria-label={`编辑证据 ${item.title}`} variant="ghost" size="sm" onClick={() => beginEdit(item)}><Pencil className="h-3.5 w-3.5" /></Button>
+                        <Button aria-label={`删除证据 ${item.title}`} variant="ghost" size="sm" className="text-red-600" onClick={() => { if (window.confirm("确定删除这条证据？已生成的岗位简历不会被自动改写。")) deleteCareerEvidence(item.id); }}><Trash2 className="h-3.5 w-3.5" /></Button>
                       </div>
                     </div>
                   )}
@@ -188,8 +188,10 @@ function EvidenceForm({ draft, setDraft }: { draft: typeof EMPTY_DRAFT; setDraft
   </div>;
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
+function Field({ label, children }: { label: string; children: ReactElement<{ id?: string }> }) {
+  const generatedId = useId();
+  const id = children.props.id ?? `evidence-field-${generatedId.replace(/:/g, "")}`;
+  return <div className="space-y-1.5"><Label htmlFor={id}>{label}</Label>{cloneElement(children, { id })}</div>;
 }
 
 function splitList(value: string): string[] {

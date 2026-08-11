@@ -18,7 +18,7 @@ describe("resume document library", () => {
       currentStep: document.currentStep,
       analysisResult: document.analysisResult,
       optimizeStyle: document.optimizeStyle,
-      isFinalResumeStale: document.isFinalResumeStale,
+      finalResumeStatus: document.finalResumeStatus,
       hasManualEdits: document.hasManualEdits,
       storageError: null,
     });
@@ -76,7 +76,7 @@ describe("resume document library", () => {
       currentStep: blank.currentStep,
       analysisResult: null,
       optimizeStyle: blank.optimizeStyle,
-      isFinalResumeStale: false,
+      finalResumeStatus: "draft",
       hasManualEdits: false,
     });
     values.set(RESUME_STORAGE_KEY, saved ?? "");

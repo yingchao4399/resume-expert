@@ -1,4 +1,4 @@
-import type { AnalysisResult, StepId, UserInput } from "@/types/resume";
+import type { AnalysisResult, FinalResumeStatus, StepId, UserInput } from "@/types/resume";
 
 export type WorkflowStageId = "materials" | "analysis" | "creation" | "delivery";
 export type WorkflowStageStatus = "pending" | "active" | "completed" | "blocked";
@@ -15,7 +15,7 @@ interface ProgressInput {
   currentStep: StepId;
   userInput: UserInput;
   analysisResult: AnalysisResult | null;
-  isFinalResumeStale: boolean;
+  finalResumeStatus: FinalResumeStatus;
 }
 
 const STAGE_STEPS: Record<WorkflowStageId, StepId[]> = {
@@ -33,7 +33,7 @@ export function getWorkflowProgress(input: ProgressInput): WorkflowStageProgress
   ].filter(Boolean) as string[];
   const materialsReady = missingMaterials.length === 0;
   const analysisReady = Boolean(input.analysisResult);
-  const finalReady = Boolean(input.analysisResult?.finalResume) && !input.isFinalResumeStale;
+  const finalReady = Boolean(input.analysisResult?.finalResume) && input.finalResumeStatus === "confirmed";
 
   const active = (id: WorkflowStageId) => STAGE_STEPS[id].includes(input.currentStep);
   const progress: WorkflowStageProgress[] = [
@@ -54,9 +54,15 @@ export function getWorkflowProgress(input: ProgressInput): WorkflowStageProgress
     {
       id: "creation",
       status: active("creation") ? (analysisReady ? "active" : "blocked") : finalReady ? "completed" : "pending",
-      blocker: !analysisReady ? "尚无分析结果" : input.isFinalResumeStale ? "最终简历未应用最新补证或风格" : null,
-      nextStep: input.isFinalResumeStale ? "optimize" : "final-resume",
-      actionLabel: input.isFinalResumeStale ? "重新生成" : "编辑与排版",
+      blocker: !analysisReady
+        ? "尚无分析结果"
+        : input.finalResumeStatus === "draft"
+          ? "最终简历尚未生成确认"
+          : input.finalResumeStatus === "stale"
+            ? "最终简历未应用最新补证、材料或风格"
+            : null,
+      nextStep: finalReady ? "final-resume" : "optimize",
+      actionLabel: finalReady ? "编辑与排版" : input.finalResumeStatus === "stale" ? "重新生成" : "生成最终简历",
     },
     {
       id: "delivery",
