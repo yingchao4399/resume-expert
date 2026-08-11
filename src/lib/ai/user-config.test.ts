@@ -3,6 +3,7 @@ import {
   getAPIKeyValidationError,
   isValidAPIKey,
   normalizeAPIKey,
+  validateAIConfigFields,
 } from "@/lib/ai/user-config";
 
 describe("API Key validation", () => {
@@ -21,5 +22,13 @@ describe("API Key validation", () => {
 
   it("accepts a printable ASCII provider key", () => {
     expect(isValidAPIKey("sk-abcdef1234567890")).toBe(true);
+  });
+
+  it("validates provider, model and Base URL before saving", () => {
+    const valid = { provider: "deepseek", model: "deepseek-chat", baseUrl: "https://api.deepseek.com/v1", apiKey: "sk-abcdef1234567890", useMock: false };
+    expect(validateAIConfigFields(valid)).toBeNull();
+    expect(validateAIConfigFields({ ...valid, baseUrl: "not-a-url" })).toContain("Base URL");
+    expect(validateAIConfigFields({ ...valid, model: "" })).toContain("模型名称");
+    expect(validateAIConfigFields({ ...valid, provider: "" })).toContain("提供商");
   });
 });

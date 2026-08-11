@@ -86,6 +86,25 @@ export interface SaveAIConfigBody {
   useMock?: boolean;
 }
 
+export type AIConnectionErrorCategory =
+  | "authentication"
+  | "model"
+  | "base_url"
+  | "rate_limit"
+  | "network"
+  | "timeout";
+
+export type AIConnectionTestRequest = SaveAIConfigBody;
+
+export interface AIConnectionTestResult {
+  ok: boolean;
+  latencyMs: number;
+  provider: string;
+  model: string;
+  message: string;
+  category?: AIConnectionErrorCategory;
+}
+
 // ===== 面试录音诊断 =====
 
 export interface InterviewAnalyzeRequestBody {

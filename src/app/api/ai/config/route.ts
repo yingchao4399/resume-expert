@@ -5,6 +5,7 @@ import {
   normalizeAPIKey,
   readUserConfig,
   saveUserConfig,
+  validateAIConfigFields,
   type UserAIConfig,
 } from "@/lib/ai/user-config";
 
@@ -45,11 +46,9 @@ export async function POST(request: Request) {
     const model = body.model ?? existing?.model ?? "";
     const useMock = body.useMock ?? existing?.useMock ?? false;
 
-    if (!useMock) {
-      const keyError = getAPIKeyValidationError(apiKey);
-      if (keyError) {
-        return NextResponse.json({ error: keyError }, { status: 400 });
-      }
+    const validationError = validateAIConfigFields({ provider, apiKey, baseUrl, model, useMock });
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
     apiKey = normalizeAPIKey(apiKey);

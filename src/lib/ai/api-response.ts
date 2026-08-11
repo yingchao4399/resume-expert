@@ -38,8 +38,8 @@ export function toAPIErrorResponse(
 
   if (error instanceof LLMError) {
     return NextResponse.json(
-      { error: error.message },
-      { status: error.status === 502 ? 502 : 500 }
+      { error: error.message, category: error.category },
+      { status: error.status && error.status >= 400 && error.status <= 599 ? error.status : 500 }
     );
   }
 

@@ -52,6 +52,23 @@ export function isValidAPIKey(value: string): boolean {
   return getAPIKeyValidationError(value) === null;
 }
 
+export function validateAIConfigFields(config: Partial<UserAIConfig>): string | null {
+  if (config.useMock) return null;
+  if (!config.provider?.trim()) return "请选择模型提供商";
+  if (!config.model?.trim()) return "请填写模型名称";
+  if (/[\r\n\t]/.test(config.model)) return "模型名称不能包含换行或制表符";
+  const baseUrl = config.baseUrl?.trim();
+  if (!baseUrl) return "请填写 Base URL";
+  try {
+    const parsed = new URL(baseUrl);
+    if (!/^https?:$/.test(parsed.protocol)) return "Base URL 只支持 http 或 https";
+    if (!parsed.hostname) return "Base URL 缺少有效域名或主机名";
+  } catch {
+    return "Base URL 格式无效，请填写完整的 http(s) 地址";
+  }
+  return getAPIKeyValidationError(config.apiKey ?? "");
+}
+
 export function readUserConfig(): UserAIConfig | null {
   if (cachedConfig !== null) return cachedConfig;
   try {

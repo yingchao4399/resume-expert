@@ -97,4 +97,17 @@ describe("resume document library", () => {
     expect(useResumeStore.getState().jobApplications).toHaveLength(1);
     expect(useResumeStore.getState().jobApplications[0].resumeDocumentId).toBeNull();
   });
+
+  it("unlinks deleted recordings without deleting interview reviews", () => {
+    const review = {
+      id: "review-1", applicationId: null, resumeDocumentId: null, transcriptText: "面试文本",
+      result: {} as never,
+      recording: { id: "rec-1", fileName: "interview.mp3", fileSize: 10, uploadedAt: "2026-08-11T00:00:00.000Z" },
+      createdAt: "2026-08-11T00:00:00.000Z", updatedAt: "2026-08-11T00:00:00.000Z",
+    };
+    useResumeStore.setState({ interviewReviews: [review] });
+    useResumeStore.getState().unlinkInterviewRecording("rec-1");
+    expect(useResumeStore.getState().interviewReviews).toHaveLength(1);
+    expect(useResumeStore.getState().interviewReviews[0].recording).toBeNull();
+  });
 });

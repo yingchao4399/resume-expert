@@ -21,19 +21,28 @@ export function TopNav() {
         if (status.reason === "missing_api_key") {
           setMockReason("未配置 API Key");
         } else if (status.reason === "forced") {
+          setMockReason("已强制 Mock");
         } else if (status.reason === "invalid_api_key") {
           setMockReason("API Key 格式错误");
-          setMockReason("已强制 Mock");
         } else {
           setMockReason(null);
         }
       })
-      .catch(() => setAiMode("mock"));
+      .catch(() => {
+        setAiMode("mock");
+        setMockReason("状态读取失败");
+      });
   }, [setAiMode]);
 
   useEffect(() => {
     refreshStatus();
   }, [refreshStatus]);
+
+  useEffect(() => {
+    const openSettings = () => setSettingsOpen(true);
+    window.addEventListener("resume-expert-open-ai-settings", openSettings);
+    return () => window.removeEventListener("resume-expert-open-ai-settings", openSettings);
+  }, []);
 
   return (
     <>

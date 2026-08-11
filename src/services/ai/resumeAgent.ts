@@ -1,5 +1,7 @@
 import type {
   AnalyzeResponseBody,
+  AIConnectionTestRequest,
+  AIConnectionTestResult,
   FinalizeResumeResponseBody,
   FollowUpBulletResponseBody,
   InterviewAnalyzeRequestBody,
@@ -114,6 +116,17 @@ export async function saveAIConfig(config: SaveAIConfigBody): Promise<PublicAICo
   return data;
 }
 
+export async function testAIConfig(config: AIConnectionTestRequest): Promise<AIConnectionTestResult> {
+  const response = await fetch("/api/ai/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+  const data = (await response.json().catch(() => ({}))) as Partial<AIConnectionTestResult> & { error?: string };
+  if (typeof data.ok === "boolean") return data as AIConnectionTestResult;
+  throw new ResumeAgentClientError(data.error || `连接测试失败 (${response.status})`);
+}
+
 // ===== 面试录音诊断与分析 =====
 
 export async function analyzeInterview(
@@ -135,4 +148,10 @@ export async function uploadInterviewRecording(file: File): Promise<{ id: string
     throw new ResumeAgentClientError(data.error || `上传失败 (${response.status})`);
   }
   return { id: data.id, fileName: data.fileName!, fileSize: data.fileSize! };
+}
+
+export async function deleteInterviewRecording(id: string): Promise<void> {
+  const response = await fetch(`/api/interview-recording/${encodeURIComponent(id)}`, { method: "DELETE" });
+  const data = (await response.json().catch(() => ({}))) as { error?: string };
+  if (!response.ok) throw new ResumeAgentClientError(data.error || `删除失败 (${response.status})`);
 }

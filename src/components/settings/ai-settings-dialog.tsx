@@ -21,7 +21,8 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { PROVIDER_PRESETS, getProviderPreset } from "@/lib/ai/presets";
-import { fetchAIConfig, saveAIConfig } from "@/services/ai/resumeAgent";
+import { fetchAIConfig, saveAIConfig, testAIConfig } from "@/services/ai/resumeAgent";
+import type { AIConnectionTestResult } from "@/lib/ai/types";
 
 interface AISettingsDialogProps {
   open: boolean;
@@ -32,6 +33,8 @@ interface AISettingsDialogProps {
 export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDialogProps) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<AIConnectionTestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [useMock, setUseMock] = useState(false);
@@ -60,6 +63,7 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
       setKeySource(config.apiKeySource);
       setKeyMasked(config.apiKeyMasked);
       setApiKey(""); // 输入框留空，表示保留原值
+      setTestResult(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载配置失败");
     } finally {
@@ -100,6 +104,19 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
       setError(e instanceof Error ? e.message : "保存失败");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    setError(null);
+    setTestResult(null);
+    try {
+      setTestResult(await testAIConfig({ provider, baseUrl, model, useMock: false, apiKey: apiKey || "__unchanged__" }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "连接测试失败");
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -152,11 +169,13 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
             )}
             {/* 模式切换 */}
             <div className="mb-4">
-              <Label className="mb-2 block text-xs font-medium">运行模式</Label>
+              <Label id="ai-mode-label" className="mb-2 block text-xs font-medium">运行模式</Label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setUseMock(false)}
+                  aria-labelledby="ai-mode-label"
+                  aria-pressed={!useMock}
                   className={`rounded-md border px-3 py-2 text-left text-xs transition-colors ${
                     !useMock
                       ? "border-neutral-900 bg-neutral-900 text-white"
@@ -171,6 +190,8 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
                 <button
                   type="button"
                   onClick={() => setUseMock(true)}
+                  aria-labelledby="ai-mode-label"
+                  aria-pressed={useMock}
                   className={`rounded-md border px-3 py-2 text-left text-xs transition-colors ${
                     useMock
                       ? "border-neutral-900 bg-neutral-900 text-white"
@@ -189,9 +210,9 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
             <fieldset disabled={useMock} className="space-y-4">
               {/* Provider 选择 */}
               <div>
-                <Label className="mb-1.5 block text-xs font-medium">模型提供商</Label>
+                <Label htmlFor="ai-provider" className="mb-1.5 block text-xs font-medium">模型提供商</Label>
                 <Select value={provider} onValueChange={handleProviderChange}>
-                  <SelectTrigger className="h-9">
+                  <SelectTrigger id="ai-provider" className="h-9">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -217,9 +238,10 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
 
               {/* API Key */}
               <div>
-                <Label className="mb-1.5 block text-xs font-medium">API Key</Label>
+                <Label htmlFor="ai-api-key" className="mb-1.5 block text-xs font-medium">API Key</Label>
                 <div className="relative">
                   <Input
+                    id="ai-api-key"
                     type={showKey ? "text" : "password"}
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
@@ -230,6 +252,7 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
                     type="button"
                     onClick={() => setShowKey(!showKey)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+                    aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}
                   >
                     {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -241,8 +264,9 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
 
               {/* Base URL */}
               <div>
-                <Label className="mb-1.5 block text-xs font-medium">Base URL（OpenAI 兼容接口）</Label>
+                <Label htmlFor="ai-base-url" className="mb-1.5 block text-xs font-medium">Base URL（OpenAI 兼容接口）</Label>
                 <Input
+                  id="ai-base-url"
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
                   placeholder="https://..."
@@ -252,10 +276,10 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
 
               {/* Model */}
               <div>
-                <Label className="mb-1.5 block text-xs font-medium">模型名称</Label>
+                <Label htmlFor="ai-model" className="mb-1.5 block text-xs font-medium">模型名称</Label>
                 {currentPreset && currentPreset.models.length > 0 ? (
                   <Select value={model} onValueChange={setModel}>
-                    <SelectTrigger className="h-9 font-mono text-xs">
+                    <SelectTrigger id="ai-model" className="h-9 font-mono text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -268,6 +292,7 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
                   </Select>
                 ) : (
                   <Input
+                    id="ai-model"
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
                     className="font-mono text-xs"
@@ -276,8 +301,14 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
               </div>
             </fieldset>
 
+            {testResult && (
+              <div className={`mt-4 rounded-md border px-3 py-2 text-xs ${testResult.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`} role="status" aria-live="polite">
+                {testResult.message} · {testResult.latencyMs} ms{testResult.category ? ` · ${testResult.category}` : ""}
+              </div>
+            )}
+
             {error && (
-              <div className="mt-4 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+              <div className="mt-4 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600" role="alert" aria-live="assertive">
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>{error}</span>
               </div>
@@ -288,6 +319,9 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
         <div className="flex justify-end gap-2 border-t border-neutral-200 px-5 py-3">
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>
             取消
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleTest} disabled={useMock || saving || testing || loading}>
+            {testing ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />测试中</> : "测试连接"}
           </Button>
           <Button size="sm" onClick={handleSave} disabled={saving || loading}>
             {saving ? (

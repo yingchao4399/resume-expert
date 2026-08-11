@@ -7,6 +7,7 @@ import {
   FileAudio,
   Loader2,
   Sparkles,
+  Trash2,
   Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { EmptyState, SectionTitle } from "@/components/shared/ui-helpers";
 import { useResumeStore } from "@/store/resume-store";
-import { analyzeInterview, uploadInterviewRecording } from "@/services/ai/resumeAgent";
+import { analyzeInterview, deleteInterviewRecording, uploadInterviewRecording } from "@/services/ai/resumeAgent";
 import type {
   InterviewAnalysisResult,
   DialogueTurn,
@@ -69,7 +70,7 @@ const SAMPLE_TRANSCRIPT = `面试官：你好，先简单自我介绍一下，�
 求职者：MVP 我可能先覆盖 top 10 高频问题。效果嘛……看客户满意度吧。准确率召回率这个，我可能需要再研究一下。`;
 
 export function InterviewRecordingStep() {
-  const { userInput, activeDocumentId, jobApplications, interviewReviews, saveInterviewReview, deleteInterviewReview, setCurrentStep } = useResumeStore();
+  const { userInput, activeDocumentId, jobApplications, interviewReviews, saveInterviewReview, deleteInterviewReview, unlinkInterviewRecording, setCurrentStep } = useResumeStore();
   const [recordingId, setRecordingId] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [recordingMeta, setRecordingMeta] = useState<InterviewRecordingMetadata | null>(null);
@@ -117,6 +118,21 @@ export function InterviewRecordingStep() {
       setError(err instanceof Error ? err.message : "分析失败");
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleDeleteRecording = async () => {
+    if (!recordingId || !window.confirm("确定删除这份本地录音？相关面试复盘会保留，但录音关联将被解除。")) return;
+    setError(null);
+    try {
+      await deleteInterviewRecording(recordingId);
+      unlinkInterviewRecording(recordingId);
+      setRecordingId(null);
+      setRecordingMeta(null);
+      setFileName(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "录音删除失败");
     }
   };
 
@@ -203,6 +219,16 @@ export function InterviewRecordingStep() {
             <p className="mt-1 text-[11px] text-neutral-400">
               上传的录音仅用于本地回放与管理。因本地无 STT 服务，转写需手动完成或在下方直接粘贴对话文本。
             </p>
+            {recordingId && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <audio className="h-9 max-w-full" controls preload="metadata" src={`/api/interview-recording/${encodeURIComponent(recordingId)}`}>
+                  当前浏览器不支持音频播放。
+                </audio>
+                <Button type="button" variant="outline" size="sm" className="text-red-600" onClick={handleDeleteRecording}>
+                  <Trash2 className="h-3.5 w-3.5" />删除录音
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* 对话文本输入 */}

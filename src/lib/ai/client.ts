@@ -1,6 +1,6 @@
 import { z, type ZodType } from "zod";
 import { getAIConfig } from "@/lib/ai/config";
-import { LLMError } from "@/lib/ai/errors";
+import { classifyAIHTTPError, LLMError } from "@/lib/ai/errors";
 import { parseJSONFromMessage } from "@/lib/ai/parse-json";
 
 export { LLMError } from "@/lib/ai/errors";
@@ -26,6 +26,8 @@ interface ChatCompletionData {
     message?: ChatMessage;
   }>;
 }
+
+export const FORMAL_AI_TIMEOUT_MS = 120_000;
 
 export async function chatCompletionJSON<T>(
   options: ChatCompletionOptions<T>
@@ -118,35 +120,58 @@ async function callChatCompletions<T>(
   config: ReturnType<typeof getAIConfig>,
   options: ChatCompletionOptions<T>
 ): Promise<ChatCompletionData> {
-  const response = await fetch(`${config.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
+  const response = await fetchAIResponse(
+    `${config.baseUrl}/chat/completions`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        temperature: options.temperature ?? 0.3,
+        max_tokens: options.maxTokens ?? 8192,
+        response_format: buildResponseFormat(config.provider, options),
+        messages: [
+          { role: "system", content: options.system },
+          { role: "user", content: options.user },
+        ],
+      }),
     },
-    body: JSON.stringify({
-      model: config.model,
-      temperature: options.temperature ?? 0.3,
-      max_tokens: options.maxTokens ?? 8192,
-      response_format: buildResponseFormat(config.provider, options),
-      messages: [
-        { role: "system", content: options.system },
-        { role: "user", content: options.user },
-      ],
-    }),
-  });
+    FORMAL_AI_TIMEOUT_MS
+  );
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    const classified = classifyAIHTTPError(response.status, detail);
     throw new LLMError(
-      detail
-        ? `大模型请求失败 (${response.status}): ${detail.slice(0, 300)}`
-        : `大模型请求失败 (${response.status})`,
-      response.status
+      `${classified.message} (${response.status})${detail ? `：${detail.slice(0, 180)}` : ""}`,
+      response.status,
+      classified.category
     );
   }
 
   return (await response.json()) as ChatCompletionData;
+}
+
+export async function fetchAIResponse(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && (error.name === "AbortError" || controller.signal.aborted)) {
+      throw new LLMError(`模型请求超时（${Math.round(timeoutMs / 1000)} 秒）`, 504, "timeout");
+    }
+    throw new LLMError("无法连接模型服务，请检查网络和 Base URL", 503, "network");
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function buildResponseFormat<T>(

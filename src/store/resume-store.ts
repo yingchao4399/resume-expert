@@ -70,6 +70,7 @@ interface ResumeStore {
   deleteJobApplication: (id: string) => void;
   saveInterviewReview: (review: Omit<InterviewReviewRecord, "id" | "createdAt" | "updatedAt">) => void;
   deleteInterviewReview: (id: string) => void;
+  unlinkInterviewRecording: (recordingId: string) => void;
 
   setUserInput: (input: Partial<UserInput>) => void;
   setImportedResume: (text: string, sourceResume: FinalResume | null, metadata: ResumeImportMetadata) => void;
@@ -551,6 +552,15 @@ export const useResumeStore = create<ResumeStore>()(
       deleteInterviewReview: (id) =>
         set((state) => ({
           interviewReviews: state.interviewReviews.filter((item) => item.id !== id),
+        })),
+
+      unlinkInterviewRecording: (recordingId) =>
+        set((state) => ({
+          interviewReviews: state.interviewReviews.map((review) =>
+            review.recording?.id === recordingId
+              ? { ...review, recording: null, updatedAt: nowISO() }
+              : review
+          ),
         })),
 
       setUserInput: (input) =>
