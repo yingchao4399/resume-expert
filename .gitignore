@@ -13,3 +13,7 @@ data/recordings/*
 # Playwright artifacts
 playwright-report/
 test-results/
+
+# Local AI evaluation runs (frozen cases and approved baselines remain tracked)
+evals/results/*
+!evals/results/.gitkeep

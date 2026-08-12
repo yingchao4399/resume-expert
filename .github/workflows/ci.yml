@@ -23,6 +23,8 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - run: npm run eval:validate
+      - run: npm run eval:mock
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e

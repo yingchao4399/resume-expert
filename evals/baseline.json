@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "v1.6.2-mock-baseline",
+  "mode": "mock",
+  "createdAt": "2026-08-12T00:00:00.000Z",
+  "model": "deterministic-fixture",
+  "caseCount": 24,
+  "metrics": {
+    "schemaValidityRate": 1,
+    "immutableFactRetentionRate": 1,
+    "unsupportedClaimRate": 0,
+    "finalResumeFactAccuracy": 1,
+    "jdRequirementRecall": 1,
+    "needsSupplementF1": 1,
+    "evidenceStrengthMacroF1": 1,
+    "averageLatencyMs": 0,
+    "totalTokens": 0,
+    "failureTypes": {}
+  },
+  "cases": []
+}

@@ -111,9 +111,15 @@ npm run lint
 npm run typecheck
 npm test
 npm run audit:prod
+npm run eval:validate
+npm run eval:mock
 npm run test:e2e
 npm run build
 ```
+
+### AI 质量评测
+
+仓库内 `evals/` 保存纯合成冻结案例、确定性评分器和批准的聚合基线，不包含真实简历。常规 CI 运行案例校验和 Mock 回归；真实模型评测需要在本机明确设置 `CONFIRM_REAL_AI_EVAL=yes` 后手动执行 `npm run eval:ai`，其原始运行结果不会进入 Git。
 
 固定的中文 CID PDF、中文 TTF PDF、多页 PDF 和 DOCX 样本位于 `e2e/fixtures`。需要重新生成时，使用工作区 Python 运行 `scripts/generate_import_fixtures.py`。
 
