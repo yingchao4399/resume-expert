@@ -2,6 +2,7 @@ import type { WorkflowSpan, WorkflowTrace } from "@/lib/studio/trace-types";
 
 const DB_NAME = "resume-expert-studio";
 const STORE_NAME = "traces";
+const WORKFLOW_STORE_NAME = "workflow-workspace";
 const MAX_TRACES = 50;
 const MAX_TOTAL_BYTES = 50_000_000;
 const MAX_AGE = 30 * 24 * 60 * 60 * 1000;
@@ -9,8 +10,11 @@ const MAX_SPAN_BYTES = 900_000;
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE_NAME, { keyPath: "id" });
+    const request = indexedDB.open(DB_NAME, 2);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(STORE_NAME)) request.result.createObjectStore(STORE_NAME, { keyPath: "id" });
+      if (!request.result.objectStoreNames.contains(WORKFLOW_STORE_NAME)) request.result.createObjectStore(WORKFLOW_STORE_NAME);
+    };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });

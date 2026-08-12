@@ -5,6 +5,7 @@ import {
 import { optimizeRequestSchema } from "@/lib/ai/schemas";
 import { regenerateOptimizedItemsServer } from "@/services/ai/resumeAgent.server";
 import { tracedAIResponse } from "@/lib/studio/response";
+import { readWorkflowExecution } from "@/lib/studio/execution";
 
 export async function POST(request: Request) {
   try {
@@ -13,7 +14,7 @@ export async function POST(request: Request) {
       optimizeRequestSchema
     );
     const { optimizedItems, mode } =
-      await regenerateOptimizedItemsServer(input, style);
+      await regenerateOptimizedItemsServer(input, style, readWorkflowExecution(request));
     return tracedAIResponse({ optimizedItems, mode }, mode);
   } catch (error) {
     return toAPIErrorResponse(

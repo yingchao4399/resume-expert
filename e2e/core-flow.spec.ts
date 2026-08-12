@@ -70,11 +70,30 @@ test("enables the developer studio and switches between product and workflow vie
   await page.getByLabel("高级功能：开发者工作台").check();
   await page.getByRole("button", { name: "保存配置" }).click();
   await page.getByRole("link", { name: "开发者工作台" }).click();
-  await expect(page.getByRole("heading", { name: "产品工作流" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "可视化工作流" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("heading", { name: "产品工作流" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "可视化工作流" })).toBeVisible();
   await page.getByRole("link", { name: "简历助手" }).click();
   await expect(page.getByRole("heading", { name: "简历专家" })).toBeVisible();
+});
+
+test("tests, publishes, restores and rolls back a workflow version", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("resume-expert-studio-enabled", "true"));
+  await page.goto("/studio");
+  await expect(page.getByRole("heading", { name: "可视化工作流" })).toBeVisible();
+  const analysisNode = page.locator('.react-flow__node[data-id="analysis"]');
+  await expect(analysisNode).toBeVisible();
+  await analysisNode.click();
+  await page.getByLabel("节点说明").fill("解析 JD、诊断匹配、证据缺口与回归风险");
+  await page.getByRole("button", { name: "测试草稿" }).click();
+  await expect(page.getByText(/结构校验和 Mock 测评通过/)).toBeVisible();
+  await page.getByRole("button", { name: "发布", exact: true }).click();
+  await expect(page.getByText("生产版本 v2 已发布。")).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("v2", { exact: true }).first()).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "回滚到此版本" }).last().click();
+  await expect(page.getByText("已回滚并发布生产版本 v3。")).toBeVisible();
 });
 
 test("shows Flowise safety guidance and confirms a Mock draft into evidence", async ({ page }) => {

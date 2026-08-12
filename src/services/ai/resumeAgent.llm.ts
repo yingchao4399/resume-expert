@@ -22,6 +22,7 @@ import {
   normalizeOptimizedItems,
 } from "@/lib/ai/prompts";
 import type { AnalysisResult, OptimizeStyle, UserInput } from "@/types/resume";
+import type { WorkflowExecutionOptions } from "@/lib/studio/execution";
 
 type DiagnosisMatchResult = Pick<
   AnalysisResult,
@@ -45,7 +46,8 @@ function buildCoreSummary(parts: DiagnosisMatchResult): string {
 
 export async function runLLMResumeAnalysis(
   input: UserInput,
-  optimizeStyle: OptimizeStyle = "ai-product"
+  optimizeStyle: OptimizeStyle = "ai-product",
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs"> = {}
 ): Promise<AnalysisResult> {
   const jd = await chatCompletionJSON({
     system: RESUME_AGENT_SYSTEM_PROMPT,
@@ -53,6 +55,7 @@ export async function runLLMResumeAnalysis(
     schema: jdAnalysisResultSchema,
     schemaName: "resume_jd_analysis",
     maxTokens: 3000,
+    ...execution,
   });
 
   const diagnosisMatch = await chatCompletionJSON({
@@ -61,6 +64,7 @@ export async function runLLMResumeAnalysis(
     schema: diagnosisMatchResultSchema,
     schemaName: "resume_diagnosis_match",
     maxTokens: 4000,
+    ...execution,
   });
 
   const coreSummary = buildCoreSummary(diagnosisMatch);
@@ -72,6 +76,7 @@ export async function runLLMResumeAnalysis(
       schema: optimizeResumeResultSchema,
       schemaName: "resume_optimized_output",
       maxTokens: 4500,
+      ...execution,
     }),
     chatCompletionJSON({
       system: RESUME_AGENT_SYSTEM_PROMPT,
@@ -79,6 +84,7 @@ export async function runLLMResumeAnalysis(
       schema: interviewPrepResultSchema,
       schemaName: "resume_interview_prep",
       maxTokens: 3500,
+      ...execution,
     }),
   ]);
 
@@ -97,7 +103,8 @@ export async function runLLMResumeAnalysis(
 
 export async function runLLMRegenerateOptimizedItems(
   input: UserInput,
-  style: OptimizeStyle
+  style: OptimizeStyle,
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs"> = {}
 ): Promise<AnalysisResult["optimizedItems"]> {
   const raw = await chatCompletionJSON({
     system: RESUME_AGENT_SYSTEM_PROMPT,
@@ -106,6 +113,7 @@ export async function runLLMRegenerateOptimizedItems(
     schemaName: "resume_optimized_items",
     temperature: 0.5,
     maxTokens: 4000,
+    ...execution,
   });
 
   return normalizeOptimizedItems(raw.optimizedItems);
@@ -115,7 +123,8 @@ export async function runLLMFollowUpBullet(
   input: UserInput,
   question: string,
   purpose: string,
-  userAnswer: string
+  userAnswer: string,
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs"> = {}
 ): Promise<string> {
   const raw = await chatCompletionJSON({
     system: RESUME_AGENT_SYSTEM_PROMPT,
@@ -124,6 +133,7 @@ export async function runLLMFollowUpBullet(
     schemaName: "resume_follow_up_bullet",
     temperature: 0.3,
     maxTokens: 500,
+    ...execution,
   });
 
   return raw.bullet.trim();
@@ -133,7 +143,8 @@ export async function runLLMFinalizeResume(
   input: UserInput,
   style: OptimizeStyle,
   optimizedItems: AnalysisResult["optimizedItems"],
-  followUpQuestions: AnalysisResult["followUpQuestions"]
+  followUpQuestions: AnalysisResult["followUpQuestions"],
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs"> = {}
 ): Promise<AnalysisResult["finalResume"]> {
   const raw = await chatCompletionJSON({
     system: RESUME_AGENT_SYSTEM_PROMPT,
@@ -147,6 +158,7 @@ export async function runLLMFinalizeResume(
     schemaName: "resume_final_document",
     temperature: 0.2,
     maxTokens: 5000,
+    ...execution,
   });
 
   return normalizeFinalResume(raw.finalResume, input);

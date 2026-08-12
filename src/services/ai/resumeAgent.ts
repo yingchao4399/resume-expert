@@ -14,6 +14,7 @@ import type { AnalysisResult, OptimizeStyle, UserInput } from "@/types/resume";
 import type { InterviewAnalysisResult } from "@/types/interview";
 import { saveTraceSpan } from "@/lib/studio/trace-store";
 import type { WorkflowNodeId } from "@/lib/studio/trace-types";
+import { getPublishedWorkflowNode } from "@/lib/studio/workflow-store";
 
 export { STYLE_LABELS } from "@/lib/ai/types";
 
@@ -27,9 +28,14 @@ class ResumeAgentClientError extends Error {
 export async function postWorkflowJSON<T>(url: string, body: unknown): Promise<T> {
   const startedAt = new Date();
   const traceId = crypto.randomUUID();
+  const publishedNode = await getPublishedWorkflowNode(workflowDefinitionNodeId(nodeIdForURL(url))).catch(() => null);
+  const headers: Record<string, string> = { "Content-Type": "application/json", "X-Workflow-Trace-Id": traceId };
+  if (publishedNode?.provider === "mock") headers["X-Workflow-Provider"] = "mock";
+  if (publishedNode?.provider === "direct" && publishedNode.model && publishedNode.model !== "configured-model") headers["X-Workflow-Model"] = publishedNode.model;
+  if (publishedNode?.provider === "direct" && publishedNode.timeoutMs) headers["X-Workflow-Timeout"] = String(publishedNode.timeoutMs);
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Workflow-Trace-Id": traceId },
+    headers,
     body: JSON.stringify(body),
   });
 
@@ -42,6 +48,13 @@ export async function postWorkflowJSON<T>(url: string, body: unknown): Promise<T
   if (!response.ok) throw new ResumeAgentClientError(data.error || `请求失败 (${response.status})`);
 
   return data;
+}
+
+function workflowDefinitionNodeId(nodeId: WorkflowNodeId): string {
+  if (nodeId === "analyze") return "analysis";
+  if (nodeId === "interview-review") return "interview-prep";
+  if (nodeId === "optimize" || nodeId === "follow-up" || nodeId === "finalize") return "optimize";
+  return nodeId;
 }
 
 function nodeIdForURL(url: string): WorkflowNodeId {

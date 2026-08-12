@@ -13,19 +13,21 @@ import {
   runLLMResumeAnalysis,
 } from "@/services/ai/resumeAgent.llm";
 import type { AnalysisResult, OptimizeStyle, UserInput } from "@/types/resume";
+import type { WorkflowExecutionOptions } from "@/lib/studio/execution";
 
-function currentMode(): AIMode {
-  return getAIConfig().mode;
+function currentMode(forceMock = false): AIMode {
+  return forceMock ? "mock" : getAIConfig().mode;
 }
 
 export async function analyzeResumeServer(
   input: UserInput,
-  optimizeStyle: OptimizeStyle = "ai-product"
+  optimizeStyle: OptimizeStyle = "ai-product",
+  execution: WorkflowExecutionOptions = { forceMock: false }
 ): Promise<{ result: AnalysisResult; mode: AIMode }> {
-  const mode = currentMode();
+  const mode = currentMode(execution.forceMock);
 
   if (mode === "llm") {
-    const result = await runLLMResumeAnalysis(input, optimizeStyle);
+    const result = await runLLMResumeAnalysis(input, optimizeStyle, execution);
     return { result, mode };
   }
 
@@ -35,12 +37,13 @@ export async function analyzeResumeServer(
 
 export async function regenerateOptimizedItemsServer(
   input: UserInput,
-  style: OptimizeStyle
+  style: OptimizeStyle,
+  execution: WorkflowExecutionOptions = { forceMock: false }
 ): Promise<{ optimizedItems: AnalysisResult["optimizedItems"]; mode: AIMode }> {
-  const mode = currentMode();
+  const mode = currentMode(execution.forceMock);
 
   if (mode === "llm") {
-    const optimizedItems = await runLLMRegenerateOptimizedItems(input, style);
+    const optimizedItems = await runLLMRegenerateOptimizedItems(input, style, execution);
     return { optimizedItems, mode };
   }
 
@@ -52,12 +55,13 @@ export async function generateFollowUpBulletServer(
   input: UserInput,
   question: string,
   purpose: string,
-  userAnswer: string
+  userAnswer: string,
+  execution: WorkflowExecutionOptions = { forceMock: false }
 ): Promise<{ bullet: string; mode: AIMode }> {
-  const mode = currentMode();
+  const mode = currentMode(execution.forceMock);
 
   if (mode === "llm") {
-    const bullet = await runLLMFollowUpBullet(input, question, purpose, userAnswer);
+    const bullet = await runLLMFollowUpBullet(input, question, purpose, userAnswer, execution);
     return { bullet, mode };
   }
 
@@ -69,12 +73,13 @@ export async function finalizeResumeServer(
   input: UserInput,
   style: OptimizeStyle,
   optimizedItems: AnalysisResult["optimizedItems"],
-  followUpQuestions: AnalysisResult["followUpQuestions"]
+  followUpQuestions: AnalysisResult["followUpQuestions"],
+  execution: WorkflowExecutionOptions = { forceMock: false }
 ): Promise<{ finalResume: AnalysisResult["finalResume"]; mode: AIMode }> {
-  const mode = currentMode();
+  const mode = currentMode(execution.forceMock);
 
   if (mode === "llm") {
-    const finalResume = await runLLMFinalizeResume(input, style, optimizedItems, followUpQuestions);
+    const finalResume = await runLLMFinalizeResume(input, style, optimizedItems, followUpQuestions, execution);
     return { finalResume, mode };
   }
 

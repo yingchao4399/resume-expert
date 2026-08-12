@@ -127,6 +127,10 @@ npm run build
 
 Flowise 不是主业务工作流，只用于可替换 AI 节点实验。详细安装、安全状态、导入流程和本机配置见 [`flowise/README.md`](flowise/README.md)。服务固定为 `http://127.0.0.1:3200`，Playwright 仍使用 `3100`。
 
+工作流页支持受约束调整：可以移动节点、修改说明、开关可选节点，以及设置 AI 节点的 DirectLLM / Flowise / Mock、模型、Prompt 版本、超时和人工确认。材料校验、证据确认、最终简历确认和导出门禁始终锁定。草稿必须先通过结构校验和 Mock 测评；改变执行参数时还需要 7 天内达标的真实模型测评，否则只会生成不影响主流程的实验版本。已发布版本最多保留 10 个，可比较并一键回滚。
+
+Flowise 当前只批准用于“新手项目梳理”实验。因为它的输出 Schema 与简历分析、优化和交付节点不同，把主流程节点设置为 Flowise 仍只会发布为实验版本，不会绕过 TypeScript 执行器或确认门禁。
+
 固定的中文 CID PDF、中文 TTF PDF、多页 PDF 和 DOCX 样本位于 `e2e/fixtures`。需要重新生成时，使用工作区 Python 运行 `scripts/generate_import_fixtures.py`。
 
 ## 项目结构

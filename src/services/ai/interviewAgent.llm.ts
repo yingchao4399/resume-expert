@@ -5,11 +5,13 @@ import {
   buildInterviewAnalysisUserPrompt,
 } from "@/lib/ai/interview-prompts";
 import type { InterviewAnalysisResult } from "@/types/interview";
+import type { WorkflowExecutionOptions } from "@/lib/studio/execution";
 
 export async function runLLMInterviewAnalysis(
   transcriptText: string,
   resumeText: string,
-  targetRole: string
+  targetRole: string,
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs"> = {}
 ): Promise<InterviewAnalysisResult> {
   const result = await chatCompletionJSON({
     system: INTERVIEW_AGENT_SYSTEM_PROMPT,
@@ -23,6 +25,7 @@ export async function runLLMInterviewAnalysis(
     strictOutput: false,
     temperature: 0.3,
     maxTokens: 8000,
+    ...execution,
   });
 
   return {

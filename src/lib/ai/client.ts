@@ -13,6 +13,8 @@ interface ChatCompletionOptions<T> {
   strictOutput?: boolean;
   temperature?: number;
   maxTokens?: number;
+  model?: string;
+  timeoutMs?: number;
 }
 
 interface ChatMessage {
@@ -129,7 +131,7 @@ async function callChatCompletions<T>(
         Authorization: `Bearer ${config.apiKey}`,
       },
       body: JSON.stringify({
-        model: config.model,
+        model: options.model || config.model,
         temperature: options.temperature ?? 0.3,
         max_tokens: options.maxTokens ?? 8192,
         response_format: buildResponseFormat(config.provider, options),
@@ -139,7 +141,7 @@ async function callChatCompletions<T>(
         ],
       }),
     },
-    FORMAL_AI_TIMEOUT_MS
+    options.timeoutMs ?? FORMAL_AI_TIMEOUT_MS
   );
 
   if (!response.ok) {

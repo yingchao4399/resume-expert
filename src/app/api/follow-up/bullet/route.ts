@@ -5,6 +5,7 @@ import {
 import { followUpBulletRequestSchema } from "@/lib/ai/schemas";
 import { generateFollowUpBulletServer } from "@/services/ai/resumeAgent.server";
 import { tracedAIResponse } from "@/lib/studio/response";
+import { readWorkflowExecution } from "@/lib/studio/execution";
 
 export async function POST(request: Request) {
   try {
@@ -16,7 +17,8 @@ export async function POST(request: Request) {
       input,
       question,
       purpose,
-      userAnswer
+      userAnswer,
+      readWorkflowExecution(request)
     );
     return tracedAIResponse({ bullet, mode }, mode);
   } catch (error) {

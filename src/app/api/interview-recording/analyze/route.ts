@@ -5,6 +5,7 @@ import {
 import { interviewAnalyzeRequestSchema } from "@/lib/ai/schemas";
 import { analyzeInterviewServer } from "@/services/ai/interviewAgent.server";
 import { tracedAIResponse } from "@/lib/studio/response";
+import { readWorkflowExecution } from "@/lib/studio/execution";
 
 export async function POST(request: Request) {
   try {
@@ -15,7 +16,8 @@ export async function POST(request: Request) {
     const { result, mode } = await analyzeInterviewServer(
       transcriptText,
       resumeText,
-      targetRole
+      targetRole,
+      readWorkflowExecution(request)
     );
     return tracedAIResponse({ result, mode }, mode);
   } catch (error) {

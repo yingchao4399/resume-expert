@@ -5,6 +5,7 @@ import {
 import { finalizeResumeRequestSchema } from "@/lib/ai/schemas";
 import { finalizeResumeServer } from "@/services/ai/resumeAgent.server";
 import { tracedAIResponse } from "@/lib/studio/response";
+import { readWorkflowExecution } from "@/lib/studio/execution";
 
 export async function POST(request: Request) {
   try {
@@ -14,7 +15,8 @@ export async function POST(request: Request) {
       input,
       style,
       optimizedItems,
-      followUpQuestions
+      followUpQuestions,
+      readWorkflowExecution(request)
     );
     return tracedAIResponse({ finalResume, mode }, mode);
   } catch (error) {
