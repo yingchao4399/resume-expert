@@ -5,6 +5,7 @@ next-env.d.ts
 out
 .env*.local
 .ai-user-config.json
+.flowise-local.json
 data/recordings/*
 !data/recordings/.gitkeep
 *.log

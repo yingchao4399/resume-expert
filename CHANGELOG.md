@@ -1,5 +1,12 @@
 # 更新日志
 
+## 1.7.1
+
+- 接入仅绑定 `127.0.0.1:3200` 的 Flowise 实验服务，浏览器不接收 API Key。
+- 增加“新手项目梳理”、DirectLLM/Flowise 对比、Mock 回退和统一运行追踪。
+- Flowise 输出必须通过 `ProjectEvidenceDraft` Schema，用户确认后才写入证据库候选。
+- 本机 Flowise 升至 3.1.4；上游依赖审计仍有高危项，因此默认禁用并明确警告。
+
 ## 1.7.0
 
 - 新增可通过高级设置开启的 `/studio` 开发者工作台。

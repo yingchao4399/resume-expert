@@ -123,7 +123,9 @@ npm run build
 
 ### 开发者工作台
 
-在“AI 设置 → 高级功能”中开启后，可从顶部进入 `/studio`。工作台展示 TypeScript 产品工作流、最近 AI 运行追踪、批准的测评基线和可审计开发记录。追踪正文仅保存在当前浏览器 IndexedDB，默认折叠且可以导出或清空；工作台不会展示模型隐藏思维链。
+在“AI 设置 → 高级功能”中开启后，可从顶部进入 `/studio`。工作台展示 TypeScript 产品工作流、最近 AI 运行追踪、批准的测评基线、可审计开发记录和 Flowise 实验室。追踪正文仅保存在当前浏览器 IndexedDB，默认折叠且可以导出或清空；工作台不会展示模型隐藏思维链。
+
+Flowise 不是主业务工作流，只用于可替换 AI 节点实验。详细安装、安全状态、导入流程和本机配置见 [`flowise/README.md`](flowise/README.md)。服务固定为 `http://127.0.0.1:3200`，Playwright 仍使用 `3100`。
 
 固定的中文 CID PDF、中文 TTF PDF、多页 PDF 和 DOCX 样本位于 `e2e/fixtures`。需要重新生成时，使用工作区 Python 运行 `scripts/generate_import_fixtures.py`。
 

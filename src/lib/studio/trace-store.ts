@@ -3,6 +3,7 @@ import type { WorkflowSpan, WorkflowTrace } from "@/lib/studio/trace-types";
 const DB_NAME = "resume-expert-studio";
 const STORE_NAME = "traces";
 const MAX_TRACES = 50;
+const MAX_TOTAL_BYTES = 50_000_000;
 const MAX_AGE = 30 * 24 * 60 * 60 * 1000;
 const MAX_SPAN_BYTES = 900_000;
 
@@ -73,7 +74,13 @@ export async function clearTraces(): Promise<void> {
 async function pruneTraces(): Promise<void> {
   const traces = await listTraces();
   const expired = Date.now() - MAX_AGE;
-  const remove = traces.filter((trace, index) => index >= MAX_TRACES || new Date(trace.createdAt).getTime() < expired);
+  let retainedBytes = 0;
+  const remove = traces.filter((trace, index) => {
+    const size = new Blob([JSON.stringify(trace)]).size;
+    const shouldRemove = index >= MAX_TRACES || new Date(trace.createdAt).getTime() < expired || retainedBytes + size > MAX_TOTAL_BYTES;
+    if (!shouldRemove) retainedBytes += size;
+    return shouldRemove;
+  });
   if (!remove.length) return;
   const db = await openDB();
   const tx = db.transaction(STORE_NAME, "readwrite");

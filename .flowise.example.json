@@ -1,0 +1,7 @@
+{
+  "enabled": false,
+  "baseUrl": "http://127.0.0.1:3200",
+  "flowId": "",
+  "apiKey": "",
+  "timeoutMs": 120000
+}

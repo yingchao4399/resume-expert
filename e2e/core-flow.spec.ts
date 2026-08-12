@@ -77,6 +77,22 @@ test("enables the developer studio and switches between product and workflow vie
   await expect(page.getByRole("heading", { name: "简历专家" })).toBeVisible();
 });
 
+test("shows Flowise safety guidance and confirms a Mock draft into evidence", async ({ page }) => {
+  await seed(page);
+  await page.addInitScript(() => localStorage.setItem("resume-expert-studio-enabled", "true"));
+  await page.goto("/studio");
+  await page.getByRole("button", { name: "Flowise 实验室" }).click();
+  await expect(page.getByRole("heading", { name: "Flowise 实验室" })).toBeVisible();
+  await expect(page.getByText("安全审计未通过。", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "运行实验" }).click();
+  await expect(page.getByText("事实草稿")).toBeVisible();
+  await page.getByRole("button", { name: "确认进入证据库（候选）" }).click();
+  await expect(page.getByText("候选事实已进入证据库", { exact: false })).toBeVisible();
+  await page.getByRole("link", { name: "简历助手" }).click();
+  await page.getByRole("button", { name: /经历证据库/ }).click();
+  await expect(page.getByRole("heading", { name: "简历专家", level: 3 })).toBeVisible();
+});
+
 test("loads example data and keeps an evidence item after reload", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "使用示例数据" }).click();

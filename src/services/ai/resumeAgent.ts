@@ -24,7 +24,7 @@ class ResumeAgentClientError extends Error {
   }
 }
 
-async function postJSON<T>(url: string, body: unknown): Promise<T> {
+export async function postWorkflowJSON<T>(url: string, body: unknown): Promise<T> {
   const startedAt = new Date();
   const traceId = crypto.randomUUID();
   const response = await fetch(url, {
@@ -38,13 +38,14 @@ async function postJSON<T>(url: string, body: unknown): Promise<T> {
   const finishedAt = new Date();
   const nodeId = nodeIdForURL(url);
   const status = response.ok ? "success" : "error";
-  void saveTraceSpan({ id: traceId, nodeId, label: labelForNode(nodeId), status, mode: response.headers.get("X-AI-Mode") as "mock" | "llm" | null ?? undefined, provider: response.headers.get("X-AI-Provider") ?? undefined, model: response.headers.get("X-AI-Model") ?? undefined, startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), latencyMs: finishedAt.getTime() - startedAt.getTime(), input: body, output: response.ok ? data : undefined, error: response.ok ? undefined : data.error || `HTTP ${response.status}` }).catch(() => undefined);
+  void saveTraceSpan({ id: traceId, nodeId, label: labelForNode(nodeId), status, mode: (response.headers.get("X-AI-Mode") as "mock" | "llm" | "flowise" | null) ?? undefined, provider: response.headers.get("X-AI-Provider") ?? undefined, model: response.headers.get("X-AI-Model") ?? undefined, startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), latencyMs: finishedAt.getTime() - startedAt.getTime(), input: body, output: response.ok ? data : undefined, error: response.ok ? undefined : data.error || `HTTP ${response.status}` }).catch(() => undefined);
   if (!response.ok) throw new ResumeAgentClientError(data.error || `请求失败 (${response.status})`);
 
   return data;
 }
 
 function nodeIdForURL(url: string): WorkflowNodeId {
+  if (url.includes("project-evidence")) return "project-evidence";
   if (url.includes("follow-up")) return "follow-up";
   if (url.includes("finalize")) return "finalize";
   if (url.includes("optimize")) return "optimize";
@@ -74,7 +75,7 @@ export async function runResumeAnalysis(
   input: UserInput,
   optimizeStyle: OptimizeStyle = "ai-product"
 ): Promise<AnalysisResult> {
-  const data = await postJSON<AnalyzeResponseBody>("/api/analyze", { input, optimizeStyle });
+  const data = await postWorkflowJSON<AnalyzeResponseBody>("/api/analyze", { input, optimizeStyle });
   return data.result;
 }
 
@@ -82,14 +83,14 @@ export async function structureImportedResume(text: string): Promise<{
   finalResume: AnalysisResult["finalResume"];
   mode: "mock" | "llm";
 }> {
-  return postJSON("/api/import/structure", { text });
+  return postWorkflowJSON("/api/import/structure", { text });
 }
 
 export async function regenerateOptimizedItems(
   input: UserInput,
   style: OptimizeStyle
 ): Promise<AnalysisResult["optimizedItems"]> {
-  const data = await postJSON<OptimizeResponseBody>("/api/optimize", { input, style });
+  const data = await postWorkflowJSON<OptimizeResponseBody>("/api/optimize", { input, style });
   return data.optimizedItems;
 }
 
@@ -99,7 +100,7 @@ export async function generateFollowUpBullet(
   purpose: string,
   userAnswer: string
 ): Promise<string> {
-  const data = await postJSON<FollowUpBulletResponseBody>("/api/follow-up/bullet", {
+  const data = await postWorkflowJSON<FollowUpBulletResponseBody>("/api/follow-up/bullet", {
     input,
     question,
     purpose,
@@ -114,7 +115,7 @@ export async function finalizeResume(
   optimizedItems: AnalysisResult["optimizedItems"],
   followUpQuestions: AnalysisResult["followUpQuestions"]
 ): Promise<AnalysisResult["finalResume"]> {
-  const data = await postJSON<FinalizeResumeResponseBody>("/api/finalize", {
+  const data = await postWorkflowJSON<FinalizeResumeResponseBody>("/api/finalize", {
     input, style, optimizedItems, followUpQuestions,
   });
   return data.finalResume;
@@ -131,7 +132,7 @@ export async function fetchAIConfig(): Promise<PublicAIConfig> {
 }
 
 export async function saveAIConfig(config: SaveAIConfigBody): Promise<PublicAIConfig> {
-  const data = await postJSON<PublicAIConfig & { saved?: boolean }>("/api/ai/config", config);
+  const data = await postWorkflowJSON<PublicAIConfig & { saved?: boolean }>("/api/ai/config", config);
   return data;
 }
 
@@ -151,7 +152,7 @@ export async function testAIConfig(config: AIConnectionTestRequest): Promise<AIC
 export async function analyzeInterview(
   body: InterviewAnalyzeRequestBody
 ): Promise<InterviewAnalysisResult> {
-  const data = await postJSON<InterviewAnalyzeResponseBody>("/api/interview-recording/analyze", body);
+  const data = await postWorkflowJSON<InterviewAnalyzeResponseBody>("/api/interview-recording/analyze", body);
   return data.result;
 }
 
