@@ -144,4 +144,3 @@ CompanyResearchSnapshot → SourceCitation
 6. 数字证据和风险检测。
 7. 面试回答训练与作品集沉淀。
 8. 公司公开情报；最后再考虑 embedding RAG。
-
