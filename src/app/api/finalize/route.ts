@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
 import {
   parseAPIRequest,
   toAPIErrorResponse,
 } from "@/lib/ai/api-response";
 import { finalizeResumeRequestSchema } from "@/lib/ai/schemas";
 import { finalizeResumeServer } from "@/services/ai/resumeAgent.server";
+import { tracedAIResponse } from "@/lib/studio/response";
 
 export async function POST(request: Request) {
   try {
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
       optimizedItems,
       followUpQuestions
     );
-    return NextResponse.json({ finalResume, mode });
+    return tracedAIResponse({ finalResume, mode }, mode);
   } catch (error) {
     return toAPIErrorResponse(
       error,

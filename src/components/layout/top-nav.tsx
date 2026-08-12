@@ -1,19 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FileText, Settings2 } from "lucide-react";
+import { FileText, FlaskConical, Settings2 } from "lucide-react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fetchAIStatus } from "@/services/ai/resumeAgent";
 import { RESUME_STORAGE_STATUS_EVENT, useResumeStore } from "@/store/resume-store";
 import { AISettingsDialog } from "@/components/settings/ai-settings-dialog";
 import { ResumeDocumentMenu } from "@/components/documents/resume-document-menu";
+import { isStudioEnabled, STUDIO_SETTING_EVENT } from "@/lib/studio/settings";
 
 export function TopNav() {
   const { aiMode, setAiMode } = useResumeStore();
   const [mockReason, setMockReason] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [saveState, setSaveState] = useState<{ status: "idle" | "saving" | "saved" | "error"; savedAt?: string }>({ status: "idle" });
+  const [studioEnabled, setStudioVisible] = useState(false);
 
   const refreshStatus = useCallback(() => {
     fetchAIStatus()
@@ -43,6 +46,13 @@ export function TopNav() {
     const openSettings = () => setSettingsOpen(true);
     window.addEventListener("resume-expert-open-ai-settings", openSettings);
     return () => window.removeEventListener("resume-expert-open-ai-settings", openSettings);
+  }, []);
+
+  useEffect(() => {
+    setStudioVisible(isStudioEnabled());
+    const update = (event: Event) => setStudioVisible(event instanceof CustomEvent ? Boolean(event.detail) : isStudioEnabled());
+    window.addEventListener(STUDIO_SETTING_EVENT, update);
+    return () => window.removeEventListener(STUDIO_SETTING_EVENT, update);
   }, []);
 
   useEffect(() => {
@@ -90,6 +100,8 @@ export function TopNav() {
             </Badge>
           )}
         </div>
+        <div className="flex items-center gap-2">
+        {studioEnabled && <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs"><Link href="/studio"><FlaskConical className="h-3.5 w-3.5" />开发者工作台</Link></Button>}
         <Button
           variant="outline"
           size="sm"
@@ -99,6 +111,7 @@ export function TopNav() {
           <Settings2 className="h-3.5 w-3.5" />
           AI 设置
         </Button>
+        </div>
       </header>
 
       <AISettingsDialog

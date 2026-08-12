@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
 import {
   parseAPIRequest,
   toAPIErrorResponse,
 } from "@/lib/ai/api-response";
 import { followUpBulletRequestSchema } from "@/lib/ai/schemas";
 import { generateFollowUpBulletServer } from "@/services/ai/resumeAgent.server";
+import { tracedAIResponse } from "@/lib/studio/response";
 
 export async function POST(request: Request) {
   try {
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       purpose,
       userAnswer
     );
-    return NextResponse.json({ bullet, mode });
+    return tracedAIResponse({ bullet, mode }, mode);
   } catch (error) {
     return toAPIErrorResponse(
       error,

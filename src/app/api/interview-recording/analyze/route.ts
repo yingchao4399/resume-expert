@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
 import {
   parseAPIRequest,
   toAPIErrorResponse,
 } from "@/lib/ai/api-response";
 import { interviewAnalyzeRequestSchema } from "@/lib/ai/schemas";
 import { analyzeInterviewServer } from "@/services/ai/interviewAgent.server";
+import { tracedAIResponse } from "@/lib/studio/response";
 
 export async function POST(request: Request) {
   try {
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
       resumeText,
       targetRole
     );
-    return NextResponse.json({ result, mode });
+    return tracedAIResponse({ result, mode }, mode);
   } catch (error) {
     return toAPIErrorResponse(
       error,

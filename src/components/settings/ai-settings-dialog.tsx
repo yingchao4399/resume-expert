@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { PROVIDER_PRESETS, getProviderPreset } from "@/lib/ai/presets";
 import { fetchAIConfig, saveAIConfig, testAIConfig } from "@/services/ai/resumeAgent";
 import type { AIConnectionTestResult } from "@/lib/ai/types";
+import { isStudioEnabled, setStudioEnabled } from "@/lib/studio/settings";
 
 interface AISettingsDialogProps {
   open: boolean;
@@ -47,6 +48,7 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
   const [keySource, setKeySource] = useState<"user" | "env" | "none">("none");
   const [keyMasked, setKeyMasked] = useState("");
   const [showKey, setShowKey] = useState(false);
+  const [studioEnabled, setStudioEnabledState] = useState(false);
 
   // 拉取当前配置
   const loadConfig = useCallback(async () => {
@@ -72,7 +74,7 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
   }, []);
 
   useEffect(() => {
-    if (open) loadConfig();
+    if (open) { loadConfig(); setStudioEnabledState(isStudioEnabled()); }
   }, [open, loadConfig]);
 
   // 选择 provider 时自动填充 baseUrl 和 model
@@ -98,6 +100,7 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
         apiKey: apiKey || "__unchanged__",
       };
       await saveAIConfig(payload);
+      setStudioEnabled(studioEnabled);
       onSaved?.();
       onOpenChange(false);
     } catch (e) {
@@ -300,6 +303,16 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
                 )}
               </div>
             </fieldset>
+
+            <div className="mt-5 border-t border-neutral-200 pt-4">
+              <div className="flex items-start justify-between gap-4 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-3">
+                <div>
+                  <Label htmlFor="studio-enabled" className="text-xs font-medium">高级功能：开发者工作台</Label>
+                  <p className="mt-1 text-[11px] leading-relaxed text-neutral-500">开启后显示工作流、运行追踪、测评和开发记录入口。本开关不是身份认证，仅适合本机使用。</p>
+                </div>
+                <input id="studio-enabled" type="checkbox" className="mt-0.5 h-4 w-4" checked={studioEnabled} onChange={(event) => setStudioEnabledState(event.target.checked)} />
+              </div>
+            </div>
 
             {testResult && (
               <div className={`mt-4 rounded-md border px-3 py-2 text-xs ${testResult.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`} role="status" aria-live="polite">

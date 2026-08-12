@@ -121,6 +121,10 @@ npm run build
 
 仓库内 `evals/` 保存纯合成冻结案例、确定性评分器和批准的聚合基线，不包含真实简历。常规 CI 运行案例校验和 Mock 回归；真实模型评测需要在本机明确设置 `CONFIRM_REAL_AI_EVAL=yes` 后手动执行 `npm run eval:ai`，其原始运行结果不会进入 Git。
 
+### 开发者工作台
+
+在“AI 设置 → 高级功能”中开启后，可从顶部进入 `/studio`。工作台展示 TypeScript 产品工作流、最近 AI 运行追踪、批准的测评基线和可审计开发记录。追踪正文仅保存在当前浏览器 IndexedDB，默认折叠且可以导出或清空；工作台不会展示模型隐藏思维链。
+
 固定的中文 CID PDF、中文 TTF PDF、多页 PDF 和 DOCX 样本位于 `e2e/fixtures`。需要重新生成时，使用工作区 Python 运行 `scripts/generate_import_fixtures.py`。
 
 ## 项目结构

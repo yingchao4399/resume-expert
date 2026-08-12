@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
 import {
   parseAPIRequest,
   toAPIErrorResponse,
 } from "@/lib/ai/api-response";
 import { optimizeRequestSchema } from "@/lib/ai/schemas";
 import { regenerateOptimizedItemsServer } from "@/services/ai/resumeAgent.server";
+import { tracedAIResponse } from "@/lib/studio/response";
 
 export async function POST(request: Request) {
   try {
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     );
     const { optimizedItems, mode } =
       await regenerateOptimizedItemsServer(input, style);
-    return NextResponse.json({ optimizedItems, mode });
+    return tracedAIResponse({ optimizedItems, mode }, mode);
   } catch (error) {
     return toAPIErrorResponse(
       error,

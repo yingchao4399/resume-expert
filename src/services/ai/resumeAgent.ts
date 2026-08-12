@@ -12,6 +12,8 @@ import type {
 } from "@/lib/ai/types";
 import type { AnalysisResult, OptimizeStyle, UserInput } from "@/types/resume";
 import type { InterviewAnalysisResult } from "@/types/interview";
+import { saveTraceSpan } from "@/lib/studio/trace-store";
+import type { WorkflowNodeId } from "@/lib/studio/trace-types";
 
 export { STYLE_LABELS } from "@/lib/ai/types";
 
@@ -23,19 +25,36 @@ class ResumeAgentClientError extends Error {
 }
 
 async function postJSON<T>(url: string, body: unknown): Promise<T> {
+  const startedAt = new Date();
+  const traceId = crypto.randomUUID();
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Workflow-Trace-Id": traceId },
     body: JSON.stringify(body),
   });
 
   const data = (await response.json().catch(() => ({}))) as T & { error?: string };
 
-  if (!response.ok) {
-    throw new ResumeAgentClientError(data.error || `请求失败 (${response.status})`);
-  }
+  const finishedAt = new Date();
+  const nodeId = nodeIdForURL(url);
+  const status = response.ok ? "success" : "error";
+  void saveTraceSpan({ id: traceId, nodeId, label: labelForNode(nodeId), status, mode: response.headers.get("X-AI-Mode") as "mock" | "llm" | null ?? undefined, provider: response.headers.get("X-AI-Provider") ?? undefined, model: response.headers.get("X-AI-Model") ?? undefined, startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), latencyMs: finishedAt.getTime() - startedAt.getTime(), input: body, output: response.ok ? data : undefined, error: response.ok ? undefined : data.error || `HTTP ${response.status}` }).catch(() => undefined);
+  if (!response.ok) throw new ResumeAgentClientError(data.error || `请求失败 (${response.status})`);
 
   return data;
+}
+
+function nodeIdForURL(url: string): WorkflowNodeId {
+  if (url.includes("follow-up")) return "follow-up";
+  if (url.includes("finalize")) return "finalize";
+  if (url.includes("optimize")) return "optimize";
+  if (url.includes("import")) return "import-structure";
+  if (url.includes("interview")) return "interview-review";
+  return "analyze";
+}
+
+function labelForNode(nodeId: WorkflowNodeId): string {
+  return ({ analyze: "岗位分析", optimize: "AI 优化", "follow-up": "经历补证", finalize: "最终生成", "import-structure": "简历结构化", "interview-review": "面试复盘", "project-evidence": "项目证据" } as const)[nodeId];
 }
 
 export async function fetchAIStatus() {

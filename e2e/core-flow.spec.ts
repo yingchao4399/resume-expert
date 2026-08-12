@@ -62,6 +62,21 @@ async function waitForLibraryHydration(page: Page) {
   await expect(page.locator('select[aria-label]').first()).toBeEnabled();
 }
 
+test("enables the developer studio and switches between product and workflow views", async ({ page }) => {
+  await page.goto("/studio");
+  await expect(page.getByText("开发者工作台尚未开启")).toBeVisible();
+  await page.goto("/");
+  await page.getByRole("button", { name: "AI 设置" }).click();
+  await page.getByLabel("高级功能：开发者工作台").check();
+  await page.getByRole("button", { name: "保存配置" }).click();
+  await page.getByRole("link", { name: "开发者工作台" }).click();
+  await expect(page.getByRole("heading", { name: "产品工作流" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "产品工作流" })).toBeVisible();
+  await page.getByRole("link", { name: "简历助手" }).click();
+  await expect(page.getByRole("heading", { name: "简历专家" })).toBeVisible();
+});
+
 test("loads example data and keeps an evidence item after reload", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "使用示例数据" }).click();
