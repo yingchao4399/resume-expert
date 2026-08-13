@@ -42,11 +42,11 @@ async function requestChatCompletionJSON<T>(options: ChatCompletionOptions<T>): 
   const choice = data.choices?.[0];
   const contents = extractMessageContents(choice?.message);
   const raw = contents.join("\n\n");
+  if (choice?.finish_reason === "length") throw new LLMTruncationError(options.analysisStage ?? "简历优化");
 
   try {
     return parseAndValidate(contents, options.schema);
   } catch (firstError) {
-    if (choice?.finish_reason === "length") throw new LLMTruncationError(options.analysisStage ?? "简历优化");
     if (!raw) throw new LLMError("大模型返回内容为空", 502);
 
     const schemaContract = buildSchemaContract(options.schema);
@@ -62,10 +62,10 @@ async function requestChatCompletionJSON<T>(options: ChatCompletionOptions<T>): 
       user: `校验错误：${formatValidationIssue(firstError).join("；")}\n待修复内容：\n${raw.slice(0, 14000)}`,
     });
     const fixedContents = extractMessageContents(fixed.choices?.[0]?.message);
+    if (fixed.choices?.[0]?.finish_reason === "length") throw new LLMTruncationError(options.analysisStage ?? "简历优化");
     try {
       return parseAndValidate(fixedContents, options.schema);
     } catch (secondError) {
-      if (fixed.choices?.[0]?.finish_reason === "length") throw new LLMTruncationError(options.analysisStage ?? "简历优化");
       throw new LLMStructureError(config.provider, model, formatValidationIssue(secondError));
     }
   }

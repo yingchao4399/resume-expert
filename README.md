@@ -52,7 +52,13 @@ npm install
 npm run dev
 ```
 
-打开 [http://localhost:3000](http://localhost:3000)。
+打开 [http://127.0.0.1:3000](http://127.0.0.1:3000)。开发服务器只绑定本机回环地址，同时允许 `127.0.0.1` 和 `localhost` 访问，不向局域网开放。
+
+如果页面能显示但按钮没有反应，可运行下面的检查。它会验证首页以及页面引用的全部 Next.js 脚本，遇到假 200、403、404 或脚本缺失会直接失败：
+
+```bash
+npm run verify:local
+```
 
 如果当前终端找不到 `npm`，请先安装 Node.js 24 LTS，并重新打开终端。
 
@@ -122,8 +128,10 @@ npm run audit:prod
 npm run eval:validate
 npm run eval:mock
 npm run eval:career
+npm run eval:jd
 npm run test:e2e
 npm run build
+npm run verify:local
 ```
 
 ### AI 质量评测

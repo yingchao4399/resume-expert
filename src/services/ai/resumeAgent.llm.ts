@@ -76,7 +76,8 @@ function mergeDiagnosisMatchResults(results: DiagnosisMatchResult[]): DiagnosisM
     matchItems: results.flatMap((result) => result.matchItems),
     followUpQuestions: results.flatMap((result) => result.followUpQuestions)
       .filter((item, index, all) => all.findIndex((candidate) => candidate.requirementId === item.requirementId) === index)
-      .slice(0, 10),
+      .slice(0, 10)
+      .map((item, index) => ({ ...item, id: `fu-${index + 1}` })),
   };
 }
 
@@ -92,7 +93,8 @@ function mergeInterviewResults(results: InterviewPrepResult[]): InterviewPrepRes
     requirementStrategies: preps.flatMap((prep) => prep.requirementStrategies)
       .filter((item, index, all) => all.findIndex((candidate) => candidate.requirementId === item.requirementId) === index),
     reverseQuestions: preps.flatMap((prep) => prep.reverseQuestions)
-      .filter((item, index, all) => all.findIndex((candidate) => candidate.question === item.question) === index),
+      .filter((item, index, all) => all.findIndex((candidate) => candidate.question === item.question) === index)
+      .map((item, index) => ({ ...item, id: `reverse-${index + 1}` })),
   } };
 }
 
@@ -200,7 +202,7 @@ export async function runLLMResumeAnalysis(
       user: buildAnalyzeOutputPrompt(input, optimizeStyle, coreSummary),
       schema: optimizeResumeResultSchema,
       schemaName: "resume_optimized_output",
-      maxTokens: 4500,
+      maxTokens: 12000,
       analysisStage: "简历优化",
       ...execution,
   });

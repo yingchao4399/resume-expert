@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const webServerCommand = process.env.PLAYWRIGHT_WEB_SERVER_COMMAND ?? "npm run dev -- --hostname 127.0.0.1 --port 3100";
+const webServerCommand = process.env.PLAYWRIGHT_WEB_SERVER_COMMAND ?? "npm run dev -- --port 3100";
 
 export default defineConfig({
   testDir: "./e2e",

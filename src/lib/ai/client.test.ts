@@ -44,7 +44,7 @@ describe("multi-provider structured output", () => {
   });
 
   it("reports the exact analysis stage when output is truncated", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: "{}" } }] }), { status: 200 }));
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: '{"items":[],"ok":true}' } }] }), { status: 200 }));
     await expect(chatCompletionJSON({ ...options, analysisStage: "JD 需求解析", configOverride: config("deepseek", "deepseek-v4-flash") }))
       .rejects.toEqual(expect.objectContaining<Partial<LLMTruncationError>>({ name: "LLMTruncationError", stage: "JD 需求解析" }));
   });
