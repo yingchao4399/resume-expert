@@ -1,5 +1,5 @@
 export type WorkflowRunStatus = "running" | "success" | "error";
-export type WorkflowNodeId = "analyze" | "optimize" | "follow-up" | "finalize" | "import-structure" | "interview-review" | "project-evidence";
+export type WorkflowNodeId = "analyze" | "optimize" | "follow-up" | "finalize" | "import-structure" | "interview-review" | "project-evidence" | "career-interview";
 
 export interface WorkflowSpan {
   id: string;

@@ -9,8 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import type { ProjectEvidenceProvider, ProjectEvidenceResult } from "@/lib/flowise/schemas";
 import { postWorkflowJSON } from "@/services/ai/resumeAgent";
-import { useResumeStore } from "@/store/resume-store";
 import { evidenceSourceReference } from "@/lib/evidence/resume-evidence";
+import { useCareerDomain } from "@/hooks/use-career-domain";
 
 interface FlowiseStatus {
   enabled: boolean;
@@ -32,8 +32,7 @@ const initialInput = {
 };
 
 export function FlowiseLab() {
-  const addCareerEvidence = useResumeStore((state) => state.addCareerEvidence);
-  const activeDocumentId = useResumeStore((state) => state.activeDocumentId);
+  const { snapshot, save: saveCareerDomain } = useCareerDomain();
   const [status, setStatus] = useState<FlowiseStatus | null>(null);
   const [input, setInput] = useState(initialInput);
   const [provider, setProvider] = useState<ProjectEvidenceProvider>("mock");
@@ -84,15 +83,24 @@ export function FlowiseLab() {
     }
   };
 
-  const accept = (value: ProjectEvidenceResult) => {
+  const accept = async (value: ProjectEvidenceResult) => {
     const draft = value.draft;
-    draft.factDrafts.forEach((fact, index) => addCareerEvidence({
-      type: "project", title: `${draft.projectTitle} · 事实 ${index + 1}`, organization: "个人项目",
-      role: draft.targetRole, period: "", description: fact,
-      metrics: fact.match(/\d+(?:\.\d+)?\s*(?:%|个|次|人|项|天|小时)/g) ?? [], skills: [],
-      status: "candidate", sourceType: "flowise", sourceDocumentId: activeDocumentId || null,
-      sourceReference: evidenceSourceReference("flowise", `${value.runId}:${index}`, fact, value.runId),
-    }));
+    const timestamp = new Date().toISOString();
+    const experienceId = `flowise-experience-${value.runId}`;
+    await saveCareerDomain({
+      ...snapshot,
+      experiences: snapshot.experiences.some((item) => item.id === experienceId) ? snapshot.experiences : [...snapshot.experiences, {
+        id: experienceId, type: "project", title: draft.projectTitle, organization: "个人项目", role: draft.targetRole,
+        startDate: "", endDate: "", periodText: "", summary: "Flowise 实验候选", order: snapshot.experiences.length,
+        status: "candidate", createdAt: timestamp, updatedAt: timestamp,
+      }],
+      claims: [...snapshot.claims.filter((item) => item.sourceRunId !== value.runId), ...draft.factDrafts.map((fact, index) => ({
+        id: `flowise-claim-${value.runId}-${index}`, experienceId, kind: "action" as const, text: fact,
+        contribution: "independent" as const, complexity: "routine" as const, hasTradeoff: false, hasMethodReuse: false,
+        status: "candidate" as const, sourceReference: evidenceSourceReference("flowise", `${value.runId}:${index}`, fact, value.runId),
+        sourceQuote: fact, sourceRunId: value.runId, sourceRound: null, createdAt: timestamp, updatedAt: timestamp,
+      }))],
+    });
     setMessage(`${draft.factDrafts.length} 条独立候选事实已进入证据库；重复确认同一运行不会重复写入。`);
   };
 
@@ -112,8 +120,8 @@ export function FlowiseLab() {
       <p className="mt-3 text-xs text-neutral-500">Flowise 或 DirectLLM 不可用时只回退为 Mock 草稿，并明确标记；不会自动写入简历或证据库。</p>
     </section>
     {message && <p aria-live="polite" className="rounded-md border bg-white p-3 text-sm">{message}</p>}
-    {result && <ResultCard result={result} onAccept={() => accept(result)}/>} 
-    {comparison.length > 0 && <div className="grid gap-4 xl:grid-cols-2">{comparison.map((item) => <ResultCard key={item.requestedProvider} result={item} onAccept={() => accept(item)}/>)}</div>}
+    {result && <ResultCard result={result} onAccept={() => void accept(result)}/>}
+    {comparison.length > 0 && <div className="grid gap-4 xl:grid-cols-2">{comparison.map((item) => <ResultCard key={item.requestedProvider} result={item} onAccept={() => void accept(item)}/>)}</div>}
   </div>;
 }
 

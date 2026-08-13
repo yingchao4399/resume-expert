@@ -19,16 +19,17 @@ import { ResumeImportDialog } from "@/components/import/resume-import-dialog";
 import { useResumeStore } from "@/store/resume-store";
 import { runResumeAnalysis } from "@/services/ai/resumeAgent";
 import type { CompanyType, JobStage } from "@/types/resume";
-import { confirmedEvidencePrompt, selectRelevantEvidence } from "@/lib/evidence/resume-evidence";
+import { careerClaimsPrompt, selectRelevantClaims } from "@/lib/career/career-context";
+import { useCareerDomain } from "@/hooks/use-career-domain";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 
 
 export function InputStep() {
+  const { snapshot: careerDomain } = useCareerDomain();
   const [importOpen, setImportOpen] = useState(false);
   const {
     optimizeStyle,
     userInput,
-    careerEvidence,
     setUserInput,
     setImportedResume,
     loadExampleData,
@@ -41,7 +42,6 @@ export function InputStep() {
     materialRevision,
     analysisRevision,
     analysisResult,
-    activeDocumentId,
     aiMode,
   } = useResumeStore();
   const [showValidation, setShowValidation] = useState(false);
@@ -69,8 +69,8 @@ export function InputStep() {
     setAnalysisError(null);
     const requestedRevision = materialRevision;
     try {
-      const relevantEvidence = selectRelevantEvidence(careerEvidence, userInput.targetRole, userInput.jobDescription, activeDocumentId);
-      const result = await runResumeAnalysis({ ...userInput, additionalInfo: [userInput.additionalInfo, confirmedEvidencePrompt(relevantEvidence)].filter(Boolean).join("\n\n") }, optimizeStyle);
+      const relevantClaims = selectRelevantClaims(careerDomain, userInput.targetRole, userInput.jobDescription);
+      const result = await runResumeAnalysis({ ...userInput, additionalInfo: [userInput.additionalInfo, careerClaimsPrompt(careerDomain, relevantClaims)].filter(Boolean).join("\n\n") }, optimizeStyle);
       if (setAnalysisResult(result, requestedRevision)) setCurrentStep("jd-analysis");
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "分析失败，请稍后重试");

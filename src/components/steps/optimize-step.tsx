@@ -22,7 +22,8 @@ import {
 } from "@/services/ai/resumeAgent";
 import type { OptimizeStyle } from "@/types/resume";
 import { cn } from "@/lib/utils";
-import { confirmedEvidencePrompt, selectRelevantEvidence } from "@/lib/evidence/resume-evidence";
+import { careerClaimsPrompt, selectRelevantClaims } from "@/lib/career/career-context";
+import { useCareerDomain } from "@/hooks/use-career-domain";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 
 const STYLE_OPTIONS: { value: OptimizeStyle; label: string }[] = [
@@ -33,10 +34,10 @@ const STYLE_OPTIONS: { value: OptimizeStyle; label: string }[] = [
 ];
 
 export function OptimizeStep() {
+  const { snapshot: careerDomain } = useCareerDomain();
   const {
     analysisResult,
     userInput,
-    careerEvidence,
     optimizeStyle,
     setOptimizeStyle,
     finalResumeStatus,
@@ -44,7 +45,6 @@ export function OptimizeStep() {
     setOptimizedItems,
     setFinalResume,
     setCurrentStep,
-    activeDocumentId,
     materialRevision,
     analysisRevision,
   } = useResumeStore();
@@ -59,7 +59,7 @@ export function OptimizeStep() {
     return <EmptyState message="材料已变化，旧优化结果已锁定。请返回材料页重新分析。" />;
   }
 
-  const evidencePrompt = confirmedEvidencePrompt(selectRelevantEvidence(careerEvidence, userInput.targetRole, userInput.jobDescription, activeDocumentId));
+  const evidencePrompt = careerClaimsPrompt(careerDomain, selectRelevantClaims(careerDomain, userInput.targetRole, userInput.jobDescription));
 
   const handleStyleChange = async (style: OptimizeStyle) => {
     setOptimizeStyle(style);

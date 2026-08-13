@@ -58,6 +58,7 @@ function workflowDefinitionNodeId(nodeId: WorkflowNodeId): string {
 }
 
 function nodeIdForURL(url: string): WorkflowNodeId {
+  if (url.includes("career/interview")) return "career-interview";
   if (url.includes("project-evidence")) return "project-evidence";
   if (url.includes("follow-up")) return "follow-up";
   if (url.includes("finalize")) return "finalize";
@@ -68,7 +69,7 @@ function nodeIdForURL(url: string): WorkflowNodeId {
 }
 
 function labelForNode(nodeId: WorkflowNodeId): string {
-  return ({ analyze: "岗位分析", optimize: "AI 优化", "follow-up": "经历补证", finalize: "最终生成", "import-structure": "简历结构化", "interview-review": "面试复盘", "project-evidence": "项目证据" } as const)[nodeId];
+  return ({ analyze: "岗位分析", optimize: "AI 优化", "follow-up": "经历补证", finalize: "最终生成", "import-structure": "简历结构化", "interview-review": "面试复盘", "project-evidence": "项目证据", "career-interview": "项目经历访谈" } as const)[nodeId];
 }
 
 export async function fetchAIStatus() {

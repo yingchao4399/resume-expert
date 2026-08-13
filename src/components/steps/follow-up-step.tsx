@@ -10,18 +10,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, SectionTitle } from "@/components/shared/ui-helpers";
 import { generateFollowUpBullet } from "@/services/ai/resumeAgent";
 import { useResumeStore } from "@/store/resume-store";
-import { confirmedEvidencePrompt, selectRelevantEvidence } from "@/lib/evidence/resume-evidence";
+import { careerClaimsPrompt, selectRelevantClaims } from "@/lib/career/career-context";
+import { useCareerDomain } from "@/hooks/use-career-domain";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 
 export function FollowUpStep() {
+  const { snapshot: careerDomain } = useCareerDomain();
   const {
     analysisResult,
     userInput,
-    careerEvidence,
     updateFollowUpAnswer,
     setFollowUpBullet,
     setCurrentStep,
-    activeDocumentId,
     materialRevision,
     analysisRevision,
   } = useResumeStore();
@@ -43,7 +43,7 @@ export function FollowUpStep() {
     setError(null);
     try {
       const bullet = await generateFollowUpBullet(
-        { ...userInput, additionalInfo: [userInput.additionalInfo, confirmedEvidencePrompt(selectRelevantEvidence(careerEvidence, userInput.targetRole, userInput.jobDescription, activeDocumentId))].filter(Boolean).join("\n\n") },
+        { ...userInput, additionalInfo: [userInput.additionalInfo, careerClaimsPrompt(careerDomain, selectRelevantClaims(careerDomain, userInput.targetRole, userInput.jobDescription))].filter(Boolean).join("\n\n") },
         question.question,
         question.purpose,
         question.userAnswer
