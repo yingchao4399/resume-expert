@@ -130,19 +130,19 @@ export function assembleRequirements(sourceItems: JDSourceItem[], drafts: JDRequ
 }
 
 export function validateMatchReferences<T extends {
-  requirementId: string; evidenceClaimIds: string[]; resumeQuotes: string[];
+  requirementId?: string; evidenceClaimIds?: string[]; resumeQuotes?: string[];
   evidenceStrength: "strong" | "medium" | "weak" | "none"; needsSupplement: boolean;
-  resumeEvidence: string; matchRationale: string; missingEvidenceTypes: string[];
+  resumeEvidence: string; matchRationale?: string; missingEvidenceTypes?: string[];
 }>(
   items: T[], requirements: JobRequirement[], allowedClaims: CareerAnalysisClaim[], originalResume: string,
 ): T[] {
   const requirementIds = new Set(requirements.map((item) => item.id));
   const claimIds = new Set(allowedClaims.map((item) => item.id));
   return items
-    .filter((item) => requirementIds.has(item.requirementId))
+    .filter((item) => Boolean(item.requirementId && requirementIds.has(item.requirementId)))
     .map((item) => {
-      const evidenceClaimIds = [...new Set(item.evidenceClaimIds.filter((id) => claimIds.has(id)))];
-      const resumeQuotes = [...new Set(item.resumeQuotes.map((quote) => quote.trim()).filter((quote) => quote.length >= 2 && originalResume.includes(quote)))];
+      const evidenceClaimIds = [...new Set((item.evidenceClaimIds ?? []).filter((id) => claimIds.has(id)))];
+      const resumeQuotes = [...new Set((item.resumeQuotes ?? []).map((quote) => quote.trim()).filter((quote) => quote.length >= 2 && originalResume.includes(quote)))];
       const hasVerifiedReference = evidenceClaimIds.length > 0 || resumeQuotes.length > 0;
       return {
         ...item,
@@ -151,8 +151,8 @@ export function validateMatchReferences<T extends {
         evidenceStrength: hasVerifiedReference ? item.evidenceStrength : "none" as const,
         needsSupplement: hasVerifiedReference ? item.needsSupplement : true,
         resumeEvidence: hasVerifiedReference ? item.resumeEvidence : "未找到通过服务端校验的事实或原简历引用",
-        matchRationale: hasVerifiedReference ? item.matchRationale : `${item.matchRationale}${item.matchRationale ? "；" : ""}模型引用未通过校验，已按无证据处理`,
-        missingEvidenceTypes: hasVerifiedReference ? item.missingEvidenceTypes : [...new Set([...item.missingEvidenceTypes, "可核验事实或原简历引用"])],
+        matchRationale: hasVerifiedReference ? (item.matchRationale ?? "") : `${item.matchRationale ?? ""}${item.matchRationale ? "；" : ""}模型引用未通过校验，已按无证据处理`,
+        missingEvidenceTypes: hasVerifiedReference ? (item.missingEvidenceTypes ?? []) : [...new Set([...(item.missingEvidenceTypes ?? []), "可核验事实或原简历引用"])],
       };
     });
 }

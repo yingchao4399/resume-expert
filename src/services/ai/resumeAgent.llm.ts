@@ -24,11 +24,77 @@ import { assembleRequirements, rankCareerClaimsForRequirements, splitJDSourceIte
 import type { CareerAnalysisClaim } from "@/lib/career/career-context";
 import type { AnalysisResult, JobTargetContext, OptimizeStyle, UserInput } from "@/types/resume";
 import type { WorkflowExecutionOptions } from "@/lib/studio/execution";
+import { runWithTruncationFallback } from "@/lib/ai/truncation-fallback";
+import type { z } from "zod";
 
 type DiagnosisMatchResult = Pick<
   AnalysisResult,
   "diagnosis" | "matchItems" | "followUpQuestions"
 >;
+type DeepJDModelResult = z.infer<ReturnType<typeof createDeepJDModelResultSchema>>;
+type InterviewPrepResult = z.infer<ReturnType<typeof createInterviewPrepResultSchema>>;
+
+function uniqueTexts(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function mergeDeepJDResults(results: DeepJDModelResult[]): DeepJDModelResult {
+  const inferenceRank = { explicit: 3, inferred: 2, unknown: 1 } as const;
+  const inferenceByTopic = new Map<string, DeepJDModelResult["roleInference"]["items"][number]>();
+  for (const item of results.flatMap((result) => result.roleInference.items)) {
+    const current = inferenceByTopic.get(item.topic);
+    if (!current || inferenceRank[item.level] > inferenceRank[current.level]) inferenceByTopic.set(item.topic, item);
+  }
+  const clarificationNeeds = results.flatMap((result) => result.clarificationNeeds)
+    .filter((item, index, all) => all.findIndex((candidate) => candidate.topic === item.topic && candidate.missingInformation === item.missingInformation) === index)
+    .map((item, index) => ({ ...item, id: `clarification-${index + 1}` }));
+  return {
+    sourceClassifications: results.flatMap((result) => result.sourceClassifications),
+    requirements: results.flatMap((result) => result.requirements),
+    responsibilities: uniqueTexts(results.flatMap((result) => result.responsibilities)).slice(0, 12),
+    hardRequirements: uniqueTexts(results.flatMap((result) => result.hardRequirements)).slice(0, 12),
+    implicitRequirements: uniqueTexts(results.flatMap((result) => result.implicitRequirements)).slice(0, 12),
+    keywords: uniqueTexts(results.flatMap((result) => result.keywords)).slice(0, 30),
+    idealCandidate: results.map((result) => result.idealCandidate.trim()).filter(Boolean).sort((a, b) => b.length - a.length)[0] ?? "",
+    coreCompetencies: results.flatMap((result) => result.coreCompetencies)
+      .filter((item, index, all) => all.findIndex((candidate) => candidate.name === item.name) === index).slice(0, 12),
+    roleInference: { items: [...inferenceByTopic.values()] },
+    clarificationNeeds,
+  };
+}
+
+function mergeDiagnosisMatchResults(results: DiagnosisMatchResult[]): DiagnosisMatchResult {
+  const scores = results.map((result) => result.diagnosis.overallScore);
+  return {
+    diagnosis: {
+      overallScore: scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0,
+      dimensionScores: results.flatMap((result) => result.diagnosis.dimensionScores)
+        .filter((item, index, all) => all.findIndex((candidate) => candidate.dimension === item.dimension) === index),
+      mainIssues: uniqueTexts(results.flatMap((result) => result.diagnosis.mainIssues)),
+      prioritySuggestions: uniqueTexts(results.flatMap((result) => result.diagnosis.prioritySuggestions)),
+    },
+    matchItems: results.flatMap((result) => result.matchItems),
+    followUpQuestions: results.flatMap((result) => result.followUpQuestions)
+      .filter((item, index, all) => all.findIndex((candidate) => candidate.requirementId === item.requirementId) === index)
+      .slice(0, 10),
+  };
+}
+
+function mergeInterviewResults(results: InterviewPrepResult[]): InterviewPrepResult {
+  const preps = results.map((result) => result.interviewPrep);
+  return { interviewPrep: {
+    likelyQuestions: preps.flatMap((prep) => prep.likelyQuestions)
+      .filter((item, index, all) => all.findIndex((candidate) => candidate.question === item.question) === index).slice(0, 10),
+    evidenceToPrepare: uniqueTexts(preps.flatMap((prep) => prep.evidenceToPrepare)),
+    possibleExaggerations: uniqueTexts(preps.flatMap((prep) => prep.possibleExaggerations)),
+    dataToSupplement: uniqueTexts(preps.flatMap((prep) => prep.dataToSupplement)),
+    selfIntroduction: preps.map((prep) => prep.selfIntroduction.trim()).filter(Boolean).sort((a, b) => b.length - a.length)[0] ?? "",
+    requirementStrategies: preps.flatMap((prep) => prep.requirementStrategies)
+      .filter((item, index, all) => all.findIndex((candidate) => candidate.requirementId === item.requirementId) === index),
+    reverseQuestions: preps.flatMap((prep) => prep.reverseQuestions)
+      .filter((item, index, all) => all.findIndex((candidate) => candidate.question === item.question) === index),
+  } };
+}
 
 function buildCoreSummary(parts: DiagnosisMatchResult): string {
   return [
@@ -54,13 +120,19 @@ export async function runLLMResumeAnalysis(
 ): Promise<AnalysisResult> {
   const sourceItems = splitJDSourceItems(input.jobDescription);
   if (!sourceItems.length) throw new Error("JD 中没有可分析的文本条目。");
-  const jdModel = await chatCompletionJSON({
-    system: RESUME_AGENT_SYSTEM_PROMPT,
-    user: buildDeepJDPrompt(input, jobTargetContext, sourceItems),
-    schema: createDeepJDModelResultSchema(sourceItems.map((item) => item.id)),
-    schemaName: "deep_jd_requirement_map",
-    maxTokens: 12000,
-    ...execution,
+  const jdModel = await runWithTruncationFallback({
+    stage: "JD 需求解析",
+    items: sourceItems,
+    run: (items) => chatCompletionJSON({
+      system: RESUME_AGENT_SYSTEM_PROMPT,
+      user: buildDeepJDPrompt(input, jobTargetContext, items),
+      schema: createDeepJDModelResultSchema(items.map((item) => item.id)),
+      schemaName: "deep_jd_requirement_map",
+      maxTokens: 12000,
+      analysisStage: "JD 需求解析",
+      ...execution,
+    }),
+    merge: mergeDeepJDResults,
   });
 
   const classificationById = new Map(jdModel.sourceClassifications.map((item) => [item.sourceItemId, item.classification]));
@@ -70,13 +142,19 @@ export async function runLLMResumeAnalysis(
   if (!validatedRequirements.length) throw new Error("模型未能生成可校验的 JD 原文引用，请检查 JD 后重新分析。");
   const selectedClaims = rankCareerClaimsForRequirements(careerClaims, validatedRequirements, input, 12);
 
-  const diagnosisMatch = await chatCompletionJSON({
-    system: RESUME_AGENT_SYSTEM_PROMPT,
-    user: buildRequirementMatchPrompt(input, jobTargetContext, validatedRequirements, selectedClaims),
-    schema: createDiagnosisMatchResultSchema(validatedRequirements.map((item) => item.id), selectedClaims.map((item) => item.id)),
-    schemaName: "requirement_fact_match",
-    maxTokens: 12000,
-    ...execution,
+  const diagnosisMatch = await runWithTruncationFallback({
+    stage: "要求—事实匹配",
+    items: validatedRequirements,
+    run: (requirements) => chatCompletionJSON({
+      system: RESUME_AGENT_SYSTEM_PROMPT,
+      user: buildRequirementMatchPrompt(input, jobTargetContext, requirements, selectedClaims),
+      schema: createDiagnosisMatchResultSchema(requirements.map((item) => item.id), selectedClaims.map((item) => item.id)),
+      schemaName: "requirement_fact_match",
+      maxTokens: 12000,
+      analysisStage: "要求—事实匹配",
+      ...execution,
+    }),
+    merge: mergeDiagnosisMatchResults,
   });
 
   const validatedMatches = validateMatchReferences(diagnosisMatch.matchItems, validatedRequirements, selectedClaims, input.originalResume);
@@ -99,13 +177,22 @@ export async function runLLMResumeAnalysis(
 
   const coreSummary = buildCoreSummary(diagnosisMatch);
 
-  const interview = await chatCompletionJSON({
-    system: RESUME_AGENT_SYSTEM_PROMPT,
-    user: buildRequirementInterviewPrompt(input, jobTargetContext, validatedRequirements, validatedMatches, jdModel.clarificationNeeds),
-    schema: createInterviewPrepResultSchema(validatedRequirements.map((item) => item.id), jdModel.clarificationNeeds.map((item) => item.id)),
-    schemaName: "requirement_interview_strategy",
-    maxTokens: 12000,
-    ...execution,
+  const interview = await runWithTruncationFallback({
+    stage: "面试策略",
+    items: validatedRequirements,
+    run: (requirements) => {
+      const ids = new Set(requirements.map((item) => item.id));
+      return chatCompletionJSON({
+        system: RESUME_AGENT_SYSTEM_PROMPT,
+        user: buildRequirementInterviewPrompt(input, jobTargetContext, requirements, validatedMatches.filter((item) => Boolean(item.requirementId && ids.has(item.requirementId))), jdModel.clarificationNeeds),
+        schema: createInterviewPrepResultSchema(requirements.map((item) => item.id), jdModel.clarificationNeeds.map((item) => item.id)),
+        schemaName: "requirement_interview_strategy",
+        maxTokens: 12000,
+        analysisStage: "面试策略",
+        ...execution,
+      });
+    },
+    merge: mergeInterviewResults,
   });
 
   const optimizeResume = await chatCompletionJSON({
@@ -114,6 +201,7 @@ export async function runLLMResumeAnalysis(
       schema: optimizeResumeResultSchema,
       schemaName: "resume_optimized_output",
       maxTokens: 4500,
+      analysisStage: "简历优化",
       ...execution,
   });
 

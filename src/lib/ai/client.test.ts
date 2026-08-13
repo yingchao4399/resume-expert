@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { buildCompletionRequestBody, chatCompletionJSON, LLMStructureError } from "@/lib/ai/client";
+import { buildCompletionRequestBody, chatCompletionJSON, LLMStructureError, LLMTruncationError } from "@/lib/ai/client";
 import type { AIConfig } from "@/lib/ai/config";
 
 const schema = z.object({ items: z.array(z.string()), ok: z.boolean() });
@@ -41,5 +41,11 @@ describe("multi-provider structured output", () => {
     await expect(chatCompletionJSON({ ...options, configOverride: config("custom", "private-model") })).resolves.toEqual({ items: [], ok: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).not.toHaveProperty("response_format");
+  });
+
+  it("reports the exact analysis stage when output is truncated", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: "{}" } }] }), { status: 200 }));
+    await expect(chatCompletionJSON({ ...options, analysisStage: "JD 需求解析", configOverride: config("deepseek", "deepseek-v4-flash") }))
+      .rejects.toEqual(expect.objectContaining<Partial<LLMTruncationError>>({ name: "LLMTruncationError", stage: "JD 需求解析" }));
   });
 });

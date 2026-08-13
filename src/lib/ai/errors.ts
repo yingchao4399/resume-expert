@@ -23,6 +23,15 @@ export class LLMStructureError extends LLMError {
   }
 }
 
+export type AnalysisStage = "JD 需求解析" | "要求—事实匹配" | "面试策略" | "简历优化";
+
+export class LLMTruncationError extends LLMError {
+  constructor(readonly stage: AnalysisStage) {
+    super(`${stage}阶段的大模型输出被截断，系统已停止写入。请缩短材料、切换上下文更长的模型或重试。`, 502, "model");
+    this.name = "LLMTruncationError";
+  }
+}
+
 export function classifyAIHTTPError(status: number, detail = ""): {
   category: AIConnectionErrorCategory;
   message: string;

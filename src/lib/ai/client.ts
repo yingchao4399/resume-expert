@@ -1,10 +1,10 @@
 import { z, type ZodType } from "zod";
 import { getAIConfig, type AIConfig } from "@/lib/ai/config";
-import { classifyAIHTTPError, LLMError, LLMStructureError } from "@/lib/ai/errors";
+import { classifyAIHTTPError, LLMError, LLMStructureError, LLMTruncationError, type AnalysisStage } from "@/lib/ai/errors";
 import { parseJSONFromMessage } from "@/lib/ai/parse-json";
 import { getProviderPreset, getStructuredOutputStrategy, type StructuredOutputStrategy } from "@/lib/ai/presets";
 
-export { LLMError, LLMStructureError } from "@/lib/ai/errors";
+export { LLMError, LLMStructureError, LLMTruncationError } from "@/lib/ai/errors";
 
 export interface ChatCompletionOptions<T> {
   system: string;
@@ -17,6 +17,7 @@ export interface ChatCompletionOptions<T> {
   model?: string;
   timeoutMs?: number;
   configOverride?: AIConfig;
+  analysisStage?: AnalysisStage;
 }
 
 interface ChatMessage { content?: string | null; reasoning_content?: string | null }
@@ -45,7 +46,7 @@ async function requestChatCompletionJSON<T>(options: ChatCompletionOptions<T>): 
   try {
     return parseAndValidate(contents, options.schema);
   } catch (firstError) {
-    if (choice?.finish_reason === "length") throw new LLMError("大模型输出被截断，请缩短输入后重试", 502);
+    if (choice?.finish_reason === "length") throw new LLMTruncationError(options.analysisStage ?? "简历优化");
     if (!raw) throw new LLMError("大模型返回内容为空", 502);
 
     const schemaContract = buildSchemaContract(options.schema);
@@ -64,6 +65,7 @@ async function requestChatCompletionJSON<T>(options: ChatCompletionOptions<T>): 
     try {
       return parseAndValidate(fixedContents, options.schema);
     } catch (secondError) {
+      if (fixed.choices?.[0]?.finish_reason === "length") throw new LLMTruncationError(options.analysisStage ?? "简历优化");
       throw new LLMStructureError(config.provider, model, formatValidationIssue(secondError));
     }
   }
