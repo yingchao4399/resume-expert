@@ -17,6 +17,8 @@ export interface AIStatus {
 export interface AnalyzeRequestBody {
   input: import("@/types/resume").UserInput;
   optimizeStyle?: import("@/types/resume").OptimizeStyle;
+  jobTargetContext: import("@/types/resume").JobTargetContext;
+  careerClaims: import("@/lib/career/career-context").CareerAnalysisClaim[];
 }
 
 export interface OptimizeRequestBody {
@@ -84,6 +86,21 @@ export interface SaveAIConfigBody {
   baseUrl?: string;
   model?: string;
   useMock?: boolean;
+}
+
+export interface FollowUpGuidanceRequestBody {
+  targetRole: string;
+  requirementId: string;
+  requirement: string;
+  question: string;
+  purpose: string;
+  thinkingPrompts: string[];
+  answerFramework: string[];
+}
+
+export interface FollowUpGuidanceResponseBody {
+  example: string;
+  mode: AIMode;
 }
 
 export type AIConnectionErrorCategory =

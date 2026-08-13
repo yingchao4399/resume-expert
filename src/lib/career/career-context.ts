@@ -1,6 +1,22 @@
 import type { CareerDomainSnapshot, EvidenceClaim } from "@/types/career-domain";
 import type { CareerEvidence } from "@/types/resume";
 
+export interface CareerAnalysisClaim {
+  id: string;
+  experienceId: string;
+  experienceTitle: string;
+  organization: string;
+  role: string;
+  text: string;
+  kind: EvidenceClaim["kind"];
+  contribution: EvidenceClaim["contribution"];
+  complexity: EvidenceClaim["complexity"];
+  hasTradeoff: boolean;
+  hasMethodReuse: boolean;
+  capabilities: Array<{ id: string; name: string; aliases: string[] }>;
+  metrics: Array<{ id: string; value: string; unit: string; baseline: string; method: string; period: string; sourceNote: string }>;
+}
+
 function terms(value: string): string[] {
   return [...new Set(value.toLocaleLowerCase().split(/[\s,，。；;、|/()（）【】\[\]·+]+/).map((item) => item.trim()).filter((item) => item.length >= 2))];
 }
@@ -21,6 +37,38 @@ export function selectRelevantClaims(snapshot: CareerDomainSnapshot, targetRole:
       target.includes(term) || targetTerms.some((targetTerm) => term.includes(targetTerm) || targetTerm.includes(term)),
     ).length,
   })).filter((item) => item.score > 0).sort((a, b) => b.score - a.score || b.claim.updatedAt.localeCompare(a.claim.updatedAt)).slice(0, limit).map((item) => item.claim);
+}
+
+export function buildCareerAnalysisClaims(snapshot: CareerDomainSnapshot): CareerAnalysisClaim[] {
+  const experiences = new Map(snapshot.experiences.filter((item) => item.status === "confirmed").map((item) => [item.id, item]));
+  const capabilities = new Map(snapshot.capabilities.map((item) => [item.id, item]));
+  return snapshot.claims
+    .filter((claim) => claim.status === "confirmed" && experiences.has(claim.experienceId))
+    .map((claim) => {
+      const experience = experiences.get(claim.experienceId)!;
+      return {
+        id: claim.id,
+        experienceId: claim.experienceId,
+        experienceTitle: experience.title,
+        organization: experience.organization,
+        role: experience.role,
+        text: claim.text,
+        kind: claim.kind,
+        contribution: claim.contribution,
+        complexity: claim.complexity,
+        hasTradeoff: claim.hasTradeoff,
+        hasMethodReuse: claim.hasMethodReuse,
+        capabilities: snapshot.capabilityLinks
+          .filter((link) => link.claimId === claim.id && link.status === "confirmed")
+          .flatMap((link) => {
+            const capability = capabilities.get(link.capabilityId);
+            return capability ? [{ id: capability.id, name: capability.name, aliases: capability.aliases }] : [];
+          }),
+        metrics: snapshot.metrics
+          .filter((metric) => metric.claimId === claim.id && metric.status === "confirmed")
+          .map(({ id, value, unit, baseline, method, period, sourceNote }) => ({ id, value, unit, baseline, method, period, sourceNote })),
+      };
+    });
 }
 
 export function careerClaimsPrompt(snapshot: CareerDomainSnapshot, claims: EvidenceClaim[]): string {

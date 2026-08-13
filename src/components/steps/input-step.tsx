@@ -19,7 +19,7 @@ import { ResumeImportDialog } from "@/components/import/resume-import-dialog";
 import { useResumeStore } from "@/store/resume-store";
 import { runResumeAnalysis } from "@/services/ai/resumeAgent";
 import type { CompanyType, JobStage } from "@/types/resume";
-import { careerClaimsPrompt, selectRelevantClaims } from "@/lib/career/career-context";
+import { buildCareerAnalysisClaims } from "@/lib/career/career-context";
 import { useCareerDomain } from "@/hooks/use-career-domain";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 
@@ -30,6 +30,8 @@ export function InputStep() {
   const {
     optimizeStyle,
     userInput,
+    jobTargetContext,
+    setJobTargetContext,
     setUserInput,
     setImportedResume,
     loadExampleData,
@@ -69,8 +71,7 @@ export function InputStep() {
     setAnalysisError(null);
     const requestedRevision = materialRevision;
     try {
-      const relevantClaims = selectRelevantClaims(careerDomain, userInput.targetRole, userInput.jobDescription);
-      const result = await runResumeAnalysis({ ...userInput, additionalInfo: [userInput.additionalInfo, careerClaimsPrompt(careerDomain, relevantClaims)].filter(Boolean).join("\n\n") }, optimizeStyle);
+      const result = await runResumeAnalysis(userInput, jobTargetContext, buildCareerAnalysisClaims(careerDomain), optimizeStyle);
       if (setAnalysisResult(result, requestedRevision)) setCurrentStep("jd-analysis");
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "分析失败，请稍后重试");
@@ -162,6 +163,10 @@ export function InputStep() {
                 onChange={(e) => updateMaterial("industry", e.target.value)}
               />
             </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="companyName">目标公司名称（可选）</Label>
+              <Input id="companyName" placeholder="如：某科技公司；本版不会联网查询公司信息" value={jobTargetContext.companyName} onChange={(event) => setJobTargetContext({ companyName: event.target.value })} />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="companyType">公司类型</Label>
               <Select
@@ -206,6 +211,11 @@ export function InputStep() {
                 value={userInput.highlightSkills}
                 onChange={(e) => updateMaterial("highlightSkills", e.target.value)}
               />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="jobContextNotes">岗位背景补充（可选）</Label>
+              <Textarea id="jobContextNotes" className="min-h-[96px] text-sm" placeholder="如：招聘沟通中获知的业务线、团队配置、岗位边界或当前痛点。请只填写已知信息。" value={jobTargetContext.notes} onChange={(event) => setJobTargetContext({ notes: event.target.value })} />
+              <p className="text-xs text-neutral-500">修改这里会使旧分析过期；系统不会把推断当作公司真实事实。</p>
             </div>
           </CardContent>
         </Card>

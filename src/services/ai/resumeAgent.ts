@@ -6,13 +6,16 @@ import type {
   AIModelCatalogResult,
   FinalizeResumeResponseBody,
   FollowUpBulletResponseBody,
+  FollowUpGuidanceRequestBody,
+  FollowUpGuidanceResponseBody,
   InterviewAnalyzeRequestBody,
   InterviewAnalyzeResponseBody,
   OptimizeResponseBody,
   PublicAIConfig,
   SaveAIConfigBody,
 } from "@/lib/ai/types";
-import type { AnalysisResult, OptimizeStyle, UserInput } from "@/types/resume";
+import type { CareerAnalysisClaim } from "@/lib/career/career-context";
+import type { AnalysisResult, JobTargetContext, OptimizeStyle, UserInput } from "@/types/resume";
 import type { InterviewAnalysisResult } from "@/types/interview";
 import { saveTraceSpan } from "@/lib/studio/trace-store";
 import type { WorkflowNodeId } from "@/lib/studio/trace-types";
@@ -89,10 +92,17 @@ export async function fetchAIStatus() {
 
 export async function runResumeAnalysis(
   input: UserInput,
+  jobTargetContext: JobTargetContext,
+  careerClaims: CareerAnalysisClaim[],
   optimizeStyle: OptimizeStyle = "ai-product"
 ): Promise<AnalysisResult> {
-  const data = await postWorkflowJSON<AnalyzeResponseBody>("/api/analyze", { input, optimizeStyle });
+  const data = await postWorkflowJSON<AnalyzeResponseBody>("/api/analyze", { input, jobTargetContext, careerClaims, optimizeStyle });
   return data.result;
+}
+
+export async function generateFollowUpGuidance(input: FollowUpGuidanceRequestBody): Promise<string> {
+  const data = await postWorkflowJSON<FollowUpGuidanceResponseBody>("/api/follow-up/guidance", input);
+  return data.example;
 }
 
 export async function structureImportedResume(text: string): Promise<{

@@ -9,11 +9,11 @@ import { readWorkflowExecution } from "@/lib/studio/execution";
 
 export async function POST(request: Request) {
   try {
-    const { input, optimizeStyle } = await parseAPIRequest(
+    const { input, optimizeStyle, jobTargetContext, careerClaims } = await parseAPIRequest(
       request,
       analyzeRequestSchema
     );
-    const { result, mode } = await analyzeResumeServer(input, optimizeStyle, readWorkflowExecution(request));
+    const { result, mode } = await analyzeResumeServer(input, jobTargetContext, careerClaims, optimizeStyle, readWorkflowExecution(request));
     return tracedAIResponse({ result, mode }, mode);
   } catch (error) {
     return toAPIErrorResponse(error, "分析失败，请稍后重试", "analyze");

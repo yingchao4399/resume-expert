@@ -29,7 +29,7 @@ const layoutDefaults = {
 
 function stateFor(templateId = "ats-classic", finalResumeStatus: "draft" | "confirmed" | "stale" = "confirmed") {
   const document = {
-    schemaVersion: 7,
+    schemaVersion: 8,
     id: "e2e-document",
     title: "产品经理版本",
     createdAt: "2026-08-03T00:00:00.000Z",
@@ -38,9 +38,10 @@ function stateFor(templateId = "ats-classic", finalResumeStatus: "draft" | "conf
       targetRole: "产品经理", industry: "企业服务", companyType: "中型公司", jobStage: "社招-中级",
       highlightSkills: "需求分析", jobDescription: "负责企业服务产品规划", originalResume: "原始简历", additionalInfo: "",
     },
+    jobTargetContext: { companyName: "", notes: "", companySnapshotId: null },
     currentStep: "final-resume",
     analysisResult: {
-      jdAnalysis: { responsibilities: [], hardRequirements: [], implicitRequirements: [], keywords: ["产品规划"], idealCandidate: "", coreCompetencies: [] },
+      jdAnalysis: { responsibilities: [], hardRequirements: [], implicitRequirements: [], keywords: ["产品规划"], idealCandidate: "", coreCompetencies: [], sourceItems: [{ id: "jd-source-1", text: "负责企业服务产品规划", startOffset: 0, endOffset: 10, classification: "requirement" }], requirements: [{ id: "req-1", sourceItemId: "jd-source-1", sourceQuote: "负责", requirement: "企业服务产品规划", category: "responsibility", priority: "must", keywords: ["产品规划"], interviewFocus: "检查项目经历", anchorStatus: "validated" }], roleInference: { items: [] }, clarificationNeeds: [] },
       diagnosis: { overallScore: 80, dimensionScores: [], mainIssues: [], prioritySuggestions: [] },
       matchItems: [], followUpQuestions: [], optimizedItems: [], finalResume: structuredClone(resume),
       interviewPrep: { likelyQuestions: [], evidenceToPrepare: [], possibleExaggerations: [], dataToSupplement: [], selfIntroduction: "" },
@@ -54,7 +55,7 @@ function stateFor(templateId = "ats-classic", finalResumeStatus: "draft" | "conf
     finalResumeStatus,
     hasManualEdits: false,
   } as ResumeLibraryState["documents"][number];
-  return { state: { schemaVersion: 8, documents: [document], activeDocumentId: document.id, careerEvidence: [] as CareerEvidence[], jobApplications: [], interviewReviews: [] } satisfies ResumeLibraryState, version: 8 };
+  return { state: { schemaVersion: 9, documents: [document], activeDocumentId: document.id, careerEvidence: [] as CareerEvidence[], jobApplications: [], interviewReviews: [] } satisfies ResumeLibraryState, version: 9 };
 }
 
 async function seed(page: Page, templateId = "ats-classic") {
@@ -166,6 +167,39 @@ test("locks the old analysis after JD changes and unlocks after reanalysis", asy
   await expect(page.getByRole("button", { name: /AI 优化 3\.1/ })).toBeDisabled();
   await page.getByRole("button", { name: /JD 解析 2\.1/ }).click();
   await expect(page.getByText(/修改材料前的旧分析/)).toBeVisible();
+});
+
+test("stores target company context and shows the requirement map", async ({ page }) => {
+  await seed(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: /岗位与简历材料 1\.1/ }).click();
+  await page.getByLabel("目标公司名称（可选）").fill("示例目标公司");
+  await page.getByLabel("岗位背景补充（可选）").fill("已知该岗位负责企业服务业务线，团队配置仍待确认");
+  await expect(page.getByText(/旧分析仍可查看/)).toBeVisible();
+  await page.getByRole("button", { name: /JD 解析 2\.1/ }).click();
+  await expect(page.getByText(/原子岗位要求/)).toBeVisible();
+  await expect(page.getByText("req-1", { exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: /岗位与简历材料 1\.1/ }).click();
+  await expect(page.getByLabel("目标公司名称（可选）")).toHaveValue("示例目标公司");
+});
+
+test("opens targeted follow-up help and keeps placeholder examples separate", async ({ page }) => {
+  const value = stateFor();
+  const analysis = value.state.documents[0].analysisResult!;
+  analysis.matchItems = [{ requirementId: "req-1", jdRequirement: "企业服务产品规划", evidenceClaimIds: [], resumeQuotes: [], resumeEvidence: "", matchRationale: "没有相关事实", evidenceStrength: "none", missingEvidenceTypes: ["真实项目"], needsSupplement: true, optimizationSuggestion: "补充真实项目" }];
+  analysis.followUpQuestions = [{ id: "fu-1", requirementId: "req-1", question: "请说明一个真实规划项目", purpose: "补充规划证据", thinkingPrompts: ["业务目标是什么？"], answerFramework: ["场景", "行动", "结果"], honestNoExperience: "如实说明没有直接经历。", placeholderExample: "", userAnswer: "", generatedBullet: "" }];
+  value.state.documents[0].currentStep = "match";
+  await page.addInitScript((seedValue) => localStorage.setItem("resume-expert-library", JSON.stringify(seedValue)), value);
+  await page.route("**/api/follow-up/guidance", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ example: "在【你的项目】中采取【具体行动】，按【指标口径】核对【真实结果】。", mode: "mock" }) }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "针对该要求补证" }).click();
+  await expect(page.getByText("请说明一个真实规划项目")).toBeVisible();
+  await expect(page.getByRole("button", { name: "收起回答帮助" })).toBeVisible();
+  await expect(page.getByText("业务目标是什么？")).toBeVisible();
+  await page.getByRole("button", { name: "生成占位符示范" }).click();
+  await expect(page.getByText(/虚构结构示范/)).toBeVisible();
+  await expect(page.getByLabel("你的回答")).toHaveValue("");
 });
 
 test("shows candidate evidence links and requires explicit confirmation", async ({ page }) => {

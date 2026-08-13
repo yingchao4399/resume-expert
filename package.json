@@ -1,6 +1,6 @@
 {
   "name": "resume-expert",
-  "version": "1.8.1",
+  "version": "1.9.0",
   "private": true,
   "engines": {
     "node": ">=24 <25"
@@ -17,6 +17,7 @@
     "eval:validate": "node evals/runner.mjs validate",
     "eval:mock": "node evals/runner.mjs mock",
     "eval:career": "node evals/career-eval.mjs",
+    "eval:jd": "node evals/jd-depth-eval.mjs",
     "eval:ai": "node evals/runner.mjs ai",
     "eval:compare": "node evals/runner.mjs compare",
     "eval:report": "node evals/runner.mjs report"

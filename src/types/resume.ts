@@ -33,6 +33,59 @@ export interface UserInput {
   additionalInfo: string;
 }
 
+export interface JobTargetContext {
+  companyName: string;
+  notes: string;
+  companySnapshotId: null;
+}
+
+export type JDSourceClassification = "requirement" | "background" | "benefit" | "irrelevant";
+export type JobRequirementCategory = "responsibility" | "experience" | "skill" | "education" | "industry" | "collaboration" | "result" | "other";
+export type RequirementPriority = "must" | "preferred" | "context";
+export type InferenceLevel = "explicit" | "inferred" | "unknown";
+
+export interface JDSourceItem {
+  id: string;
+  text: string;
+  startOffset: number;
+  endOffset: number;
+  classification: JDSourceClassification;
+}
+
+export interface JobRequirement {
+  id: string;
+  sourceItemId: string;
+  sourceQuote: string;
+  requirement: string;
+  category: JobRequirementCategory;
+  priority: RequirementPriority;
+  keywords: string[];
+  interviewFocus: string;
+  anchorStatus: "validated" | "needs-review";
+}
+
+export interface JobRoleInferenceItem {
+  topic: "work-content" | "work-focus" | "business-line" | "team-state" | "business-scenario" | "team-pain" | "implicit-expectation" | "reporting-line" | "industry-experience";
+  level: InferenceLevel;
+  conclusion: string;
+  evidence: string[];
+  confidence: "high" | "medium" | "low";
+  verificationQuestion: string;
+}
+
+export interface JobRoleInference {
+  items: JobRoleInferenceItem[];
+}
+
+export interface JDClarificationNeed {
+  id: string;
+  topic: string;
+  missingInformation: string;
+  impact: string;
+  suggestedInput: string;
+  verificationQuestion: string;
+}
+
 export interface CoreCompetency {
   name: string;
   importance: "high" | "medium" | "low";
@@ -46,6 +99,10 @@ export interface JDAnalysis {
   keywords: string[];
   idealCandidate: string;
   coreCompetencies: CoreCompetency[];
+  sourceItems?: JDSourceItem[];
+  requirements?: JobRequirement[];
+  roleInference?: JobRoleInference;
+  clarificationNeeds?: JDClarificationNeed[];
 }
 
 export interface DimensionScore {
@@ -62,9 +119,14 @@ export interface ResumeDiagnosis {
 }
 
 export interface MatchItem {
+  requirementId?: string;
   jdRequirement: string;
+  evidenceClaimIds?: string[];
+  resumeQuotes?: string[];
   resumeEvidence: string;
+  matchRationale?: string;
   evidenceStrength: EvidenceStrength;
+  missingEvidenceTypes?: string[];
   needsSupplement: boolean;
   optimizationSuggestion: string;
 }
@@ -73,6 +135,11 @@ export interface FollowUpQuestion {
   id: string;
   question: string;
   purpose: string;
+  requirementId?: string;
+  thinkingPrompts?: string[];
+  answerFramework?: string[];
+  honestNoExperience?: string;
+  placeholderExample?: string;
   userAnswer: string;
   generatedBullet: string;
 }
@@ -209,9 +276,29 @@ export interface ResumeLayoutConfig {
 }
 
 export interface InterviewQuestion {
+  requirementId?: string;
   question: string;
   suggestedAnswer: string;
   evidenceNeeded: string[];
+}
+
+export interface RequirementInterviewStrategy {
+  requirementId: string;
+  validationApproaches: string[];
+  demonstrationPoints: string[];
+  answerStructure: string[];
+  evidenceNeeded: string[];
+  metricsNeeded: string[];
+  exaggerationRisks: string[];
+}
+
+export interface ReverseInterviewQuestion {
+  id: string;
+  requirementId: string | null;
+  clarificationNeedId: string | null;
+  topic: "role-boundary" | "business-goal" | "team-state" | "success-metric" | "collaboration" | "reporting-line";
+  question: string;
+  purpose: string;
 }
 
 export interface InterviewPrep {
@@ -220,6 +307,8 @@ export interface InterviewPrep {
   possibleExaggerations: string[];
   dataToSupplement: string[];
   selfIntroduction: string;
+  requirementStrategies?: RequirementInterviewStrategy[];
+  reverseQuestions?: ReverseInterviewQuestion[];
 }
 
 export interface AnalysisResult {
@@ -240,12 +329,13 @@ export interface StepConfig {
 export type FinalResumeStatus = "draft" | "confirmed" | "stale";
 
 export interface ResumeDocument {
-  schemaVersion: 7;
+  schemaVersion: 8;
   id: string;
   title: string;
   createdAt: string;
   updatedAt: string;
   userInput: UserInput;
+  jobTargetContext: JobTargetContext;
   currentStep: StepId;
   analysisResult: AnalysisResult | null;
   materialRevision: number;
@@ -276,7 +366,7 @@ export interface JobApplication {
 }
 
 export interface ResumeLibraryState {
-  schemaVersion: 8;
+  schemaVersion: 9;
   documents: ResumeDocument[];
   activeDocumentId: string;
   careerEvidence: CareerEvidence[];

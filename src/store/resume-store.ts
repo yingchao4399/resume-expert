@@ -104,6 +104,7 @@ export const useResumeStore = create<ResumeStore>()(
       ...workingStateFromDocument(initialDocument),
       isAnalyzing: false,
       aiMode: null,
+      focusedRequirementId: null,
 
       createDocument: () =>
         set((state) => {
@@ -249,8 +250,8 @@ export const useResumeStore = create<ResumeStore>()(
             ? parsed.state?.activeDocumentId as string
             : recoveredDocuments[0].id;
           const recoveredValue = JSON.stringify({
-            state: { schemaVersion: 8, documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
-            version: 8,
+            state: { schemaVersion: 9, documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
+            version: 9,
           });
           validatePersistedLibrary(recoveredValue);
           unlockStorageWrites();
@@ -468,6 +469,18 @@ export const useResumeStore = create<ResumeStore>()(
           });
         }),
 
+      setJobTargetContext: (input) =>
+        set((state) => {
+          const jobTargetContext = { ...state.jobTargetContext, ...input, companySnapshotId: null } satisfies import("@/types/resume").JobTargetContext;
+          const changed = Object.entries(input).some(([key, value]) => state.jobTargetContext[key as keyof typeof state.jobTargetContext] !== value);
+          if (!changed) return state;
+          return updateActiveDocument(state, {
+            jobTargetContext,
+            materialRevision: state.materialRevision + 1,
+            finalResumeStatus: state.analysisResult ? "stale" : "draft",
+          });
+        }),
+
       setImportedResume: (text, sourceResume, metadata) =>
         set((state) => {
           const normalizedSource = sourceResume
@@ -588,6 +601,15 @@ export const useResumeStore = create<ResumeStore>()(
           });
         }),
 
+      setFollowUpGuidance: (id, example) =>
+        set((state) => {
+          if (!state.analysisResult) return state;
+          return updateActiveDocument(state, { analysisResult: { ...state.analysisResult, followUpQuestions: state.analysisResult.followUpQuestions.map((item) => item.id === id ? { ...item, placeholderExample: example } : item) } });
+        }),
+
+      openFollowUpForRequirement: (requirementId) =>
+        set((state) => ({ ...updateActiveDocument(state, { currentStep: "follow-up" }), focusedRequirementId: requirementId })),
+
       setFollowUpBullet: (id, bullet) =>
         set((state) => {
           if (!state.analysisResult) return state;
@@ -661,11 +683,11 @@ export const useResumeStore = create<ResumeStore>()(
     }),
     {
       name: RESUME_STORAGE_KEY,
-      version: 8,
+      version: 9,
       skipHydration: true,
       storage: createJSONStorage<ResumeLibraryState>(() => safeLocalStorage),
       partialize: (state) => ({
-        schemaVersion: 8,
+        schemaVersion: 9,
         documents: state.documents,
         activeDocumentId: state.activeDocumentId,
         // Schema 8 将事实主数据迁入 IndexedDB；此字段仅用于首次迁移和旧组件兼容。
@@ -681,7 +703,7 @@ export const useResumeStore = create<ResumeStore>()(
           ? persisted.documents.map((document) => migrateDocument(document))
           : [];
         return {
-          schemaVersion: 8,
+          schemaVersion: 9,
           documents,
           activeDocumentId: persisted.activeDocumentId ?? documents[0]?.id ?? "",
           careerEvidence: Array.isArray(persisted.careerEvidence)

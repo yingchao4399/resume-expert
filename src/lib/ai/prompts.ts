@@ -245,6 +245,10 @@ export function normalizeAnalysisResult(raw: AnalysisResult, input?: UserInput):
         importance: item.importance ?? "medium",
         description: item.description ?? "",
       })),
+      sourceItems: raw.jdAnalysis?.sourceItems ?? [],
+      requirements: raw.jdAnalysis?.requirements ?? [],
+      roleInference: raw.jdAnalysis?.roleInference ?? { items: [] },
+      clarificationNeeds: raw.jdAnalysis?.clarificationNeeds ?? [],
     },
     diagnosis: {
       overallScore: clampScore(raw.diagnosis?.overallScore ?? 0),
@@ -257,18 +261,28 @@ export function normalizeAnalysisResult(raw: AnalysisResult, input?: UserInput):
       prioritySuggestions: raw.diagnosis?.prioritySuggestions ?? [],
     },
     matchItems: (raw.matchItems ?? []).map((item) => ({
+      requirementId: item.requirementId ?? "",
       jdRequirement: item.jdRequirement ?? "",
       resumeEvidence: item.resumeEvidence ?? "",
+      evidenceClaimIds: item.evidenceClaimIds ?? [],
+      resumeQuotes: item.resumeQuotes ?? [],
+      matchRationale: item.matchRationale ?? "",
       evidenceStrength: EVIDENCE_STRENGTHS.includes(item.evidenceStrength)
         ? item.evidenceStrength
         : "none",
       needsSupplement: Boolean(item.needsSupplement),
+      missingEvidenceTypes: item.missingEvidenceTypes ?? [],
       optimizationSuggestion: item.optimizationSuggestion ?? "",
     })),
     followUpQuestions: (raw.followUpQuestions ?? []).map((item, index) => ({
       id: item.id || `fu-${index + 1}`,
       question: item.question ?? "",
       purpose: item.purpose ?? "",
+      requirementId: item.requirementId ?? "",
+      thinkingPrompts: item.thinkingPrompts ?? [],
+      answerFramework: item.answerFramework ?? [],
+      honestNoExperience: item.honestNoExperience ?? "",
+      placeholderExample: item.placeholderExample ?? "",
       userAnswer: item.userAnswer ?? "",
       generatedBullet: item.generatedBullet ?? "",
     })),
@@ -287,6 +301,8 @@ export function normalizeAnalysisResult(raw: AnalysisResult, input?: UserInput):
       possibleExaggerations: raw.interviewPrep?.possibleExaggerations ?? [],
       dataToSupplement: raw.interviewPrep?.dataToSupplement ?? [],
       selfIntroduction: raw.interviewPrep?.selfIntroduction ?? "",
+      requirementStrategies: raw.interviewPrep?.requirementStrategies ?? [],
+      reverseQuestions: raw.interviewPrep?.reverseQuestions ?? [],
     },
   };
 }

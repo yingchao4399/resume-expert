@@ -6,6 +6,7 @@ import {
   finalResumeSchema,
   optimizeStyleSchema,
   userInputSchema,
+  jobTargetContextSchema,
   interviewAnalysisResultSchema,
 } from "@/lib/ai/schemas";
 import type { CareerEvidence, JobApplication, ResumeDocument } from "@/types/resume";
@@ -52,12 +53,13 @@ const layoutConfigSchema = z.object({
 });
 
 const documentSchema = z.object({
-  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7)]),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8)]),
   id: z.string().min(1),
   title: z.string().min(1),
   createdAt: z.string(),
   updatedAt: z.string(),
   userInput: userInputSchema,
+  jobTargetContext: jobTargetContextSchema.optional(),
   currentStep: stepIdSchema,
   analysisResult: persistedAnalysisResultSchema.nullable(),
   materialRevision: z.number().int().nonnegative().optional(),
@@ -107,7 +109,7 @@ const interviewReviewSchema = z.object({
 });
 
 const backupSchema = z.object({
-  backupVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+  backupVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
   exportedAt: z.string(),
   documents: z.array(documentSchema).min(1),
   careerEvidence: z.array(careerEvidenceSchema).optional().default([]),
@@ -117,7 +119,7 @@ const backupSchema = z.object({
 });
 
 export interface ResumeBackup {
-  backupVersion: 4;
+  backupVersion: 5;
   exportedAt: string;
   documents: ResumeDocument[];
   careerEvidence: CareerEvidence[];
@@ -128,7 +130,7 @@ export interface ResumeBackup {
 
 export function createResumeBackup(documents: ResumeDocument[], careerEvidence: CareerEvidence[] = [], jobApplications: JobApplication[] = [], interviewReviews: InterviewReviewRecord[] = []): ResumeBackup {
   return {
-    backupVersion: 4,
+    backupVersion: 5,
     exportedAt: new Date().toISOString(),
     documents: structuredClone(documents),
     careerEvidence: structuredClone(careerEvidence),
@@ -146,10 +148,11 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
     throw new Error(`备份文件结构无效（${path}）：${issue?.message ?? "未知错误"}`);
   }
   return {
-    backupVersion: 4,
+    backupVersion: 5,
     exportedAt: parsed.data.exportedAt,
     documents: parsed.data.documents.map((document) => {
-      const finalResumeStatus = document.finalResumeStatus ??
+      const hasCurrentRequirementMap = (document.analysisResult?.jdAnalysis.requirements?.length ?? 0) > 0;
+      const finalResumeStatus = document.analysisResult && !hasCurrentRequirementMap ? "stale" : document.finalResumeStatus ??
         (document.isFinalResumeStale
           ? "stale"
           : document.analysisResult?.finalResume
@@ -159,9 +162,10 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
       void _legacyStatus;
       return {
         ...currentDocument,
-        schemaVersion: 7,
+        schemaVersion: 8,
+        jobTargetContext: document.jobTargetContext ?? { companyName: "", notes: "", companySnapshotId: null },
         materialRevision: document.materialRevision ?? 0,
-        analysisRevision: document.analysisResult
+        analysisRevision: document.analysisResult && document.analysisResult.jdAnalysis.requirements.length > 0
           ? document.analysisRevision ?? document.materialRevision ?? 0
           : null,
         sourceResume: document.sourceResume ?? null,
@@ -216,6 +220,8 @@ export async function createResumeBackupV4(
   return { ...createResumeBackup(documents, careerEvidence, jobApplications, interviewReviews), careerDomain };
 }
 
+export const createResumeBackupV5 = createResumeBackupV4;
+
 export async function downloadResumeBackupV4(
   documents: ResumeDocument[], careerEvidence: CareerEvidence[] = [], jobApplications: JobApplication[] = [],
   interviewReviews: InterviewReviewRecord[] = [], fileName = "resume-expert-backup.json", scope: "all" | "current" = "all"
@@ -227,9 +233,12 @@ export async function downloadResumeBackupV4(
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+export const downloadResumeBackupV5 = downloadResumeBackupV4;
+
 function selectCareerClosure(documents: ResumeDocument[], domain: CareerDomainSnapshot): CareerDomainSnapshot {
   const referencedClaims = new Set<string>();
   for (const document of documents) {
+    for (const match of document.analysisResult?.matchItems ?? []) for (const claimId of match.evidenceClaimIds ?? []) referencedClaims.add(claimId);
     const resume = document.analysisResult?.finalResume;
     if (!resume) continue;
     for (const section of [...resume.workExperience, ...resume.projectExperience]) for (const bullet of section.bullets) {
@@ -266,7 +275,9 @@ export function remapCareerDomainForMerge(domain: CareerDomainSnapshot): { domai
 
 export function remapDocumentsClaimIds(documents: ResumeDocument[], claimIdMap: Map<string, string>): ResumeDocument[] {
   return documents.map((document) => document.analysisResult ? {
-    ...document, analysisResult: { ...document.analysisResult, finalResume: mapResumeBullets(document.analysisResult.finalResume, (bullet) => {
+    ...document, analysisResult: { ...document.analysisResult,
+      matchItems: (document.analysisResult.matchItems ?? []).map((item) => ({ ...item, evidenceClaimIds: (item.evidenceClaimIds ?? []).map((id) => claimIdMap.get(id) ?? id) })),
+      finalResume: mapResumeBullets(document.analysisResult.finalResume, (bullet) => {
       const evidenceLinks = bullet.evidenceLinks.map((link) => ({ ...link, evidenceId: claimIdMap.get(link.evidenceId) ?? link.evidenceId }));
       return { ...bullet, evidenceLinks, evidenceIds: evidenceLinks.map((link) => link.evidenceId) };
     }) },

@@ -64,7 +64,7 @@ describe("resume store persistence", () => {
 
     const migrated = migrateDocument(legacy);
 
-    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.schemaVersion).toBe(8);
     expect(migrated.analysisRevision).toBeNull();
     expect(migrated.finalResumeStatus).toBe("stale");
     expect(migrated.layoutConfig.templateId).toBe("ats-classic");

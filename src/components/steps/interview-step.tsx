@@ -14,6 +14,9 @@ export function InterviewStep() {
   }
 
   const { interviewPrep } = analysisResult;
+  const requirements = new Map((analysisResult.jdAnalysis.requirements ?? []).map((item) => [item.id, item]));
+  const strategies = interviewPrep.requirementStrategies ?? [];
+  const reverseQuestions = interviewPrep.reverseQuestions ?? [];
 
   return (
     <div>
@@ -29,6 +32,21 @@ export function InterviewStep() {
         <CardContent>
           <p className="text-sm leading-relaxed text-neutral-700">{interviewPrep.selfIntroduction}</p>
         </CardContent>
+      </Card>
+
+      <Card className="mb-4">
+        <CardHeader className="pb-3"><CardTitle className="text-sm">逐条岗位要求面试策略</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          {strategies.map((strategy) => <details key={strategy.requirementId} className="rounded-md border p-3">
+            <summary className="cursor-pointer text-sm font-medium"><span className="mr-2 font-mono text-xs text-neutral-400">{strategy.requirementId}</span>{requirements.get(strategy.requirementId)?.requirement ?? "岗位要求"}</summary>
+            <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2"><div><p className="font-medium">面试官可能如何验证</p><ListSection title="" items={strategy.validationApproaches} /></div><div><p className="font-medium">回答应体现</p><ListSection title="" items={strategy.demonstrationPoints} /></div><div><p className="font-medium">推荐结构</p><p className="mt-1">{strategy.answerStructure.join(" → ")}</p></div><div><p className="font-medium">事实与指标</p><p className="mt-1">{[...strategy.evidenceNeeded, ...strategy.metricsNeeded].join("；")}</p></div><div className="sm:col-span-2"><p className="font-medium text-amber-700">夸大风险</p><p className="mt-1">{strategy.exaggerationRisks.join("；")}</p></div></div>
+          </details>)}
+        </CardContent>
+      </Card>
+
+      <Card className="mb-4">
+        <CardHeader className="pb-3"><CardTitle className="text-sm">反向提问：确认未知岗位信息</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">{reverseQuestions.map((item) => <div key={item.id} className="rounded-md border p-3"><p className="text-xs text-neutral-500">{item.topic}{item.clarificationNeedId ? ` · 对应未知项 ${item.clarificationNeedId}` : ""}</p><p className="mt-1 text-sm font-medium">{item.question}</p><p className="mt-1 text-xs text-neutral-600">目的：{item.purpose}</p></div>)}</CardContent>
       </Card>
 
       <Card className="mb-4">

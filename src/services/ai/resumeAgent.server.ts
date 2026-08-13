@@ -8,11 +8,13 @@ import {
 } from "@/services/ai/resumeAgent.mock";
 import {
   runLLMFinalizeResume,
+  runLLMFollowUpGuidance,
   runLLMFollowUpBullet,
   runLLMRegenerateOptimizedItems,
   runLLMResumeAnalysis,
 } from "@/services/ai/resumeAgent.llm";
-import type { AnalysisResult, OptimizeStyle, UserInput } from "@/types/resume";
+import type { CareerAnalysisClaim } from "@/lib/career/career-context";
+import type { AnalysisResult, JobTargetContext, OptimizeStyle, UserInput } from "@/types/resume";
 import type { WorkflowExecutionOptions } from "@/lib/studio/execution";
 
 function currentMode(forceMock = false): AIMode {
@@ -21,18 +23,29 @@ function currentMode(forceMock = false): AIMode {
 
 export async function analyzeResumeServer(
   input: UserInput,
+  jobTargetContext: JobTargetContext,
+  careerClaims: CareerAnalysisClaim[],
   optimizeStyle: OptimizeStyle = "ai-product",
   execution: WorkflowExecutionOptions = { forceMock: false }
 ): Promise<{ result: AnalysisResult; mode: AIMode }> {
   const mode = currentMode(execution.forceMock);
 
   if (mode === "llm") {
-    const result = await runLLMResumeAnalysis(input, optimizeStyle, execution);
+    const result = await runLLMResumeAnalysis(input, jobTargetContext, careerClaims, optimizeStyle, execution);
     return { result, mode };
   }
 
-  const result = await runMockResumeAnalysis(input, optimizeStyle);
+  const result = await runMockResumeAnalysis(input, optimizeStyle, jobTargetContext, careerClaims);
   return { result, mode };
+}
+
+export async function generateFollowUpGuidanceServer(
+  input: Parameters<typeof runLLMFollowUpGuidance>[0],
+  execution: WorkflowExecutionOptions = { forceMock: false },
+): Promise<{ example: string; mode: AIMode }> {
+  const mode = currentMode(execution.forceMock);
+  if (mode === "llm") return { example: await runLLMFollowUpGuidance(input, execution), mode };
+  return { example: "在【你的项目】中，我负责【你的角色】，面对【约束条件】，采取【具体行动】，并按【指标口径】核对后得到【真实结果】。", mode };
 }
 
 export async function regenerateOptimizedItemsServer(

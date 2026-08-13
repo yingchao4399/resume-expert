@@ -5,6 +5,7 @@ import type {
   FinalResumeStatus,
   FinalResume,
   JobApplication,
+  JobTargetContext,
   OptimizeStyle,
   ResumeImportMetadata,
   ResumeLayoutConfig,
@@ -41,6 +42,7 @@ export interface ResumeStore {
   dirtyScope: UnsavedScope | null;
 
   userInput: UserInput;
+  jobTargetContext: JobTargetContext;
   currentStep: StepId;
   isAnalyzing: boolean;
   analysisResult: AnalysisResult | null;
@@ -81,6 +83,10 @@ export interface ResumeStore {
   unlinkInterviewRecording: (recordingId: string) => void;
 
   setUserInput: (input: Partial<UserInput>) => void;
+  setJobTargetContext: (input: Partial<JobTargetContext>) => void;
+  setFollowUpGuidance: (id: string, example: string) => void;
+  openFollowUpForRequirement: (requirementId: string) => void;
+  focusedRequirementId: string | null;
   setImportedResume: (text: string, sourceResume: FinalResume | null, metadata: ResumeImportMetadata) => void;
   setLayoutConfig: (config: ResumeLayoutConfig) => void;
   loadExampleData: () => void;

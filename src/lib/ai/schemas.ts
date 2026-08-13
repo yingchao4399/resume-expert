@@ -21,6 +21,35 @@ export const userInputSchema = z.object({
   additionalInfo: z.string(),
 });
 
+export const jobTargetContextSchema = z.object({
+  companyName: z.string(),
+  notes: z.string(),
+  companySnapshotId: z.null(),
+});
+
+const jdSourceItemSchema = z.object({
+  id: z.string(), text: z.string(), startOffset: z.number().int().min(0), endOffset: z.number().int().min(0),
+  classification: z.enum(["requirement", "background", "benefit", "irrelevant"]),
+});
+
+const jobRequirementSchema = z.object({
+  id: z.string(), sourceItemId: z.string(), sourceQuote: z.string(), requirement: z.string(),
+  category: z.enum(["responsibility", "experience", "skill", "education", "industry", "collaboration", "result", "other"]),
+  priority: z.enum(["must", "preferred", "context"]), keywords: z.array(z.string()), interviewFocus: z.string(),
+  anchorStatus: z.enum(["validated", "needs-review"]),
+});
+
+const conciseText = z.string().max(500);
+const roleInferenceItemSchema = z.object({
+  topic: z.enum(["work-content", "work-focus", "business-line", "team-state", "business-scenario", "team-pain", "implicit-expectation", "reporting-line", "industry-experience"]),
+  level: z.enum(["explicit", "inferred", "unknown"]), conclusion: conciseText, evidence: z.array(conciseText).max(4),
+  confidence: z.enum(["high", "medium", "low"]), verificationQuestion: conciseText,
+});
+
+const clarificationNeedSchema = z.object({
+  id: z.string(), topic: conciseText, missingInformation: conciseText, impact: conciseText, suggestedInput: conciseText, verificationQuestion: conciseText,
+});
+
 const coreCompetencySchema = z.object({
   name: z.string(),
   importance: z.enum(["high", "medium", "low"]),
@@ -34,7 +63,39 @@ export const jdAnalysisSchema = z.object({
   keywords: z.array(z.string()),
   idealCandidate: z.string(),
   coreCompetencies: z.array(coreCompetencySchema),
+  sourceItems: z.array(jdSourceItemSchema).optional().default([]),
+  requirements: z.array(jobRequirementSchema).max(40).optional().default([]),
+  roleInference: z.object({ items: z.array(roleInferenceItemSchema) }).optional().default({ items: [] }),
+  clarificationNeeds: z.array(clarificationNeedSchema).optional().default([]),
 });
+
+const jdRequirementDraftSchema = jobRequirementSchema.omit({ id: true, anchorStatus: true });
+const sourceClassificationSchema = z.object({ sourceItemId: z.string(), classification: z.enum(["requirement", "background", "benefit", "irrelevant"]) });
+
+export function createDeepJDModelResultSchema(sourceItemIds: string[]) {
+  const allowed = new Set(sourceItemIds);
+  return z.object({
+    sourceClassifications: z.array(sourceClassificationSchema).max(80),
+    requirements: z.array(jdRequirementDraftSchema).max(40),
+    responsibilities: z.array(conciseText).max(12), hardRequirements: z.array(conciseText).max(12), implicitRequirements: z.array(conciseText).max(12),
+    keywords: z.array(z.string().max(80)).max(30), idealCandidate: z.string().max(1000), coreCompetencies: z.array(coreCompetencySchema).max(12),
+    roleInference: z.object({ items: z.array(roleInferenceItemSchema).max(12) }), clarificationNeeds: z.array(clarificationNeedSchema).max(12),
+  }).superRefine((value, context) => {
+    const requiredTopics = ["work-content", "work-focus", "business-line", "team-state", "business-scenario", "team-pain", "implicit-expectation", "reporting-line", "industry-experience"];
+    for (const topic of requiredTopics) if (!value.roleInference.items.some((item) => item.topic === topic)) context.addIssue({ code: "custom", path: ["roleInference", "items"], message: `缺少 ${topic} 推断边界` });
+    const returned = value.sourceClassifications.map((item) => item.sourceItemId);
+    if (new Set(returned).size !== returned.length) context.addIssue({ code: "custom", path: ["sourceClassifications"], message: "原始条目分类不得重复" });
+    for (const id of sourceItemIds) if (!returned.includes(id)) context.addIssue({ code: "custom", path: ["sourceClassifications"], message: `缺少原始条目 ${id} 的分类` });
+    for (const id of returned) if (!allowed.has(id)) context.addIssue({ code: "custom", path: ["sourceClassifications"], message: `不存在的原始条目 ${id}` });
+    for (const requirement of value.requirements) if (!allowed.has(requirement.sourceItemId)) context.addIssue({ code: "custom", path: ["requirements"], message: `要求引用了不存在的原始条目 ${requirement.sourceItemId}` });
+    for (const inference of value.roleInference.items) {
+      if (inference.level === "unknown" && inference.conclusion.trim() && !/信息不足|未知|无法判断/.test(inference.conclusion)) {
+        context.addIssue({ code: "custom", path: ["roleInference"], message: "信息不足项不得输出确定结论" });
+      }
+      if (inference.level !== "unknown" && inference.evidence.length === 0) context.addIssue({ code: "custom", path: ["roleInference"], message: "明示或推断结论必须提供依据" });
+    }
+  });
+}
 
 const dimensionScoreSchema = z.object({
   dimension: z.string(),
@@ -50,9 +111,14 @@ export const resumeDiagnosisSchema = z.object({
 });
 
 export const matchItemSchema = z.object({
+  requirementId: z.string().optional().default(""),
   jdRequirement: z.string(),
+  evidenceClaimIds: z.array(z.string()).optional().default([]),
+  resumeQuotes: z.array(z.string()).optional().default([]),
   resumeEvidence: z.string(),
+  matchRationale: z.string().optional().default(""),
   evidenceStrength: z.enum(["strong", "medium", "weak", "none"]),
+  missingEvidenceTypes: z.array(z.string()).optional().default([]),
   needsSupplement: z.boolean(),
   optimizationSuggestion: z.string(),
 });
@@ -61,6 +127,11 @@ export const followUpQuestionSchema = z.object({
   id: z.string(),
   question: z.string(),
   purpose: z.string(),
+  requirementId: z.string().optional().default(""),
+  thinkingPrompts: z.array(z.string()).optional().default([]),
+  answerFramework: z.array(z.string()).optional().default([]),
+  honestNoExperience: z.string().optional().default(""),
+  placeholderExample: z.string().optional().default(""),
   userAnswer: z.string(),
   generatedBullet: z.string(),
 });
@@ -131,9 +202,21 @@ export const finalResumeSchema = z.object({
 });
 
 const interviewQuestionSchema = z.object({
+  requirementId: z.string().optional().default(""),
   question: z.string(),
   suggestedAnswer: z.string(),
   evidenceNeeded: z.array(z.string()),
+});
+
+const requirementInterviewStrategySchema = z.object({
+  requirementId: z.string(), validationApproaches: z.array(z.string()), demonstrationPoints: z.array(z.string()),
+  answerStructure: z.array(z.string()), evidenceNeeded: z.array(z.string()), metricsNeeded: z.array(z.string()), exaggerationRisks: z.array(z.string()),
+});
+
+const reverseInterviewQuestionSchema = z.object({
+  id: z.string(), requirementId: z.string().nullable(), clarificationNeedId: z.string().nullable(),
+  topic: z.enum(["role-boundary", "business-goal", "team-state", "success-metric", "collaboration", "reporting-line"]),
+  question: z.string(), purpose: z.string(),
 });
 
 export const persistedInterviewPrepSchema = z.object({
@@ -142,6 +225,8 @@ export const persistedInterviewPrepSchema = z.object({
   possibleExaggerations: z.array(z.string()),
   dataToSupplement: z.array(z.string()),
   selfIntroduction: z.string(),
+  requirementStrategies: z.array(requirementInterviewStrategySchema).optional().default([]),
+  reverseQuestions: z.array(reverseInterviewQuestionSchema).optional().default([]),
 });
 
 export const interviewPrepSchema = persistedInterviewPrepSchema.extend({
@@ -159,7 +244,7 @@ export const persistedAnalysisResultSchema = z.object({
 });
 
 export const analysisResultSchema = persistedAnalysisResultSchema.extend({
-  matchItems: z.array(matchItemSchema).min(1).max(12),
+  matchItems: z.array(matchItemSchema).min(1).max(40),
   followUpQuestions: z.array(followUpQuestionSchema).max(10),
   optimizedItems: z.array(optimizedItemSchema).max(12),
   interviewPrep: interviewPrepSchema,
@@ -183,6 +268,25 @@ export const diagnosisMatchResultSchema = z.object({
   }
 });
 
+export function createDiagnosisMatchResultSchema(requirementIds: string[], allowedClaimIds: string[]) {
+  const requirementSet = new Set(requirementIds);
+  const claimSet = new Set(allowedClaimIds);
+  return z.object({
+    diagnosis: resumeDiagnosisSchema,
+    matchItems: z.array(matchItemSchema).max(40),
+    followUpQuestions: z.array(followUpQuestionSchema).max(10),
+  }).superRefine((result, context) => {
+    const returned = result.matchItems.map((item) => item.requirementId);
+    for (const id of requirementIds) if (!returned.includes(id)) context.addIssue({ code: "custom", path: ["matchItems"], message: `缺少岗位要求 ${id} 的匹配结果` });
+    for (const item of result.matchItems) {
+      if (!requirementSet.has(item.requirementId)) context.addIssue({ code: "custom", path: ["matchItems"], message: `不存在的岗位要求 ${item.requirementId}` });
+      for (const claimId of item.evidenceClaimIds) if (!claimSet.has(claimId)) context.addIssue({ code: "custom", path: ["matchItems"], message: `不存在或未提供的事实 ${claimId}` });
+    }
+    for (const question of result.followUpQuestions) if (!requirementSet.has(question.requirementId)) context.addIssue({ code: "custom", path: ["followUpQuestions"], message: `追问引用了不存在的岗位要求 ${question.requirementId}` });
+    if (result.matchItems.some((item) => item.needsSupplement) && result.followUpQuestions.length === 0) context.addIssue({ code: "custom", path: ["followUpQuestions"], message: "存在证据缺口时至少需要一个补证问题" });
+  });
+}
+
 export const optimizeResumeResultSchema = z.object({
   optimizedItems: z.array(optimizedItemSchema).max(12),
   finalResume: finalResumeSchema,
@@ -191,6 +295,21 @@ export const optimizeResumeResultSchema = z.object({
 export const interviewPrepResultSchema = z.object({
   interviewPrep: interviewPrepSchema,
 });
+
+export function createInterviewPrepResultSchema(requirementIds: string[], clarificationIds: string[]) {
+  const requirementSet = new Set(requirementIds);
+  const clarificationSet = new Set(clarificationIds);
+  return z.object({ interviewPrep: persistedInterviewPrepSchema }).superRefine((result, context) => {
+    if (result.interviewPrep.likelyQuestions.length < 5 || result.interviewPrep.likelyQuestions.length > 10) context.addIssue({ code: "custom", path: ["interviewPrep", "likelyQuestions"], message: "面试准备必须包含 5-10 题" });
+    const strategyIds = result.interviewPrep.requirementStrategies.map((item) => item.requirementId);
+    for (const id of requirementIds) if (!strategyIds.includes(id)) context.addIssue({ code: "custom", path: ["interviewPrep", "requirementStrategies"], message: `缺少岗位要求 ${id} 的面试策略` });
+    for (const item of result.interviewPrep.requirementStrategies) if (!requirementSet.has(item.requirementId)) context.addIssue({ code: "custom", path: ["interviewPrep"], message: `不存在的岗位要求 ${item.requirementId}` });
+    for (const item of result.interviewPrep.reverseQuestions) {
+      if (item.requirementId && !requirementSet.has(item.requirementId)) context.addIssue({ code: "custom", path: ["interviewPrep", "reverseQuestions"], message: `反向提问引用了不存在的岗位要求 ${item.requirementId}` });
+      if (item.clarificationNeedId && !clarificationSet.has(item.clarificationNeedId)) context.addIssue({ code: "custom", path: ["interviewPrep", "reverseQuestions"], message: `反向提问引用了不存在的未知项 ${item.clarificationNeedId}` });
+    }
+  });
+}
 
 export const optimizedItemsResultSchema = z.object({
   optimizedItems: z.array(optimizedItemSchema).max(12),
@@ -221,6 +340,27 @@ export const analyzeRequestSchema = z.object({
     "请填写目标岗位、JD 和原始简历"
   ),
   optimizeStyle: optimizeStyleSchema.optional().default("ai-product"),
+  jobTargetContext: jobTargetContextSchema.optional().default({ companyName: "", notes: "", companySnapshotId: null }),
+  careerClaims: z.array(z.object({
+    id: z.string(), experienceId: z.string(), experienceTitle: z.string(), organization: z.string(), role: z.string(), text: z.string(),
+    kind: z.enum(["responsibility", "action", "decision", "result", "skill-practice"]),
+    contribution: z.enum(["assisted", "independent", "led"]), complexity: z.enum(["routine", "complex"]), hasTradeoff: z.boolean(), hasMethodReuse: z.boolean(),
+    capabilities: z.array(z.object({ id: z.string(), name: z.string(), aliases: z.array(z.string()) })),
+    metrics: z.array(z.object({ id: z.string(), value: z.string(), unit: z.string(), baseline: z.string(), method: z.string(), period: z.string(), sourceNote: z.string() })),
+  })).optional().default([]),
+});
+
+export const followUpGuidanceRequestSchema = z.object({
+  targetRole: z.string(), requirementId: z.string(), requirement: z.string(), question: nonEmptyText,
+  purpose: z.string(), thinkingPrompts: z.array(z.string()), answerFramework: z.array(z.string()),
+});
+
+export const followUpGuidanceResultSchema = z.object({
+  example: z.string().min(10),
+}).superRefine((value, context) => {
+  if (!/【你的项目】|【你的经历】/.test(value.example) || !/【指标口径】|【真实结果】/.test(value.example)) {
+    context.addIssue({ code: "custom", path: ["example"], message: "示范必须包含项目/经历和指标/结果占位符" });
+  }
 });
 
 export const optimizeRequestSchema = z.object({

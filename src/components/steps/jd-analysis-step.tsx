@@ -28,6 +28,11 @@ export function JDAnalysisStep() {
   }
 
   const { jdAnalysis } = analysisResult;
+  const requirements = jdAnalysis.requirements ?? [];
+  const sourceItems = jdAnalysis.sourceItems ?? [];
+  const roleInferences = jdAnalysis.roleInference?.items ?? [];
+  const clarificationNeeds = jdAnalysis.clarificationNeeds ?? [];
+  const levelLabel = { explicit: "原文明示", inferred: "有依据推断", unknown: "信息不足" } as const;
 
   return (
     <div>
@@ -35,6 +40,48 @@ export function JDAnalysisStep() {
         title="JD 解析"
         description="从目标岗位描述中提取职责、要求、关键词与理想候选人画像"
       />
+
+      {clarificationNeeds.length > 0 && (
+        <div className="mb-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-medium">岗位背景仍有 {clarificationNeeds.length} 个未知项</p>
+          <p className="mt-1 text-xs">补充已知背景后需要重新分析；也可以把验证问题留到面试反向提问。</p>
+          <Button className="mt-3" variant="outline" size="sm" onClick={() => setCurrentStep("input")}>返回材料页补充</Button>
+        </div>
+      )}
+
+      <Card className="mb-6">
+        <CardHeader className="pb-3"><CardTitle className="text-sm">原子岗位要求（{requirements.length}/40）</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          {requirements.map((requirement) => (
+            <div key={requirement.id} className="rounded-md border p-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs"><span className="font-mono text-neutral-500">{requirement.id}</span><span className="rounded bg-neutral-100 px-2 py-0.5">{requirement.priority}</span><span className={requirement.anchorStatus === "validated" ? "text-emerald-700" : "text-amber-700"}>{requirement.anchorStatus === "validated" ? "引用已校验" : "引用待复核"}</span></div>
+              <p className="mt-2 text-sm font-medium">{requirement.requirement}</p>
+              <blockquote className="mt-2 border-l-2 pl-3 text-xs text-neutral-500">原文：{requirement.sourceQuote}</blockquote>
+              <p className="mt-2 text-xs text-neutral-600">面试验证：{requirement.interviewFocus}</p>
+            </div>
+          ))}
+          {!requirements.length && <p className="text-sm text-amber-700">这是旧版分析，尚无岗位需求地图。请返回材料页重新分析。</p>}
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader className="pb-3"><CardTitle className="text-sm">岗位与团队推断边界</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          {roleInferences.map((item, index) => (
+            <div key={`${item.topic}-${index}`} className="rounded-md border p-3">
+              <div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">{item.topic}</span><span className="text-xs text-neutral-500">{levelLabel[item.level]} · {item.confidence}</span></div>
+              <p className="mt-2 text-sm">{item.conclusion}</p>
+              {item.evidence.length > 0 && <p className="mt-2 text-xs text-neutral-500">依据：{item.evidence.join("；")}</p>}
+              <p className="mt-2 text-xs text-blue-700">验证问题：{item.verificationQuestion}</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader className="pb-3"><CardTitle className="text-sm">JD 原始条目覆盖（{sourceItems.length} 条）</CardTitle></CardHeader>
+        <CardContent className="space-y-2">{sourceItems.map((item) => <div key={item.id} className="flex gap-3 rounded bg-neutral-50 p-2 text-xs"><span className="shrink-0 font-mono text-neutral-400">{item.id}</span><span className="shrink-0 text-blue-700">{item.classification}</span><span>{item.text}</span></div>)}</CardContent>
+      </Card>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2">
         <Card>

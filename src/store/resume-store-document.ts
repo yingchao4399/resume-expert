@@ -31,12 +31,13 @@ export function suggestedTitle(input: UserInput): string {
 export function createEmptyDocument(id = createId()): ResumeDocument {
   const timestamp = nowISO();
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     id,
     title: "未命名简历",
     createdAt: timestamp,
     updatedAt: timestamp,
     userInput: { ...defaultUserInput },
+    jobTargetContext: { companyName: "", notes: "", companySnapshotId: null },
     currentStep: "input",
     analysisResult: null,
     materialRevision: 0,
@@ -53,6 +54,7 @@ export function createEmptyDocument(id = createId()): ResumeDocument {
 export function workingStateFromDocument(document: ResumeDocument) {
   return {
     userInput: document.userInput,
+    jobTargetContext: document.jobTargetContext,
     currentStep: document.currentStep,
     analysisResult: document.analysisResult,
     materialRevision: document.materialRevision,

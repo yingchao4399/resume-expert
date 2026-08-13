@@ -1,9 +1,12 @@
 import { delay } from "@/lib/utils";
 import type {
   AnalysisResult,
+  JobTargetContext,
   OptimizeStyle,
   UserInput,
 } from "@/types/resume";
+import type { CareerAnalysisClaim } from "@/lib/career/career-context";
+import { assembleRequirements, cleanRequirementText, rankCareerClaimsForRequirements, splitJDSourceItems } from "@/lib/jd/deep-analysis";
 import { EXAMPLE_USER_INPUT } from "@/store/resume-store-example";
 
 const STYLE_LABELS: Record<OptimizeStyle, string> = {
@@ -13,7 +16,8 @@ const STYLE_LABELS: Record<OptimizeStyle, string> = {
   "tob-saas": "更偏 ToB SaaS",
 };
 
-function buildJDAnalysis(): AnalysisResult["jdAnalysis"] {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _buildJDAnalysis() {
   return {
     responsibilities: [
       "负责 AI 功能的产品规划与迭代（智能问答、文档理解、工作流自动化）",
@@ -87,7 +91,8 @@ function buildJDAnalysis(): AnalysisResult["jdAnalysis"] {
   };
 }
 
-function buildDiagnosis(): AnalysisResult["diagnosis"] {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _buildDiagnosis(): AnalysisResult["diagnosis"] {
   return {
     overallScore: 58,
     dimensionScores: [
@@ -134,7 +139,8 @@ function buildDiagnosis(): AnalysisResult["diagnosis"] {
   };
 }
 
-function buildMatchItems(): AnalysisResult["matchItems"] {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _buildMatchItems() {
   return [
     {
       jdRequirement: "3年以上产品经理经验",
@@ -195,7 +201,8 @@ function buildMatchItems(): AnalysisResult["matchItems"] {
   ];
 }
 
-function buildFollowUpQuestions(): AnalysisResult["followUpQuestions"] {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _buildFollowUpQuestions() {
   return [
     {
       id: "fu-1",
@@ -415,7 +422,8 @@ function buildConservativeResume(input: UserInput): AnalysisResult["finalResume"
   };
 }
 
-function buildInterviewPrep(): AnalysisResult["interviewPrep"] {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _buildInterviewPrep() {
   return {
     likelyQuestions: [
       {
@@ -501,22 +509,93 @@ function buildInterviewPrep(): AnalysisResult["interviewPrep"] {
   };
 }
 
+function buildDeepMockAnalysis(input: UserInput, context: JobTargetContext, careerClaims: CareerAnalysisClaim[]): AnalysisResult {
+  const sourceItems = splitJDSourceItems(input.jobDescription);
+  const requirements = assembleRequirements(sourceItems, sourceItems.filter((item) => item.classification === "requirement").slice(0, 40).map((source) => ({
+    sourceItemId: source.id,
+    sourceQuote: source.text,
+    requirement: cleanRequirementText(source.text),
+    category: "other" as const,
+    priority: "must" as const,
+    keywords: uniqueText(source.text.split(/[\s，。、；;()（）]/)).slice(0, 6),
+    interviewFocus: "核对候选人是否有对应的真实职责、行动和结果证据",
+  })));
+  const selectedClaims = rankCareerClaimsForRequirements(careerClaims, requirements, input, 12);
+  const matchItems = requirements.map((requirement) => {
+    const resumeQuote = input.originalResume.includes(requirement.requirement) ? requirement.requirement : "";
+    const claim = selectedClaims.find((candidate) => requirement.keywords.some((keyword) => candidate.text.toLocaleLowerCase().includes(keyword.toLocaleLowerCase())));
+    const covered = Boolean(resumeQuote || claim);
+    return {
+      requirementId: requirement.id,
+      jdRequirement: requirement.requirement,
+      evidenceClaimIds: claim ? [claim.id] : [],
+      resumeQuotes: resumeQuote ? [resumeQuote] : [],
+      resumeEvidence: claim?.text || resumeQuote || "原始材料中未找到可直接核验的对应表述",
+      matchRationale: covered ? "仅依据输入中可直接找到的文字或已确认事实匹配" : "没有找到明确相关的已确认事实或原简历引用",
+      evidenceStrength: covered ? "medium" as const : "none" as const,
+      missingEvidenceTypes: covered ? ["指标口径或结果验证"] : ["真实场景", "个人行动", "可核验结果"],
+      needsSupplement: !covered,
+      optimizationSuggestion: covered ? "核对事实和指标口径后保留" : "补充真实案例、职责边界和结果证据",
+    };
+  });
+  const missing = matchItems.filter((item) => item.needsSupplement).slice(0, 10);
+  const clarificationNeeds = [
+    { id: "clarify-team", topic: "团队现状", missingInformation: "JD 未明确团队配置与协作边界", impact: "会影响经历匹配和面试准备的精度", suggestedInput: context.notes || "补充招聘沟通中获知的团队背景", verificationQuestion: "团队当前配置、最急需补齐的能力和协作对象是什么？" },
+    { id: "clarify-reporting", topic: "汇报关系", missingInformation: "JD 未明确汇报对象", impact: "无法判断岗位决策边界", suggestedInput: "补充汇报对象与职责范围", verificationQuestion: "该岗位向谁汇报，独立决策范围到哪里？" },
+  ];
+  const inferenceTopics = ["work-focus", "business-line", "team-state", "business-scenario", "team-pain", "implicit-expectation", "reporting-line", "industry-experience"] as const;
+  return {
+    jdAnalysis: {
+      responsibilities: requirements.map((item) => item.requirement),
+      hardRequirements: requirements.map((item) => item.requirement),
+      implicitRequirements: [],
+      keywords: uniqueText(requirements.flatMap((item) => item.keywords)).slice(0, 20),
+      idealCandidate: `能够提供与“${input.targetRole}”要求对应的可核验经历。`,
+      coreCompetencies: uniqueText([input.targetRole, ...requirements.flatMap((item) => item.keywords)]).slice(0, 8).map((name) => ({ name, importance: "medium", description: "来自 JD 原文，仍需真实经历验证" })),
+      sourceItems,
+      requirements,
+      roleInference: { items: [
+        { topic: "work-content", level: "explicit", conclusion: requirements.slice(0, 4).map((item) => item.requirement).join("；"), evidence: sourceItems.filter((item) => item.classification === "requirement").slice(0, 4).map((item) => item.text), confidence: "high", verificationQuestion: "这些职责在实际工作中的时间占比如何？" },
+        ...inferenceTopics.map((topic) => ({ topic, level: "unknown" as const, conclusion: "信息不足", evidence: [], confidence: "low" as const, verificationQuestion: `请向招聘方确认 ${topic} 的具体情况。` })),
+      ] },
+      clarificationNeeds,
+    },
+    diagnosis: { overallScore: 0, dimensionScores: [], mainIssues: ["Mock 只验证流程和明确文本引用，不替代真实模型诊断。"], prioritySuggestions: missing.slice(0, 5).map((item) => `为“${item.jdRequirement}”补充可核验事实。`) },
+    matchItems,
+    followUpQuestions: missing.map((item, index) => ({
+      id: `fu-${index + 1}`, requirementId: item.requirementId,
+      question: `请提供能证明“${item.jdRequirement}”的真实经历；没有也可以明确说明。`, purpose: `补充“${item.jdRequirement}”证据`,
+      thinkingPrompts: ["当时的业务场景和限制是什么？", "你本人具体做了什么？", "结果如何验证？"],
+      answerFramework: ["场景", "个人职责", "关键行动", "结果与口径"],
+      honestNoExperience: "如实说明尚无直接经历，再补充最相近的可迁移经历和学习计划。", placeholderExample: "", userAnswer: "", generatedBullet: "",
+    })),
+    optimizedItems: [],
+    finalResume: buildConservativeResume(input),
+    interviewPrep: {
+      likelyQuestions: requirements.slice(0, 10).map((item) => ({ requirementId: item.id, question: `请用一个真实案例说明你如何满足：${item.requirement}`, suggestedAnswer: "使用场景—任务—行动—结果结构，只引用真实材料。", evidenceNeeded: ["已确认事实", "指标口径（如有）"] })),
+      evidenceToPrepare: missing.map((item) => item.jdRequirement), possibleExaggerations: ["不要把团队成果全部归为个人贡献"], dataToSupplement: missing.map((item) => item.jdRequirement), selfIntroduction: `我正在应聘${input.targetRole}。请基于原始简历中的真实经历完善这段自我介绍。`,
+      requirementStrategies: requirements.map((item) => ({ requirementId: item.id, validationApproaches: ["要求说明真实案例并追问个人职责边界"], demonstrationPoints: ["场景、个人行动、取舍和结果"], answerStructure: ["背景", "任务", "行动", "结果", "复盘"], evidenceNeeded: ["原始记录或已确认事实"], metricsNeeded: ["数字口径、样本和周期"], exaggerationRisks: ["不要扩大个人职责或补造指标"] })),
+      reverseQuestions: ([
+        ["role-boundary", "岗位的核心职责边界和前三个月优先任务是什么？", "确认岗位边界", null],
+        ["business-goal", "当前业务最希望这个岗位解决的目标是什么？", "确认业务目标", null],
+        ["team-state", "团队目前的配置和最需要补齐的能力是什么？", "确认团队现状", "clarify-team"],
+        ["success-metric", "试用期和一年期的成功指标分别是什么？", "确认成功指标", null],
+        ["collaboration", "该岗位最主要的上下游协作方有哪些？", "确认协作关系", null],
+        ["reporting-line", "该岗位的汇报对象和决策授权范围是什么？", "确认汇报关系", "clarify-reporting"],
+      ] as const).map(([topic, question, purpose, clarificationNeedId], index) => ({ id: `reverse-${index + 1}`, requirementId: null, clarificationNeedId, topic, question, purpose })),
+    },
+  };
+}
+
 export async function runMockResumeAnalysis(
   input: UserInput,
-  optimizeStyle: OptimizeStyle = "ai-product"
+  optimizeStyle: OptimizeStyle = "ai-product",
+  jobTargetContext: JobTargetContext = { companyName: "", notes: "", companySnapshotId: null },
+  careerClaims: CareerAnalysisClaim[] = [],
 ): Promise<AnalysisResult> {
   await delay(1800);
-
-  if (input.originalResume !== EXAMPLE_USER_INPUT.originalResume) return buildConservativeAnalysis(input);
-  return {
-    jdAnalysis: buildJDAnalysis(),
-    diagnosis: buildDiagnosis(),
-    matchItems: buildMatchItems(),
-    followUpQuestions: buildFollowUpQuestions(),
-    optimizedItems: buildOptimizedItems(optimizeStyle),
-    finalResume: buildFinalResume(input),
-    interviewPrep: buildInterviewPrep(),
-  };
+  void optimizeStyle;
+  return buildDeepMockAnalysis(input, jobTargetContext, careerClaims);
 }
 
 function uniqueText(values: string[]): string[] {
@@ -527,7 +606,8 @@ function jobRequirementLines(input: UserInput): string[] {
   return uniqueText(input.jobDescription.split(/\r?\n|[。；;]/).map((line) => line.replace(/^\s*[\d一二三四五六七八九十]+[.、）)]?\s*/, ""))).slice(0, 12);
 }
 
-function buildConservativeAnalysis(input: UserInput): AnalysisResult {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _buildConservativeAnalysis(input: UserInput) {
   const requirements = jobRequirementLines(input);
   const matchItems = (requirements.length ? requirements : [input.targetRole]).map((requirement) => ({
     jdRequirement: requirement,
