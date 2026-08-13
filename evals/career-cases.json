@@ -1,0 +1,8 @@
+[
+  {"id":"career-01","background":"我独立完成需求梳理和原型设计","expectedQuotes":["我独立完成需求梳理和原型设计"],"forbidden":["提升40%","百万用户"]},
+  {"id":"career-02","background":"参与库存盘点项目，负责访谈仓库人员","expectedQuotes":["参与库存盘点项目，负责访谈仓库人员"],"forbidden":["主导上线","降低50%"]},
+  {"id":"career-03","background":"完成课程项目，没有真实用户和上线结果","expectedQuotes":["完成课程项目，没有真实用户和上线结果"],"forbidden":["商业落地","客户采用"]},
+  {"id":"career-04","background":"用TypeScript开发本地简历工具","expectedQuotes":["用TypeScript开发本地简历工具"],"forbidden":["React专家","十万用户"]},
+  {"id":"career-05","background":"协助整理活动照片和用户反馈","expectedQuotes":["协助整理活动照片和用户反馈"],"forbidden":["负责增长策略","转化率提升"]},
+  {"id":"career-06","background":"选择保守规则避免AI编造事实","expectedQuotes":["选择保守规则避免AI编造事实"],"forbidden":["事实准确率100%"]}
+]

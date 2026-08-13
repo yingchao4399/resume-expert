@@ -1,4 +1,5 @@
 export const RELEASE_RECORDS = [
+  { version: "1.8.0", goal: "个人经历事实与能力底座", modules: ["项目化经历库", "原子事实与指标", "能力等级", "自适应访谈", "V4 备份"], tests: "local verification in progress", status: "developing" },
   { version: "1.7.3", goal: "可信度与数据一致性修复", modules: ["材料修订锁", "证据候选确认", "安全 Mock", "备份恢复"], tests: "75 Vitest / 23 Playwright / CI success", commit: "d4d0a07", status: "released" },
   { version: "1.7.2", goal: "受约束的可视化工作流调整", modules: ["React Flow 编辑器", "结构护栏", "测试发布", "版本比较与回滚"], tests: "63 Vitest / 21 Playwright / local success", commit: "f83bb1a", status: "released" },
   { version: "1.7.1", goal: "Flowise 本机实验服务与项目证据草稿", modules: ["安全状态", "新手项目梳理", "DirectLLM 对比", "证据确认门禁"], tests: "54 Vitest / 20 Playwright / CI success", commit: "302ee57", status: "released" },

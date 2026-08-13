@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const webServerCommand = process.env.PLAYWRIGHT_WEB_SERVER_COMMAND ?? "npm run dev -- --hostname 127.0.0.1 --port 3100";
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
@@ -10,7 +12,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: "npm run dev -- --hostname 127.0.0.1 --port 3100",
+    command: webServerCommand,
     url: "http://127.0.0.1:3100",
     reuseExistingServer: true,
     timeout: 120_000,

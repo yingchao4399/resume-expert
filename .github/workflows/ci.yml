@@ -25,6 +25,7 @@ jobs:
       - run: npm test
       - run: npm run eval:validate
       - run: npm run eval:mock
+      - run: npm run eval:career
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e

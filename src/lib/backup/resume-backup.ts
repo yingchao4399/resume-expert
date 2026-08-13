@@ -10,6 +10,10 @@ import {
 } from "@/lib/ai/schemas";
 import type { CareerEvidence, JobApplication, ResumeDocument } from "@/types/resume";
 import type { InterviewReviewRecord } from "@/types/interview";
+import type { CareerDomainSnapshot } from "@/types/career-domain";
+import { careerDomainSnapshotSchema } from "@/lib/career/schemas";
+import { readCareerDomain } from "@/lib/career/career-db";
+import { mapResumeBullets } from "@/lib/evidence/resume-evidence";
 import { sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
 
 const importMetadataSchema = z.object({
@@ -48,7 +52,7 @@ const layoutConfigSchema = z.object({
 });
 
 const documentSchema = z.object({
-  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7)]),
   id: z.string().min(1),
   title: z.string().min(1),
   createdAt: z.string(),
@@ -103,31 +107,34 @@ const interviewReviewSchema = z.object({
 });
 
 const backupSchema = z.object({
-  backupVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  backupVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
   exportedAt: z.string(),
   documents: z.array(documentSchema).min(1),
   careerEvidence: z.array(careerEvidenceSchema).optional().default([]),
   jobApplications: z.array(jobApplicationSchema).optional().default([]),
   interviewReviews: z.array(interviewReviewSchema).optional().default([]),
+  careerDomain: careerDomainSnapshotSchema.optional(),
 });
 
 export interface ResumeBackup {
-  backupVersion: 3;
+  backupVersion: 4;
   exportedAt: string;
   documents: ResumeDocument[];
   careerEvidence: CareerEvidence[];
   jobApplications: JobApplication[];
   interviewReviews: InterviewReviewRecord[];
+  careerDomain: CareerDomainSnapshot;
 }
 
 export function createResumeBackup(documents: ResumeDocument[], careerEvidence: CareerEvidence[] = [], jobApplications: JobApplication[] = [], interviewReviews: InterviewReviewRecord[] = []): ResumeBackup {
   return {
-    backupVersion: 3,
+    backupVersion: 4,
     exportedAt: new Date().toISOString(),
     documents: structuredClone(documents),
     careerEvidence: structuredClone(careerEvidence),
     jobApplications: structuredClone(jobApplications),
     interviewReviews: structuredClone(interviewReviews),
+    careerDomain: { schemaVersion: 1, experiences: [], claims: [], metrics: [], capabilities: [], capabilityLinks: [], interviewSessions: [], quarantined: [] },
   };
 }
 
@@ -139,7 +146,7 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
     throw new Error(`备份文件结构无效（${path}）：${issue?.message ?? "未知错误"}`);
   }
   return {
-    backupVersion: 3,
+    backupVersion: 4,
     exportedAt: parsed.data.exportedAt,
     documents: parsed.data.documents.map((document) => {
       const finalResumeStatus = document.finalResumeStatus ??
@@ -152,7 +159,7 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
       void _legacyStatus;
       return {
         ...currentDocument,
-        schemaVersion: 6,
+        schemaVersion: 7,
         materialRevision: document.materialRevision ?? 0,
         analysisRevision: document.analysisResult
           ? document.analysisRevision ?? document.materialRevision ?? 0
@@ -166,6 +173,7 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
     careerEvidence: parsed.data.careerEvidence.map((item) => ({ ...item, sourceReference: item.sourceReference ?? null })),
     jobApplications: parsed.data.jobApplications,
     interviewReviews: parsed.data.interviewReviews,
+    careerDomain: parsed.data.careerDomain ?? { schemaVersion: 1, experiences: [], claims: [], metrics: [], capabilities: [], capabilityLinks: [], interviewSessions: [], quarantined: [] },
   };
 }
 
@@ -197,4 +205,70 @@ export function downloadResumeBackup(
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function createResumeBackupV4(
+  documents: ResumeDocument[], careerEvidence: CareerEvidence[] = [], jobApplications: JobApplication[] = [],
+  interviewReviews: InterviewReviewRecord[] = [], scope: "all" | "current" = "all"
+): Promise<ResumeBackup> {
+  const domain = await readCareerDomain();
+  const careerDomain = scope === "current" ? selectCareerClosure(documents, domain) : domain;
+  return { ...createResumeBackup(documents, careerEvidence, jobApplications, interviewReviews), careerDomain };
+}
+
+export async function downloadResumeBackupV4(
+  documents: ResumeDocument[], careerEvidence: CareerEvidence[] = [], jobApplications: JobApplication[] = [],
+  interviewReviews: InterviewReviewRecord[] = [], fileName = "resume-expert-backup.json", scope: "all" | "current" = "all"
+): Promise<void> {
+  const backup = await createResumeBackupV4(documents, careerEvidence, jobApplications, interviewReviews, scope);
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob); const anchor = document.createElement("a");
+  anchor.href = url; anchor.download = fileName; document.body.appendChild(anchor); anchor.click(); anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function selectCareerClosure(documents: ResumeDocument[], domain: CareerDomainSnapshot): CareerDomainSnapshot {
+  const referencedClaims = new Set<string>();
+  for (const document of documents) {
+    const resume = document.analysisResult?.finalResume;
+    if (!resume) continue;
+    for (const section of [...resume.workExperience, ...resume.projectExperience]) for (const bullet of section.bullets) {
+      if (typeof bullet !== "string") for (const link of bullet.evidenceLinks) referencedClaims.add(link.evidenceId);
+    }
+  }
+  for (const claim of domain.claims) if (claim.sourceReference?.referenceId.includes(documents[0]?.id ?? "__none__")) referencedClaims.add(claim.id);
+  const claims = domain.claims.filter((item) => referencedClaims.has(item.id));
+  const experienceIds = new Set(claims.map((item) => item.experienceId));
+  const capabilityLinks = domain.capabilityLinks.filter((item) => referencedClaims.has(item.claimId));
+  const capabilityIds = new Set(capabilityLinks.map((item) => item.capabilityId));
+  return {
+    schemaVersion: 1, experiences: domain.experiences.filter((item) => experienceIds.has(item.id)), claims,
+    metrics: domain.metrics.filter((item) => referencedClaims.has(item.claimId)), capabilities: domain.capabilities.filter((item) => capabilityIds.has(item.id)),
+    capabilityLinks, interviewSessions: domain.interviewSessions.filter((item) => !item.experienceId || experienceIds.has(item.experienceId)), quarantined: [],
+  };
+}
+
+export function remapCareerDomainForMerge(domain: CareerDomainSnapshot): { domain: CareerDomainSnapshot; claimIdMap: Map<string, string> } {
+  const map = (prefix: string, values: Array<{ id: string }>) => new Map(values.map((item) => [item.id, `${prefix}-${crypto.randomUUID()}`]));
+  const experienceIds = map("experience", domain.experiences); const claimIds = map("claim", domain.claims);
+  const capabilityIds = map("capability", domain.capabilities); const sessionIds = map("interview", domain.interviewSessions);
+  return { claimIdMap: claimIds, domain: {
+    schemaVersion: 1,
+    experiences: domain.experiences.map((item) => ({ ...item, id: experienceIds.get(item.id)! })),
+    claims: domain.claims.map((item) => ({ ...item, id: claimIds.get(item.id)!, experienceId: experienceIds.get(item.experienceId) ?? item.experienceId })),
+    metrics: domain.metrics.map((item) => ({ ...item, id: `metric-${crypto.randomUUID()}`, claimId: claimIds.get(item.claimId) ?? item.claimId })),
+    capabilities: domain.capabilities.map((item) => ({ ...item, id: capabilityIds.get(item.id)! })),
+    capabilityLinks: domain.capabilityLinks.map((item) => ({ ...item, id: `capability-link-${crypto.randomUUID()}`, capabilityId: capabilityIds.get(item.capabilityId) ?? item.capabilityId, claimId: claimIds.get(item.claimId) ?? item.claimId })),
+    interviewSessions: domain.interviewSessions.map((item) => ({ ...item, id: sessionIds.get(item.id)!, experienceId: item.experienceId ? experienceIds.get(item.experienceId) ?? item.experienceId : null })),
+    quarantined: domain.quarantined,
+  } };
+}
+
+export function remapDocumentsClaimIds(documents: ResumeDocument[], claimIdMap: Map<string, string>): ResumeDocument[] {
+  return documents.map((document) => document.analysisResult ? {
+    ...document, analysisResult: { ...document.analysisResult, finalResume: mapResumeBullets(document.analysisResult.finalResume, (bullet) => {
+      const evidenceLinks = bullet.evidenceLinks.map((link) => ({ ...link, evidenceId: claimIdMap.get(link.evidenceId) ?? link.evidenceId }));
+      return { ...bullet, evidenceLinks, evidenceIds: evidenceLinks.map((link) => link.evidenceId) };
+    }) },
+  } : document);
 }

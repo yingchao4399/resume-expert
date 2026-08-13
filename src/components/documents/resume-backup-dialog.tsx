@@ -11,10 +11,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  downloadResumeBackup,
+  downloadResumeBackupV4,
   readResumeBackup,
   type ResumeBackup,
 } from "@/lib/backup/resume-backup";
+import { prepareCareerBackupImport } from "@/lib/career/backup-import";
 import { useResumeStore } from "@/store/resume-store";
 
 interface ResumeBackupDialogProps {
@@ -42,11 +43,15 @@ export function ResumeBackupDialog({ open, onOpenChange }: ResumeBackupDialogPro
     }
   };
 
-  const finishImport = (mode: "merge" | "replace") => {
+  const finishImport = async (mode: "merge" | "replace") => {
     if (!pending) return;
-    importDocuments(pending.documents, mode, pending.careerEvidence, pending.jobApplications, pending.interviewReviews);
-    setPending(null);
-    onOpenChange(false);
+    setError(null);
+    try {
+      const prepared = await prepareCareerBackupImport(pending, mode);
+      try { importDocuments(prepared.documents, mode, prepared.careerEvidence, pending.jobApplications, pending.interviewReviews, true); }
+      catch (next) { await prepared.rollback(); throw next; }
+      setPending(null); onOpenChange(false);
+    } catch (next) { setError(next instanceof Error ? next.message : "备份导入失败，已恢复导入前数据"); }
   };
 
   return (
@@ -60,10 +65,10 @@ export function ResumeBackupDialog({ open, onOpenChange }: ResumeBackupDialogPro
         </DialogHeader>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <Button variant="outline" disabled={!active} onClick={() => active && downloadResumeBackup([active], careerEvidence.filter((item) => item.sourceDocumentId === null || item.sourceDocumentId === active.id), jobApplications.filter((item) => item.resumeDocumentId === active.id), interviewReviews.filter((item) => item.resumeDocumentId === active.id), "resume-expert-current.json")}>
+          <Button variant="outline" disabled={!active} onClick={() => active && void downloadResumeBackupV4([active], careerEvidence.filter((item) => item.sourceDocumentId === null || item.sourceDocumentId === active.id), jobApplications.filter((item) => item.resumeDocumentId === active.id), interviewReviews.filter((item) => item.resumeDocumentId === active.id), "resume-expert-current.json", "current")}>
             <Download className="h-4 w-4" /> 导出当前版本
           </Button>
-          <Button variant="outline" onClick={() => downloadResumeBackup(documents, careerEvidence, jobApplications, interviewReviews)}>
+          <Button variant="outline" onClick={() => void downloadResumeBackupV4(documents, careerEvidence, jobApplications, interviewReviews)}>
             <FileJson className="h-4 w-4" /> 导出全部版本
           </Button>
         </div>
@@ -83,8 +88,8 @@ export function ResumeBackupDialog({ open, onOpenChange }: ResumeBackupDialogPro
           <div className="space-y-3 rounded-md border bg-neutral-50 p-3 text-sm">
             <p>已验证 {pending.documents.length} 份简历、{pending.careerEvidence.length} 条证据、{pending.jobApplications.length} 条投递和 {pending.interviewReviews.length} 条复盘，导出时间：{new Date(pending.exportedAt).toLocaleString("zh-CN")}</p>
             <div className="flex flex-wrap justify-end gap-2">
-              <Button variant="outline" onClick={() => finishImport("merge")}>合并为副本</Button>
-              <Button variant="destructive" onClick={() => finishImport("replace")}>替换当前文档库</Button>
+              <Button variant="outline" onClick={() => void finishImport("merge")}>合并为副本</Button>
+              <Button variant="destructive" onClick={() => void finishImport("replace")}>替换当前文档库</Button>
             </div>
           </div>
         )}

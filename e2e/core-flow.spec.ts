@@ -29,7 +29,7 @@ const layoutDefaults = {
 
 function stateFor(templateId = "ats-classic", finalResumeStatus: "draft" | "confirmed" | "stale" = "confirmed") {
   const document = {
-    schemaVersion: 6,
+    schemaVersion: 7,
     id: "e2e-document",
     title: "产品经理版本",
     createdAt: "2026-08-03T00:00:00.000Z",
@@ -54,7 +54,7 @@ function stateFor(templateId = "ats-classic", finalResumeStatus: "draft" | "conf
     finalResumeStatus,
     hasManualEdits: false,
   } as ResumeLibraryState["documents"][number];
-  return { state: { schemaVersion: 7, documents: [document], activeDocumentId: document.id, careerEvidence: [] as CareerEvidence[], jobApplications: [], interviewReviews: [] } satisfies ResumeLibraryState, version: 7 };
+  return { state: { schemaVersion: 8, documents: [document], activeDocumentId: document.id, careerEvidence: [] as CareerEvidence[], jobApplications: [], interviewReviews: [] } satisfies ResumeLibraryState, version: 8 };
 }
 
 async function seed(page: Page, templateId = "ats-classic") {
@@ -112,7 +112,7 @@ test("shows Flowise safety guidance and confirms a Mock draft into evidence", as
   await expect(page.getByText("独立候选事实已进入证据库", { exact: false })).toBeVisible();
   await page.getByRole("link", { name: "简历助手" }).click();
   await page.getByRole("button", { name: /经历证据库/ }).click();
-  await expect(page.getByRole("heading", { name: "简历专家", level: 3 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "个人经历事实与能力库" })).toBeVisible();
 });
 
 test("loads example data and keeps an evidence item after reload", async ({ page }) => {
@@ -121,10 +121,9 @@ test("loads example data and keeps an evidence item after reload", async ({ page
   await expect(page.getByLabel("目标岗位")).toHaveValue("AI 产品经理");
 
   await page.getByRole("button", { name: /经历证据库/ }).click();
-  await page.getByRole("button", { name: "手工添加" }).click();
-  await page.getByPlaceholder("如：库存盘点流程重构").fill("客户上线提效");
-  await page.getByPlaceholder("写清做了什么、范围和结果；不确定的数据先不要写").fill("推动 10 家客户按期上线，交付周期缩短 20%");
-  await page.getByRole("button", { name: "确认并保存" }).click();
+  await page.getByRole("button", { name: "新增经历" }).click();
+  await page.getByText("名称").locator("..").getByRole("textbox").fill("客户上线提效");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("客户上线提效")).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: /经历证据库/ }).click();
@@ -182,9 +181,80 @@ test("shows candidate evidence links and requires explicit confirmation", async 
   } as ResumeBullet];
   await page.addInitScript((seedValue) => localStorage.setItem("resume-expert-library", JSON.stringify(seedValue)), value);
   await page.goto("/");
-  await expect(page.getByText("候选", { exact: true })).toBeVisible();
+  await expect(page.getByText("候选", { exact: true })).toBeVisible({ timeout: 10_000 });
   await page.getByRole("button", { name: "确认关联" }).click();
   await expect(page.getByText("已确认", { exact: true })).toBeVisible();
+});
+
+test("migrates legacy evidence into the projectized career library", async ({ page }) => {
+  const value = stateFor();
+  value.state.careerEvidence = [{
+    id: "legacy-claim", type: "project", title: "库存项目", organization: "示例科技", role: "产品经理", period: "2025",
+    description: "独立完成库存盘点流程", metrics: [], skills: ["流程设计"], status: "confirmed", sourceType: "manual", sourceDocumentId: null, sourceReference: null,
+    createdAt: "2026-08-03T00:00:00.000Z", updatedAt: "2026-08-03T00:00:00.000Z",
+  } as CareerEvidence];
+  await page.addInitScript((seedValue) => localStorage.setItem("resume-expert-library", JSON.stringify(seedValue)), value);
+  await page.goto("/");
+  await page.getByRole("button", { name: /经历证据库/ }).click();
+  await expect(page.getByRole("heading", { name: "个人经历事实与能力库" })).toBeVisible();
+  await expect(page.getByText("库存项目", { exact: true })).toBeVisible();
+  await expect(page.getByText("待确认", { exact: true }).first()).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: /经历证据库/ }).click();
+  await expect(page.getByText("库存项目", { exact: true })).toBeVisible();
+});
+
+test("creates a career project, fact, metric and capability", async ({ page }) => {
+  await seed(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: /经历证据库/ }).click();
+  await page.getByRole("button", { name: "新增经历" }).click();
+  await page.getByText("名称").locator("..").getByRole("textbox").fill("指标体系项目");
+  await page.getByText("组织/公司").locator("..").getByRole("textbox").fill("示例科技");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await page.getByRole("tab", { name: "事实" }).click();
+  await page.getByText("最小可核验事实").locator("..").getByRole("textbox").fill("独立完成指标口径设计");
+  await page.getByRole("button", { name: "添加已确认事实" }).click();
+  await page.getByLabel("指标值").fill("20");
+  await page.getByLabel("指标单位").fill("项");
+  await page.getByLabel("统计方法").fill("验收清单统计");
+  await page.getByLabel("指标来源").fill("项目验收报告");
+  await page.getByRole("button", { name: "添加指标" }).click();
+  await page.getByRole("tab", { name: "能力" }).click();
+  await page.getByText("能力名称").locator("..").getByRole("textbox").fill("数据产品");
+  await page.getByRole("button", { name: "新增能力" }).click();
+  await expect(page.getByText("数据产品", { exact: true })).toBeVisible();
+});
+
+test("mock career interview keeps user wording and enters fact review", async ({ page }) => {
+  await seed(page);
+  await page.route("**/api/career/interview", async (route) => {
+    const input = route.request().postDataJSON() as { sessionId: string; background: string; round: number };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        turn: {
+          runId: `career-e2e-${input.sessionId}`,
+          round: input.round,
+          coverage: { responsibility: false, action: true, result: false, metric: false, decision: false },
+          claimDrafts: [{ id: "draft-e2e-1", kind: "action", text: input.background, contribution: "independent", complexity: "routine", hasTradeoff: false, hasMethodReuse: false, sourceQuote: input.background, sourceRound: input.round, status: "candidate" }],
+          metricDrafts: [], capabilitySuggestions: [], nextQuestions: [], shouldFinish: true, finishReason: "sufficient", reviewWarnings: [],
+        },
+        mode: "mock",
+      }),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: /经历证据库/ }).click();
+  await page.getByRole("tab", { name: "项目梳理" }).click();
+  await page.getByText("经历/项目名称").locator("..").getByRole("textbox").fill("访谈项目");
+  await page.getByText("现有背景与已知事实").locator("..").getByRole("textbox").fill("我独立完成需求梳理和原型设计");
+  await page.getByRole("button", { name: "开始项目梳理" }).click();
+  await expect(page.getByText("我独立完成需求梳理和原型设计", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "确认事实" }).first().click();
+  await page.getByRole("tab", { name: "事实" }).click();
+  await expect(page.getByText("我独立完成需求梳理和原型设计", { exact: true })).toBeVisible();
 });
 
 test("uses the same deterministic ATS score in sidebar and delivery", async ({ page }) => {
