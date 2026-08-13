@@ -8,16 +8,18 @@ import {
 } from "@/store/resume-store-document";
 
 describe("resume document helpers", () => {
-  it("creates a schema 5 blank document with the unchanged defaults", () => {
+  it("creates a schema 6 blank document with revision tracking", () => {
     const document = createEmptyDocument("document-1");
 
     expect(document).toMatchObject({
-      schemaVersion: 5,
+      schemaVersion: 6,
       id: "document-1",
       title: "未命名简历",
       currentStep: "input",
       finalResumeStatus: "draft",
       hasManualEdits: false,
+      materialRevision: 0,
+      analysisRevision: null,
     });
     expect(document.layoutConfig.templateId).toBe("ats-classic");
   });

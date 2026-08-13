@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { runMockInterviewAnalysis } from "../src/services/ai/interviewAgent.mock";
+import type { CareerEvidence, ResumeBullet, ResumeLibraryState } from "../src/types/resume";
 
 const resume = {
   personalInfo: { name: "张明", email: "ming@example.com", phone: "13800000000", location: "上海" },
@@ -28,7 +29,7 @@ const layoutDefaults = {
 
 function stateFor(templateId = "ats-classic", finalResumeStatus: "draft" | "confirmed" | "stale" = "confirmed") {
   const document = {
-    schemaVersion: 5,
+    schemaVersion: 6,
     id: "e2e-document",
     title: "产品经理版本",
     createdAt: "2026-08-03T00:00:00.000Z",
@@ -44,14 +45,16 @@ function stateFor(templateId = "ats-classic", finalResumeStatus: "draft" | "conf
       matchItems: [], followUpQuestions: [], optimizedItems: [], finalResume: structuredClone(resume),
       interviewPrep: { likelyQuestions: [], evidenceToPrepare: [], possibleExaggerations: [], dataToSupplement: [], selfIntroduction: "" },
     },
+    materialRevision: 0,
+    analysisRevision: 0,
     sourceResume: structuredClone(resume),
     importMetadata: null,
     layoutConfig: { ...layoutDefaults, templateId },
     optimizeStyle: "ai-product",
     finalResumeStatus,
     hasManualEdits: false,
-  };
-  return { state: { schemaVersion: 6, documents: [document], activeDocumentId: document.id, careerEvidence: [], jobApplications: [], interviewReviews: [] }, version: 6 };
+  } as ResumeLibraryState["documents"][number];
+  return { state: { schemaVersion: 7, documents: [document], activeDocumentId: document.id, careerEvidence: [] as CareerEvidence[], jobApplications: [], interviewReviews: [] } satisfies ResumeLibraryState, version: 7 };
 }
 
 async function seed(page: Page, templateId = "ats-classic") {
@@ -106,7 +109,7 @@ test("shows Flowise safety guidance and confirms a Mock draft into evidence", as
   await page.getByRole("button", { name: "运行实验" }).click();
   await expect(page.getByText("事实草稿")).toBeVisible();
   await page.getByRole("button", { name: "确认进入证据库（候选）" }).click();
-  await expect(page.getByText("候选事实已进入证据库", { exact: false })).toBeVisible();
+  await expect(page.getByText("独立候选事实已进入证据库", { exact: false })).toBeVisible();
   await page.getByRole("link", { name: "简历助手" }).click();
   await page.getByRole("button", { name: /经历证据库/ }).click();
   await expect(page.getByRole("heading", { name: "简历专家", level: 3 })).toBeVisible();
@@ -153,6 +156,35 @@ test("keeps creation pending until the final resume is generated", async ({ page
   await page.getByRole("button", { name: /AI 优化 3\.1/ }).click();
   await page.getByRole("button", { name: "确认并生成最终简历" }).click();
   await expect(page.getByRole("heading", { name: "最终简历" })).toBeVisible();
+});
+
+test("locks the old analysis after JD changes and unlocks after reanalysis", async ({ page }) => {
+  await seed(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: /岗位与简历材料 1\.1/ }).click();
+  await page.getByLabel("目标 JD").fill("新的岗位要求：负责可信 AI 产品");
+  await expect(page.getByText(/旧分析仍可查看/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /AI 优化 3\.1/ })).toBeDisabled();
+  await page.getByRole("button", { name: /JD 解析 2\.1/ }).click();
+  await expect(page.getByText(/修改材料前的旧分析/)).toBeVisible();
+});
+
+test("shows candidate evidence links and requires explicit confirmation", async ({ page }) => {
+  const value = stateFor();
+  value.state.careerEvidence = [{
+    id: "evidence-1", type: "achievement", title: "库存流程重构", organization: "示例科技", role: "产品经理", period: "2021",
+    description: "主导库存流程重构，效率提升 40%", metrics: ["40%"], skills: ["库存流程"], status: "confirmed", sourceType: "manual", sourceDocumentId: null, sourceReference: null,
+    createdAt: "2026-08-03T00:00:00.000Z", updatedAt: "2026-08-03T00:00:00.000Z",
+  } as CareerEvidence];
+  value.state.documents[0].analysisResult!.finalResume.workExperience[0].bullets = [{
+    id: "bullet-1", text: "主导库存流程重构，效率提升 40%", sourceType: "ai-generated", evidenceIds: ["evidence-1"],
+    evidenceLinks: [{ evidenceId: "evidence-1", status: "candidate", method: "suggested", sourceReference: null }], originalText: "", aiText: "主导库存流程重构，效率提升 40%", manualText: "",
+  } as ResumeBullet];
+  await page.addInitScript((seedValue) => localStorage.setItem("resume-expert-library", JSON.stringify(seedValue)), value);
+  await page.goto("/");
+  await expect(page.getByText("候选", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "确认关联" }).click();
+  await expect(page.getByText("已确认", { exact: true })).toBeVisible();
 });
 
 test("uses the same deterministic ATS score in sidebar and delivery", async ({ page }) => {
@@ -279,7 +311,7 @@ test("prints with one 16 mm margin and no empty multi-page output", async ({ pag
   expect(textItems.map((item) => item.str).join(" ")).not.toContain("AI 设置");
 
   const multiPageState = stateFor();
-  multiPageState.state.documents[0].analysisResult.finalResume.workExperience = Array.from({ length: 24 }, (_, index) => ({
+  multiPageState.state.documents[0].analysisResult!.finalResume.workExperience = Array.from({ length: 24 }, (_, index) => ({
     company: `示例科技 ${index + 1}`,
     role: "产品经理",
     period: "2021 - 至今",

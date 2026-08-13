@@ -17,4 +17,13 @@ describe("workflow progress", () => {
     expect(progress[0].blocker).toContain("目标岗位");
     expect(progress[1].blocker).toContain("材料未齐");
   });
+
+  it("locks stale analysis when the material revision changes", () => {
+    const progress = getWorkflowProgress({
+      currentStep: "optimize", userInput: { ...defaultUserInput, targetRole: "产品经理", jobDescription: "JD", originalResume: "简历" },
+      analysisResult: {} as never, finalResumeStatus: "stale", materialRevision: 2, analysisRevision: 1,
+    });
+    expect(progress.find((item) => item.id === "analysis")?.blocker).toContain("旧分析已锁定");
+    expect(progress.find((item) => item.id === "creation")?.blocker).toBe("尚无分析结果");
+  });
 });

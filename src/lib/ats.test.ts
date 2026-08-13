@@ -101,4 +101,13 @@ describe("calculateATSAssessment", () => {
     expect(assessment.missingKeywords).toEqual(["SQL"]);
     expect(assessment.weakEvidence).toEqual(["SQL"]);
   });
+
+  it("does not count desired highlight skills as resume keyword matches", () => {
+    const assessment = calculateATSAssessment(
+      { ...input, highlightSkills: "完全未写入简历的关键能力" },
+      { ...result, jdAnalysis: { ...result.jdAnalysis, keywords: ["完全未写入简历的关键能力"] } }
+    );
+    expect(assessment.keywordScore).toBe(0);
+    expect(assessment.missingKeywords).toContain("完全未写入简历的关键能力");
+  });
 });
