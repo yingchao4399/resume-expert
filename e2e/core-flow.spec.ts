@@ -118,8 +118,13 @@ test("shows Flowise safety guidance and confirms a Mock draft into evidence", as
 
 test("loads example data and keeps an evidence item after reload", async ({ page }) => {
   await page.goto("/");
+  await expect(page.locator("#companyType")).toContainText("中型公司");
+  await page.locator("#companyType").click();
+  await expect(page.getByRole("option")).toHaveText(["大厂", "中型公司", "创业公司", "外企", "国企"]);
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "使用示例数据" }).click();
   await expect(page.getByLabel("目标岗位")).toHaveValue("AI 产品经理");
+  await expect(page.getByText("示例材料已载入，下一步点击“开始分析”。")).toBeVisible();
 
   await page.getByRole("button", { name: /经历证据库/ }).click();
   await page.getByRole("button", { name: "新增经历" }).click();
@@ -129,6 +134,31 @@ test("loads example data and keeps an evidence item after reload", async ({ page
   await page.reload();
   await page.getByRole("button", { name: /经历证据库/ }).click();
   await expect(page.getByText("客户上线提效")).toBeVisible();
+});
+
+test("opens and closes AI settings without client errors", async ({ page }) => {
+  const clientErrors: string[] = [];
+  page.on("pageerror", (error) => clientErrors.push(error.message));
+  page.on("response", (response) => {
+    if (response.url().includes("/_next/") && response.status() >= 400) clientErrors.push(`${response.status()} ${response.url()}`);
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "AI 设置" }).click();
+  await expect(page.getByRole("dialog", { name: "AI 模型设置" })).toBeVisible();
+  await page.getByRole("button", { name: "关闭对话框" }).click();
+  await expect(page.getByRole("dialog", { name: "AI 模型设置" })).toBeHidden();
+  expect(clientErrors).toEqual([]);
+});
+
+test("asks before replacing existing materials with example data", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("目标岗位").fill("已有岗位");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "使用示例数据" }).click();
+  await expect(page.getByLabel("目标岗位")).toHaveValue("已有岗位");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "使用示例数据" }).click();
+  await expect(page.getByLabel("目标岗位")).toHaveValue("AI 产品经理");
 });
 
 test("persists a job application linked to the selected resume", async ({ page }) => {

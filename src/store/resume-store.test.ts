@@ -35,6 +35,16 @@ function evidence(id: string): CareerEvidence {
 }
 
 describe("resume document library", () => {
+  it("loads example materials and resets job context", () => {
+    useResumeStore.getState().setUserInput({ targetRole: "已有岗位" });
+    useResumeStore.getState().setJobTargetContext({ companyName: "已有公司", notes: "已有背景" });
+    expect(useResumeStore.getState().loadExampleData()).toBe(true);
+    const next = useResumeStore.getState();
+    expect(next.userInput.targetRole).toBe("AI 产品经理");
+    expect(next.jobTargetContext).toEqual({ companyName: "", notes: "", companySnapshotId: null });
+    expect(next.analysisResult).toBeNull();
+    expect(next.finalResumeStatus).toBe("draft");
+  });
   beforeEach(() => {
     const document = createEmptyDocument("test-document");
     useResumeStore.setState({

@@ -89,7 +89,7 @@ export interface ResumeStore {
   focusedRequirementId: string | null;
   setImportedResume: (text: string, sourceResume: FinalResume | null, metadata: ResumeImportMetadata) => void;
   setLayoutConfig: (config: ResumeLayoutConfig) => void;
-  loadExampleData: () => void;
+  loadExampleData: () => boolean;
   setCurrentStep: (step: StepId) => void;
   setAnalyzing: (analyzing: boolean) => void;
   setAnalysisResult: (result: AnalysisResult, expectedMaterialRevision: number) => boolean;

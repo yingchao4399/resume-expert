@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FileUp, Loader2, Sparkles, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ import type { CompanyType, JobStage } from "@/types/resume";
 import { buildCareerAnalysisClaims } from "@/lib/career/career-context";
 import { useCareerDomain } from "@/hooks/use-career-domain";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
+import { COMPANY_TYPES, isCompanyType, isJobStage, JOB_STAGES } from "@/config/job-options";
 
 
 export function InputStep() {
@@ -47,6 +48,8 @@ export function InputStep() {
     aiMode,
   } = useResumeStore();
   const [showValidation, setShowValidation] = useState(false);
+  const [exampleLoaded, setExampleLoaded] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const updateMaterial = <K extends keyof typeof userInput>(key: K, value: typeof userInput[K]) => {
     setUserInput({ [key]: value } as Pick<typeof userInput, K>);
   };
@@ -59,6 +62,22 @@ export function InputStep() {
     ].filter(Boolean) as Array<{ id: string; label: string }>,
     [userInput]
   );
+
+  useEffect(() => {
+    if (!isAnalyzing) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [isAnalyzing]);
+
+  const handleLoadExample = () => {
+    const loaded = loadExampleData();
+    setExampleLoaded(loaded);
+    if (loaded) window.setTimeout(() => document.getElementById("targetRole")?.focus(), 0);
+  };
 
   const handleAnalyze = async () => {
     if (missingFields.length > 0) {
@@ -88,7 +107,7 @@ export function InputStep() {
       />
 
       <div className="mb-4 flex gap-2">
-        <Button variant="outline" size="sm" onClick={loadExampleData}>
+        <Button variant="outline" size="sm" onClick={handleLoadExample}>
           <Wand2 className="h-3.5 w-3.5" />
           使用示例数据
         </Button>
@@ -100,7 +119,7 @@ export function InputStep() {
           {isAnalyzing ? (
             <>
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              分析中...
+              分析中 {elapsedSeconds}s
             </>
           ) : (
             <>
@@ -110,6 +129,18 @@ export function InputStep() {
           )}
         </Button>
       </div>
+
+      {exampleLoaded && (
+        <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status" aria-live="polite">
+          示例材料已载入，下一步点击“开始分析”。
+        </div>
+      )}
+
+      {isAnalyzing && (
+        <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800" role="status" aria-live="polite">
+          正在依次解析 JD、匹配经历并准备面试策略。深度分析可能需要数分钟，请勿关闭页面或修改材料。
+        </div>
+      )}
 
       {analysisResult && !isAnalysisFresh({ analysisResult, materialRevision, analysisRevision }) && (
         <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="status">
@@ -170,36 +201,28 @@ export function InputStep() {
             <div className="space-y-2">
               <Label htmlFor="companyType">公司类型</Label>
               <Select
-                value={userInput.companyType}
+                value={isCompanyType(userInput.companyType) ? userInput.companyType : undefined}
                 onValueChange={(v) => updateMaterial("companyType", v as CompanyType)}
               >
                 <SelectTrigger id="companyType">
-                  <SelectValue />
+                <SelectValue placeholder="请选择公司类型" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="大厂">大厂</SelectItem>
-                  <SelectItem value="中型公司">中型公司</SelectItem>
-                  <SelectItem value="创业公司">创业公司</SelectItem>
-                  <SelectItem value="外企">外企</SelectItem>
-                  <SelectItem value="国企">国企</SelectItem>
+                  {COMPANY_TYPES.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="jobStage">求职阶段</Label>
               <Select
-                value={userInput.jobStage}
+                value={isJobStage(userInput.jobStage) ? userInput.jobStage : undefined}
                 onValueChange={(v) => updateMaterial("jobStage", v as JobStage)}
               >
                 <SelectTrigger id="jobStage">
-                  <SelectValue />
+                <SelectValue placeholder="请选择求职阶段" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="校招">校招</SelectItem>
-                  <SelectItem value="社招-初级">社招-初级</SelectItem>
-                  <SelectItem value="社招-中级">社招-中级</SelectItem>
-                  <SelectItem value="社招-高级">社招-高级</SelectItem>
-                  <SelectItem value="转行">转行</SelectItem>
+                  {JOB_STAGES.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

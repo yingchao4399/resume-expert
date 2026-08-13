@@ -509,13 +509,25 @@ export const useResumeStore = create<ResumeStore>()(
       setLayoutConfig: (config) =>
         set((state) => updateActiveDocument(state, { layoutConfig: sanitizeLayoutConfig(config) })),
 
-      loadExampleData: () =>
-        set((state) =>
-          updateActiveDocument(state, {
+      loadExampleData: () => {
+        const state = get();
+        const hasMaterials = Boolean(
+          state.userInput.targetRole.trim() ||
+          state.userInput.jobDescription.trim() ||
+          state.userInput.originalResume.trim() ||
+          state.jobTargetContext.companyName.trim() ||
+          state.jobTargetContext.notes.trim()
+        );
+        if (hasMaterials && typeof window !== "undefined" && !window.confirm("使用示例数据会覆盖当前岗位材料，是否继续？")) {
+          return false;
+        }
+        set((current) =>
+          updateActiveDocument(current, {
             title: suggestedTitle(EXAMPLE_USER_INPUT),
             userInput: { ...EXAMPLE_USER_INPUT },
+            jobTargetContext: { companyName: "", notes: "", companySnapshotId: null },
             analysisResult: null,
-            materialRevision: state.materialRevision + 1,
+            materialRevision: current.materialRevision + 1,
             analysisRevision: null,
             sourceResume: null,
             importMetadata: null,
@@ -523,7 +535,9 @@ export const useResumeStore = create<ResumeStore>()(
             finalResumeStatus: "draft",
             hasManualEdits: false,
           })
-        ),
+        );
+        return true;
+      },
 
       setCurrentStep: (step) =>
         set((state) => {
