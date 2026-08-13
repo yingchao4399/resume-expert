@@ -1,6 +1,6 @@
 {
   "name": "resume-expert",
-  "version": "1.7.3",
+  "version": "1.8.0",
   "private": true,
   "engines": {
     "node": ">=24 <25"
@@ -16,6 +16,7 @@
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "eval:validate": "node evals/runner.mjs validate",
     "eval:mock": "node evals/runner.mjs mock",
+    "eval:career": "node evals/career-eval.mjs",
     "eval:ai": "node evals/runner.mjs ai",
     "eval:compare": "node evals/runner.mjs compare",
     "eval:report": "node evals/runner.mjs report"
@@ -37,6 +38,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "docx": "^9.5.1",
+    "idb": "^8.0.3",
     "lucide-react": "^0.475.0",
     "mammoth": "^1.12.0",
     "next": "^16.3.0",

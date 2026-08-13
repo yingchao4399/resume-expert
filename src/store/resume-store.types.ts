@@ -16,7 +16,7 @@ import type {
 import type { AIMode } from "@/lib/ai/types";
 import type { InterviewReviewRecord } from "@/types/interview";
 
-export type UnsavedScope = "resume" | "layout";
+export type UnsavedScope = "resume" | "layout" | "career";
 
 export interface StorageRecoveryReport {
   documents: number;
@@ -67,7 +67,7 @@ export interface ResumeStore {
   attemptStorageRecovery: () => StorageRecoveryReport | null;
   confirmStorageRecovery: () => void;
   clearCorruptStorage: () => void;
-  importDocuments: (documents: ResumeDocument[], mode: "merge" | "replace", evidence?: CareerEvidence[], applications?: JobApplication[], reviews?: InterviewReviewRecord[]) => void;
+  importDocuments: (documents: ResumeDocument[], mode: "merge" | "replace", evidence?: CareerEvidence[], applications?: JobApplication[], reviews?: InterviewReviewRecord[], preserveEvidenceIds?: boolean) => void;
   addCareerEvidence: (evidence: Omit<CareerEvidence, "id" | "createdAt" | "updatedAt">) => void;
   confirmCareerEvidence: (id: string) => void;
   updateCareerEvidence: (id: string, patch: Partial<CareerEvidence>) => void;

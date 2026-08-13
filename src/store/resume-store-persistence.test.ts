@@ -20,14 +20,14 @@ describe("resume store persistence", () => {
     const document = createEmptyDocument("document-1");
     const raw = JSON.stringify({
       state: {
-        schemaVersion: 7,
+        schemaVersion: 8,
         documents: [document],
         activeDocumentId: document.id,
         careerEvidence: [],
         jobApplications: [],
         interviewReviews: [],
       },
-      version: 7,
+      version: 8,
     });
 
     expect(() => validatePersistedLibrary(raw)).not.toThrow();
@@ -64,7 +64,7 @@ describe("resume store persistence", () => {
 
     const migrated = migrateDocument(legacy);
 
-    expect(migrated.schemaVersion).toBe(6);
+    expect(migrated.schemaVersion).toBe(7);
     expect(migrated.analysisRevision).toBeNull();
     expect(migrated.finalResumeStatus).toBe("stale");
     expect(migrated.layoutConfig.templateId).toBe("ats-classic");

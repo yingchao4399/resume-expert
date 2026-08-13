@@ -6,6 +6,8 @@ import { StepSidebar } from "@/components/layout/step-sidebar";
 import { TopNav } from "@/components/layout/top-nav";
 import { StepContent } from "@/components/steps/step-content";
 import { Button } from "@/components/ui/button";
+import { migrateCareerEvidenceOnce } from "@/lib/career/career-db";
+import { projectClaimsToLegacyEvidence } from "@/lib/career/career-context";
 import {
   RESUME_STORAGE_ERROR_EVENT,
   downloadRecoveryData,
@@ -17,7 +19,16 @@ export function AppShell() {
   const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    void Promise.resolve(useResumeStore.persist.rehydrate()).finally(() => useResumeStore.getState().markHydrated());
+    void Promise.resolve(useResumeStore.persist.rehydrate())
+      .then(async () => {
+        const legacyEvidence = useResumeStore.getState().careerEvidence;
+        const { snapshot } = await migrateCareerEvidenceOnce(legacyEvidence);
+        useResumeStore.setState({ careerEvidence: projectClaimsToLegacyEvidence(snapshot) });
+      })
+      .finally(() => {
+        useResumeStore.getState().markHydrated();
+        window.dispatchEvent(new Event("resume-expert-library-hydrated"));
+      });
     const handleStorageError = (event: Event) => {
       const message =
         event instanceof CustomEvent && typeof event.detail === "string"

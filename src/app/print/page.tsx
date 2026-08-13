@@ -11,7 +11,9 @@ export default function PrintResumePage() {
 
 
   useEffect(() => {
-    void useResumeStore.persist.rehydrate();
+    void Promise.resolve(useResumeStore.persist.rehydrate()).finally(() => {
+      useResumeStore.getState().markHydrated();
+    });
   }, []);
   if (!hasHydrated) {
     return (

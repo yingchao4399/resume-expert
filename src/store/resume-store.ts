@@ -46,7 +46,7 @@ export {
 
 function confirmUnsavedChanges(state: ResumeStore): boolean {
   if (!state.dirtyScope || typeof window === "undefined") return true;
-  const label = state.dirtyScope === "resume" ? "简历内容" : "排版设置";
+  const label = state.dirtyScope === "resume" ? "简历内容" : state.dirtyScope === "layout" ? "排版设置" : "经历资料";
   return window.confirm(`${label}还有未保存修改，离开后将丢失。是否继续？`);
 }
 
@@ -249,8 +249,8 @@ export const useResumeStore = create<ResumeStore>()(
             ? parsed.state?.activeDocumentId as string
             : recoveredDocuments[0].id;
           const recoveredValue = JSON.stringify({
-            state: { schemaVersion: 7, documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
-            version: 7,
+            state: { schemaVersion: 8, documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
+            version: 8,
           });
           validatePersistedLibrary(recoveredValue);
           unlockStorageWrites();
@@ -290,13 +290,13 @@ export const useResumeStore = create<ResumeStore>()(
         lockStorageWrites();
       },
 
-      importDocuments: (documents, mode, evidence = [], applications = [], reviews = []) =>
+      importDocuments: (documents, mode, evidence = [], applications = [], reviews = [], preserveEvidenceIds = false) =>
         set((state) => {
           if (documents.length === 0) return state;
           const idMap = new Map<string, string>();
           const evidenceIdMap = new Map<string, string>();
           const applicationIdMap = new Map<string, string>();
-          evidence.forEach((item) => evidenceIdMap.set(item.id, mode === "merge" ? createId() : item.id));
+          evidence.forEach((item) => evidenceIdMap.set(item.id, mode === "merge" && !preserveEvidenceIds ? createId() : item.id));
           const migrated = documents.map((document) => {
             const nextId = mode === "merge" ? createId() : document.id;
             idMap.set(document.id, nextId);
@@ -661,14 +661,15 @@ export const useResumeStore = create<ResumeStore>()(
     }),
     {
       name: RESUME_STORAGE_KEY,
-      version: 7,
+      version: 8,
       skipHydration: true,
       storage: createJSONStorage<ResumeLibraryState>(() => safeLocalStorage),
       partialize: (state) => ({
-        schemaVersion: 7,
+        schemaVersion: 8,
         documents: state.documents,
         activeDocumentId: state.activeDocumentId,
-        careerEvidence: state.careerEvidence,
+        // Schema 8 将事实主数据迁入 IndexedDB；此字段仅用于首次迁移和旧组件兼容。
+        careerEvidence: [],
         jobApplications: state.jobApplications,
         interviewReviews: state.interviewReviews,
       }),
@@ -680,7 +681,7 @@ export const useResumeStore = create<ResumeStore>()(
           ? persisted.documents.map((document) => migrateDocument(document))
           : [];
         return {
-          schemaVersion: 7,
+          schemaVersion: 8,
           documents,
           activeDocumentId: persisted.activeDocumentId ?? documents[0]?.id ?? "",
           careerEvidence: Array.isArray(persisted.careerEvidence)
@@ -717,7 +718,6 @@ export const useResumeStore = create<ResumeStore>()(
         if (error) {
           emitStorageError("本地简历恢复失败，已打开新的空白文档。");
         }
-        state?.markHydrated();
       },
     }
   )

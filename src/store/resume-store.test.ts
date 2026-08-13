@@ -247,9 +247,9 @@ describe("resume document library", () => {
     const document = createEmptyDocument("recover-document");
     const raw = JSON.stringify({
       state: {
-        schemaVersion: 7, documents: [document], activeDocumentId: document.id,
+        schemaVersion: 8, documents: [document], activeDocumentId: document.id,
         careerEvidence: [evidence("recover-evidence"), { id: "broken" }], jobApplications: [], interviewReviews: [],
-      }, version: 7,
+      }, version: 8,
     });
     values.set(RESUME_RECOVERY_KEY, JSON.stringify({ capturedAt: "2026-08-13T00:00:00.000Z", reason: "partial corruption", raw }));
     Object.defineProperty(globalThis, "window", {

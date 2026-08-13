@@ -182,7 +182,7 @@ export function migrateDocument(document: LegacyResumeDocument): ResumeDocument 
   return {
     ...base,
     ...documentWithoutLegacyStatus,
-    schemaVersion: 6,
+    schemaVersion: 7,
     materialRevision: typeof document.materialRevision === "number" ? document.materialRevision : 0,
     analysisRevision: analysisResult
       ? typeof document.analysisRevision === "number" ? document.analysisRevision : 0

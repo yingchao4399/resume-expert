@@ -240,7 +240,7 @@ export interface StepConfig {
 export type FinalResumeStatus = "draft" | "confirmed" | "stale";
 
 export interface ResumeDocument {
-  schemaVersion: 6;
+  schemaVersion: 7;
   id: string;
   title: string;
   createdAt: string;
@@ -276,7 +276,7 @@ export interface JobApplication {
 }
 
 export interface ResumeLibraryState {
-  schemaVersion: 7;
+  schemaVersion: 8;
   documents: ResumeDocument[];
   activeDocumentId: string;
   careerEvidence: CareerEvidence[];
