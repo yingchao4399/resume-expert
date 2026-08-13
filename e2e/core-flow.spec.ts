@@ -346,6 +346,37 @@ test("rejects invalid AI connection settings without calling a provider", async 
   expect((await response.json()).error).toContain("Base URL");
 });
 
+test("refreshes account models while preserving a manual legacy model", async ({ page }) => {
+  await page.route("**/api/ai/config", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ provider: "deepseek", baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat", mode: "llm", useMock: false, hasApiKey: true, invalidApiKey: false, apiKeyMasked: "sk-ab...1234", apiKeySource: "user" }) });
+      return;
+    }
+    await route.continue();
+  });
+  await page.route("**/api/ai/models", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ provider: "deepseek", models: [{ id: "deepseek-v4-flash", source: "official" }, { id: "account-chat", source: "account" }], refreshedAt: new Date().toISOString() }) }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "AI 设置" }).click();
+  await expect(page.getByText(/deepseek-chat.*不在最新官方预设/)).toBeVisible();
+  await page.getByRole("button", { name: "刷新可用模型" }).click();
+  await expect(page.getByText(/1 个账号模型/)).toBeVisible();
+  await expect(page.getByLabel("手动模型 ID")).toHaveValue("deepseek-chat");
+});
+
+test("shows actionable guidance and saves nothing after repeated structure errors", async ({ page }) => {
+  await seed(page);
+  await page.route("**/api/career/interview", async (route) => route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: "所选 deepseek / deepseek-v4-flash 连续两次未返回合格结构。不合格字段：claimDrafts: 必填。本次未保存会话、事实或指标。", code: "MODEL_STRUCTURE_INVALID" }) }));
+  await page.goto("/");
+  await page.getByRole("button", { name: /经历证据库/ }).click();
+  await page.getByRole("tab", { name: "项目梳理" }).click();
+  await page.getByText("经历/项目名称").locator("..").getByRole("textbox").fill("AI 简历平台");
+  await page.getByText("现有背景与已知事实").locator("..").getByRole("textbox").fill("系统学习过心理学，做了一个 AI 简历平台");
+  await page.getByRole("button", { name: "开始项目梳理" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "项目梳理未写入任何数据" })).toContainText("本次未保存会话、事实或指标");
+  await expect(page.getByRole("button", { name: "重新尝试" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "打开 AI 设置" })).toBeVisible();
+});
+
 test("exports a DOCX that can be imported again", async ({ page }) => {
   await seed(page);
   await page.goto("/");

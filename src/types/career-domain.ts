@@ -114,6 +114,17 @@ export interface CareerInterviewClaimDraft {
   status: "candidate" | "needs-review";
 }
 
+export type CareerInterviewModelClaimDraft = Omit<CareerInterviewClaimDraft, "sourceRound">;
+
+export interface CareerInterviewModelOutput {
+  claimDrafts: CareerInterviewModelClaimDraft[];
+  metricDrafts: CareerInterviewTurn["metricDrafts"];
+  capabilitySuggestions: CareerInterviewTurn["capabilitySuggestions"];
+  nextQuestions: CareerInterviewQuestion[];
+  shouldFinish: boolean;
+  reviewWarnings: string[];
+}
+
 export interface CareerInterviewTurn {
   runId: string;
   round: number;

@@ -44,6 +44,17 @@ const claimDraft = z.object({
   status: z.enum(["candidate", "needs-review"]),
 });
 
+const modelClaimDraft = claimDraft.omit({ sourceRound: true });
+
+export const careerInterviewModelOutputSchema = z.object({
+  claimDrafts: z.array(modelClaimDraft).max(12),
+  metricDrafts: z.array(z.object({ claimDraftId: z.string(), value: z.string(), unit: z.string(), baseline: z.string(), method: z.string(), period: z.string(), sourceNote: z.string() })).max(12),
+  capabilitySuggestions: z.array(z.object({ name: z.string().min(1), category: z.enum(["product", "technology", "data", "industry", "collaboration", "custom"]), claimDraftIds: z.array(z.string()) })).max(12),
+  nextQuestions: z.array(question).max(3),
+  shouldFinish: z.boolean(),
+  reviewWarnings: z.array(z.string()).max(12),
+});
+
 export const careerInterviewTurnSchema = z.object({
   runId: z.string().min(1), round: z.number().int().min(1).max(5),
   coverage: z.object({ responsibility: z.boolean(), action: z.boolean(), result: z.boolean(), metric: z.boolean(), decision: z.boolean() }),

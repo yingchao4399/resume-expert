@@ -105,6 +105,22 @@ export interface AIConnectionTestResult {
   category?: AIConnectionErrorCategory;
 }
 
+export type AIModelSource = "official" | "account";
+
+export type AIModelCatalogRequest = SaveAIConfigBody;
+
+export interface AIModelCatalogEntry {
+  id: string;
+  source: AIModelSource;
+}
+
+export interface AIModelCatalogResult {
+  provider: string;
+  models: AIModelCatalogEntry[];
+  refreshedAt: string;
+  warning?: string;
+}
+
 // ===== 面试录音诊断 =====
 
 export interface InterviewAnalyzeRequestBody {

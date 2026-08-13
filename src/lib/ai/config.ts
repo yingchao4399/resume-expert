@@ -28,11 +28,11 @@ export function getAIConfig(): AIConfig {
     process.env.LLM_BASE_URL?.trim() ||
     "https://api.openai.com/v1";
   const model =
-    userConfig?.model || process.env.LLM_MODEL?.trim() || "gpt-4o-mini";
+    userConfig?.model || process.env.LLM_MODEL?.trim() || "gpt-5.6-luna";
   const provider =
     userConfig?.provider ||
     process.env.LLM_PROVIDER?.trim() ||
-    "openai-compatible";
+    "openai";
 
   const forceMock =
     userConfig?.useMock === true || process.env.USE_MOCK_AI === "true";

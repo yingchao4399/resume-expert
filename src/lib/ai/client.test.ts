@@ -1,0 +1,45 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import { buildCompletionRequestBody, chatCompletionJSON, LLMStructureError } from "@/lib/ai/client";
+import type { AIConfig } from "@/lib/ai/config";
+
+const schema = z.object({ items: z.array(z.string()), ok: z.boolean() });
+const config = (provider: string, model: string): AIConfig => ({ mode: "llm", provider, model, baseUrl: "https://example.test/v1", apiKey: "sk-test-key", invalidApiKey: false });
+const options = { schema, schemaName: "test_output", system: "system", user: "user", maxTokens: 200 };
+
+describe("multi-provider structured output", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each(["deepseek", "moonshot", "qwen", "zhipu", "gemini", "custom"])("uses JSON Object and embeds the schema for %s", (provider) => {
+    const body = buildCompletionRequestBody(config(provider, "model"), options);
+    expect(body.response_format).toEqual({ type: "json_object" });
+    expect(JSON.stringify(body.messages)).toContain("完整 JSON Schema");
+  });
+
+  it("uses strict JSON Schema and OpenAI completion-token parameters", () => {
+    const body = buildCompletionRequestBody(config("openai", "gpt-5.6-luna"), options);
+    expect(body.response_format).toMatchObject({ type: "json_schema" });
+    expect(body.max_completion_tokens).toBe(200);
+    expect(body).not.toHaveProperty("temperature");
+  });
+
+  it("repairs once with the full schema and then stops with field details", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: '{"items":"wrong"}' } }] }), { status: 200 }));
+    await expect(chatCompletionJSON({ ...options, configOverride: config("deepseek", "deepseek-v4-flash") })).rejects.toBeInstanceOf(LLMStructureError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const repairBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+    expect(repairBody.messages[0].content).toContain("完整 JSON Schema");
+    expect(repairBody.messages[0].content).toContain("禁止补造");
+  });
+
+  it("falls back once without response_format for a custom endpoint that explicitly rejects it", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("response_format is unsupported", { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: '{"items":[],"ok":true}' } }] }), { status: 200 }));
+    await expect(chatCompletionJSON({ ...options, configOverride: config("custom", "private-model") })).resolves.toEqual({ items: [], ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).not.toHaveProperty("response_format");
+  });
+});

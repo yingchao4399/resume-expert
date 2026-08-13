@@ -2,6 +2,8 @@ import type {
   AnalyzeResponseBody,
   AIConnectionTestRequest,
   AIConnectionTestResult,
+  AIModelCatalogRequest,
+  AIModelCatalogResult,
   FinalizeResumeResponseBody,
   FollowUpBulletResponseBody,
   InterviewAnalyzeRequestBody,
@@ -159,6 +161,13 @@ export async function testAIConfig(config: AIConnectionTestRequest): Promise<AIC
   const data = (await response.json().catch(() => ({}))) as Partial<AIConnectionTestResult> & { error?: string };
   if (typeof data.ok === "boolean") return data as AIConnectionTestResult;
   throw new ResumeAgentClientError(data.error || `连接测试失败 (${response.status})`);
+}
+
+export async function refreshAIModels(config: AIModelCatalogRequest): Promise<AIModelCatalogResult> {
+  const response = await fetch("/api/ai/models", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) });
+  const data = (await response.json().catch(() => ({}))) as Partial<AIModelCatalogResult> & { error?: string };
+  if (response.ok && Array.isArray(data.models)) return data as AIModelCatalogResult;
+  throw new ResumeAgentClientError(data.error || `刷新模型清单失败 (${response.status})`);
 }
 
 // ===== 面试录音诊断与分析 =====

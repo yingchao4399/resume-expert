@@ -95,7 +95,9 @@ API Key 输入框只粘贴服务商控制台生成的 Key 本身，不要包含�
 
 设置页的“测试连接”会使用当前尚未保存的 Provider、Base URL、模型和 Key 发起最小请求，结果只返回分类和耗时，不会回显或记录 Key。认证、模型、地址、限流、网络和超时会分别提示。
 
-项目通过 OpenAI 兼容的 `/chat/completions` 接口调用模型。OpenAI Provider 使用严格 JSON Schema；DeepSeek、Moonshot、Qwen、智谱、Gemini 等兼容 Provider 使用 JSON Object 模式，并统一经过 Zod 运行时校验。
+“刷新可用模型”只在点击后访问当前兼容接口的 `/models`，区分官方预设与账号实际返回；刷新失败不会阻止手填模型 ID，也不会自动替换已经保存的旧模型。支持 DeepSeek、Kimi、通义千问、智谱、OpenAI、Gemini，以及自定义 OpenAI 兼容接口。
+
+项目通过 OpenAI 兼容的 `/chat/completions` 接口调用模型。OpenAI Provider 使用严格 JSON Schema；DeepSeek、Kimi、通义、智谱、Gemini 等兼容 Provider 使用 JSON Object 模式并在 Prompt 中携带完整 Schema，所有结果统一经过 Zod 运行时校验。
 
 模型返回无法解析或结构不合法时，系统只自动修复一次；再次失败会返回明确错误，不会把不完整数据写入简历。
 
