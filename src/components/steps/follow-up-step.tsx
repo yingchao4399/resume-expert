@@ -10,7 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, SectionTitle } from "@/components/shared/ui-helpers";
 import { generateFollowUpBullet } from "@/services/ai/resumeAgent";
 import { useResumeStore } from "@/store/resume-store";
-import { confirmedEvidencePrompt } from "@/lib/evidence/resume-evidence";
+import { confirmedEvidencePrompt, selectRelevantEvidence } from "@/lib/evidence/resume-evidence";
+import { isAnalysisFresh } from "@/lib/analysis-revision";
 
 export function FollowUpStep() {
   const {
@@ -20,6 +21,9 @@ export function FollowUpStep() {
     updateFollowUpAnswer,
     setFollowUpBullet,
     setCurrentStep,
+    activeDocumentId,
+    materialRevision,
+    analysisRevision,
   } = useResumeStore();
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +31,7 @@ export function FollowUpStep() {
   if (!analysisResult) {
     return <EmptyState message="请先完成输入材料并开始分析" />;
   }
+  const analysisFresh = isAnalysisFresh({ analysisResult, materialRevision, analysisRevision });
 
   const { followUpQuestions } = analysisResult;
 
@@ -38,7 +43,7 @@ export function FollowUpStep() {
     setError(null);
     try {
       const bullet = await generateFollowUpBullet(
-        { ...userInput, additionalInfo: [userInput.additionalInfo, confirmedEvidencePrompt(careerEvidence)].filter(Boolean).join("\n\n") },
+        { ...userInput, additionalInfo: [userInput.additionalInfo, confirmedEvidencePrompt(selectRelevantEvidence(careerEvidence, userInput.targetRole, userInput.jobDescription, activeDocumentId))].filter(Boolean).join("\n\n") },
         question.question,
         question.purpose,
         question.userAnswer
@@ -90,13 +95,14 @@ export function FollowUpStep() {
                   className="min-h-[80px] text-sm"
                   placeholder="填写具体经历、数据和方法..."
                   value={q.userAnswer}
+                  disabled={!analysisFresh}
                   onChange={(e) => updateFollowUpAnswer(q.id, e.target.value)}
                 />
               </div>
               <Button
                 variant="outline"
                 size="sm"
-                disabled={!q.userAnswer.trim() || loadingId === q.id}
+                disabled={!analysisFresh || !q.userAnswer.trim() || loadingId === q.id}
                 onClick={() => handleGenerateBullet(q.id)}
               >
                 {loadingId === q.id ? (
@@ -123,8 +129,8 @@ export function FollowUpStep() {
       </div>
 
       <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={() => setCurrentStep("optimize")}>
-          下一步：简历优化
+        <Button variant="outline" size="sm" onClick={() => setCurrentStep(analysisFresh ? "interview" : "input")}>
+          {analysisFresh ? "下一步：面试准备" : "返回重新分析"}
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>

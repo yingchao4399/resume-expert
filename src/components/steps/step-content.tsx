@@ -13,36 +13,49 @@ import { FinalResumeStep } from "@/components/steps/final-resume-step";
 import { InterviewStep } from "@/components/steps/interview-step";
 import { ExportStep } from "@/components/steps/export-step";
 import { ApplicationsStep } from "@/components/steps/applications-step";
+import { isAnalysisFresh } from "@/lib/analysis-revision";
+
+const ANALYSIS_RESULT_STEPS = new Set(["jd-analysis", "diagnosis", "match", "follow-up", "interview"]);
 
 export function StepContent() {
-  const currentStep = useResumeStore((s) => s.currentStep);
+  const { currentStep, analysisResult, materialRevision, analysisRevision, setCurrentStep } = useResumeStore();
+
+  const staleBanner = analysisResult && !isAnalysisFresh({ analysisResult, materialRevision, analysisRevision }) && ANALYSIS_RESULT_STEPS.has(currentStep) ? (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="status">
+      <span>这是修改材料前的旧分析，仅供查看；补证、制作和交付已锁定。</span>
+      <button type="button" className="font-medium underline" onClick={() => setCurrentStep("input")}>返回重新分析</button>
+    </div>
+  ) : null;
+
+  let content: React.ReactNode;
 
   switch (currentStep) {
     case "input":
-      return <InputStep />;
+      content = <InputStep />; break;
     case "evidence":
-      return <EvidenceLibraryStep />;
+      content = <EvidenceLibraryStep />; break;
     case "jd-analysis":
-      return <JDAnalysisStep />;
+      content = <JDAnalysisStep />; break;
     case "diagnosis":
-      return <DiagnosisStep />;
+      content = <DiagnosisStep />; break;
     case "match":
-      return <MatchStep />;
+      content = <MatchStep />; break;
     case "follow-up":
-      return <FollowUpStep />;
+      content = <FollowUpStep />; break;
     case "optimize":
-      return <OptimizeStep />;
+      content = <OptimizeStep />; break;
     case "interview-recording":
-      return <InterviewRecordingStep />;
+      content = <InterviewRecordingStep />; break;
     case "final-resume":
-      return <FinalResumeStep />;
+      content = <FinalResumeStep />; break;
     case "interview":
-      return <InterviewStep />;
+      content = <InterviewStep />; break;
     case "applications":
-      return <ApplicationsStep />;
+      content = <ApplicationsStep />; break;
     case "export":
-      return <ExportStep />;
+      content = <ExportStep />; break;
     default:
-      return <InputStep />;
+      content = <InputStep />;
   }
+  return <>{staleBanner}{content}</>;
 }

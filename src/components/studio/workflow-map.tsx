@@ -10,7 +10,7 @@ const positions = [{ x: 40, y: 80 }, { x: 300, y: 80 }, { x: 560, y: 80 }, { x: 
 
 export function WorkflowMap() {
   const state = useResumeStore();
-  const progress = getWorkflowProgress({ currentStep: state.currentStep, userInput: state.userInput, analysisResult: state.analysisResult, finalResumeStatus: state.finalResumeStatus });
+  const progress = getWorkflowProgress({ currentStep: state.currentStep, userInput: state.userInput, analysisResult: state.analysisResult, finalResumeStatus: state.finalResumeStatus, materialRevision: state.materialRevision, analysisRevision: state.analysisRevision });
   const nodes = useMemo<Node[]>(() => WORKFLOW_STAGES.map((stage, index) => {
     const item = progress.find((entry) => entry.id === stage.id)!;
     return { id: stage.id, position: positions[index], draggable: false, data: { label: <div className="min-w-44"><div className="flex items-center justify-between gap-3"><strong>{stage.label}</strong><span className="text-[10px] uppercase text-neutral-400">{item.status}</span></div><p className="mt-1 text-xs text-neutral-500">{stage.description}</p><p className="mt-2 text-[11px] text-amber-700">{item.blocker ?? item.actionLabel}</p></div> }, style: { borderRadius: 10, border: `1px solid ${item.status === "completed" ? "#86efac" : item.status === "blocked" ? "#fcd34d" : "#d4d4d4"}`, background: item.status === "active" ? "#fafafa" : "#fff", padding: 14 } };

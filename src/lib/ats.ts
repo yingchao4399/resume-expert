@@ -60,9 +60,7 @@ export function calculateATSAssessment(
   result: AnalysisResult
 ): ATSAssessment {
   const resume = result.finalResume;
-  const resumeText = normalize(
-    [formatResumeAsText(resume), input.highlightSkills].join("\n")
-  );
+  const resumeText = normalize(formatResumeAsText(resume));
   const keywords = uniqueKeywords(result.jdAnalysis.keywords);
   const matchedKeywords = keywords.filter((keyword) =>
     resumeText.includes(normalize(keyword))

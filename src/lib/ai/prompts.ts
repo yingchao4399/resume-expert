@@ -15,9 +15,9 @@ export const RESUME_AGENT_SYSTEM_PROMPT = `你是「简历专家」，一位 JD 
 1. 所有内容使用中文
 2. 分析必须基于用户提供的 JD 与简历，不得编造无法从材料推断的虚假经历
 3. 对缺失证据要明确标注 needsSupplement 或 evidenceStrength 为 weak/none
-4. followUpQuestions 生成 5-10 条，id 格式 fu-1, fu-2...
-5. optimizedItems 至少 5 条，id 格式 opt-1, opt-2...
-6. interviewPrep.likelyQuestions 恰好 10 条
+4. followUpQuestions 只针对真实证据缺口生成 0-10 条，id 格式 fu-1, fu-2...
+5. optimizedItems 生成 0-12 条，id 格式 opt-1, opt-2...
+6. interviewPrep.likelyQuestions 生成 5-10 条
 7. overallScore 与各 dimensionScores.score 范围 0-100
 8. 只输出合法 JSON，不要 markdown 代码块`;
 
@@ -83,7 +83,7 @@ ${buildInputContext(input)}
   }]
 }
 
-要求：followUpQuestions 5-7 条，id 为 fu-1...；matchItems 6-8 条。`;
+要求：matchItems 1-12 条；followUpQuestions 0-10 条，只有存在 needsSupplement=true 的缺口时才生成，id 为 fu-1...。`;
 }
 
 export function buildAnalyzeOutputPrompt(
@@ -119,7 +119,7 @@ ${coreSummary ? `【前序分析摘要】\n${coreSummary}\n` : ""}
   }
 }
 
-要求：optimizedItems 5-6 条，id 为 opt-1...。`;
+要求：optimizedItems 0-12 条，id 为 opt-1...；没有可靠修改依据时允许为空。`;
 }
 
 export function buildAnalyzeInterviewPrompt(input: UserInput, coreSummary: string): string {
@@ -138,11 +138,11 @@ ${coreSummary ? `【前序分析摘要】\n${coreSummary}\n` : ""}
   }
 }
 
-要求：likelyQuestions 恰好 10 条。`;
+要求：likelyQuestions 5-10 条，只覆盖材料中有依据或明确需要补证的方向。`;
 }
 
 export function buildOptimizeUserPrompt(input: UserInput, style: OptimizeStyle): string {
-  return `请基于以下材料，按「${STYLE_LABELS[style]}」风格重新生成 optimizedItems（至少 5 条）。
+  return `请基于以下材料，按「${STYLE_LABELS[style]}」风格重新生成 optimizedItems（0-12 条）。
 
 【目标岗位】${input.targetRole}
 【目标 JD】

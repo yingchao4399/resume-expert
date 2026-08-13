@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ProjectEvidenceProvider, ProjectEvidenceResult } from "@/lib/flowise/schemas";
 import { postWorkflowJSON } from "@/services/ai/resumeAgent";
 import { useResumeStore } from "@/store/resume-store";
+import { evidenceSourceReference } from "@/lib/evidence/resume-evidence";
 
 interface FlowiseStatus {
   enabled: boolean;
@@ -85,20 +86,14 @@ export function FlowiseLab() {
 
   const accept = (value: ProjectEvidenceResult) => {
     const draft = value.draft;
-    addCareerEvidence({
-      type: "project",
-      title: draft.projectTitle,
-      organization: "个人项目",
-      role: draft.targetRole,
-      period: "",
-      description: draft.factDrafts.join("；"),
-      metrics: draft.factDrafts.flatMap((fact) => fact.match(/\d+(?:\.\d+)?\s*(?:%|个|次|人|项|天|小时)/g) ?? []),
-      skills: [],
-      status: "candidate",
-      sourceType: "manual",
-      sourceDocumentId: activeDocumentId || null,
-    });
-    setMessage("候选事实已进入证据库，仍需在证据库中逐条核对确认。");
+    draft.factDrafts.forEach((fact, index) => addCareerEvidence({
+      type: "project", title: `${draft.projectTitle} · 事实 ${index + 1}`, organization: "个人项目",
+      role: draft.targetRole, period: "", description: fact,
+      metrics: fact.match(/\d+(?:\.\d+)?\s*(?:%|个|次|人|项|天|小时)/g) ?? [], skills: [],
+      status: "candidate", sourceType: "flowise", sourceDocumentId: activeDocumentId || null,
+      sourceReference: evidenceSourceReference("flowise", `${value.runId}:${index}`, fact, value.runId),
+    }));
+    setMessage(`${draft.factDrafts.length} 条独立候选事实已进入证据库；重复确认同一运行不会重复写入。`);
   };
 
   return <div className="space-y-5">

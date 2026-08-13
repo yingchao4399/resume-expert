@@ -19,7 +19,9 @@ import { ResumeImportDialog } from "@/components/import/resume-import-dialog";
 import { useResumeStore } from "@/store/resume-store";
 import { runResumeAnalysis } from "@/services/ai/resumeAgent";
 import type { CompanyType, JobStage } from "@/types/resume";
-import { confirmedEvidencePrompt } from "@/lib/evidence/resume-evidence";
+import { confirmedEvidencePrompt, selectRelevantEvidence } from "@/lib/evidence/resume-evidence";
+import { isAnalysisFresh } from "@/lib/analysis-revision";
+
 
 export function InputStep() {
   const [importOpen, setImportOpen] = useState(false);
@@ -36,8 +38,16 @@ export function InputStep() {
     setAnalysisResult,
     setAnalysisError,
     setCurrentStep,
+    materialRevision,
+    analysisRevision,
+    analysisResult,
+    activeDocumentId,
+    aiMode,
   } = useResumeStore();
   const [showValidation, setShowValidation] = useState(false);
+  const updateMaterial = <K extends keyof typeof userInput>(key: K, value: typeof userInput[K]) => {
+    setUserInput({ [key]: value } as Pick<typeof userInput, K>);
+  };
 
   const missingFields = useMemo(
     () => [
@@ -57,10 +67,11 @@ export function InputStep() {
     setShowValidation(false);
     setAnalyzing(true);
     setAnalysisError(null);
+    const requestedRevision = materialRevision;
     try {
-      const result = await runResumeAnalysis({ ...userInput, additionalInfo: [userInput.additionalInfo, confirmedEvidencePrompt(careerEvidence)].filter(Boolean).join("\n\n") }, optimizeStyle);
-      setAnalysisResult(result);
-      setCurrentStep("jd-analysis");
+      const relevantEvidence = selectRelevantEvidence(careerEvidence, userInput.targetRole, userInput.jobDescription, activeDocumentId);
+      const result = await runResumeAnalysis({ ...userInput, additionalInfo: [userInput.additionalInfo, confirmedEvidencePrompt(relevantEvidence)].filter(Boolean).join("\n\n") }, optimizeStyle);
+      if (setAnalysisResult(result, requestedRevision)) setCurrentStep("jd-analysis");
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "分析失败，请稍后重试");
     } finally {
@@ -99,6 +110,18 @@ export function InputStep() {
         </Button>
       </div>
 
+      {analysisResult && !isAnalysisFresh({ analysisResult, materialRevision, analysisRevision }) && (
+        <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="status">
+          材料已变化。旧分析仍可查看，但补证、制作和交付已锁定；请重新分析后继续。
+        </div>
+      )}
+
+      {aiMode === "mock" && (
+        <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">
+          Mock 仅用于验证流程，不会补造原始材料中不存在的人名、公司或业绩数据；正式求职请配置并测试真实模型。
+        </div>
+      )}
+
       {showValidation && missingFields.length > 0 && (
         <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="alert" aria-live="assertive">
           请先补齐：{missingFields.map((field) => field.label).join("、")}。
@@ -127,7 +150,7 @@ export function InputStep() {
                 aria-invalid={showValidation && !userInput.targetRole.trim()}
                 placeholder="如：AI 产品经理"
                 value={userInput.targetRole}
-                onChange={(e) => setUserInput({ targetRole: e.target.value })}
+                onChange={(e) => updateMaterial("targetRole", e.target.value)}
               />
             </div>
             <div className="space-y-2">
@@ -136,14 +159,14 @@ export function InputStep() {
                 id="industry"
                 placeholder="如：企业服务 / SaaS"
                 value={userInput.industry}
-                onChange={(e) => setUserInput({ industry: e.target.value })}
+                onChange={(e) => updateMaterial("industry", e.target.value)}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="companyType">公司类型</Label>
               <Select
                 value={userInput.companyType}
-                onValueChange={(v) => setUserInput({ companyType: v as CompanyType })}
+                onValueChange={(v) => updateMaterial("companyType", v as CompanyType)}
               >
                 <SelectTrigger id="companyType">
                   <SelectValue />
@@ -161,7 +184,7 @@ export function InputStep() {
               <Label htmlFor="jobStage">求职阶段</Label>
               <Select
                 value={userInput.jobStage}
-                onValueChange={(v) => setUserInput({ jobStage: v as JobStage })}
+                onValueChange={(v) => updateMaterial("jobStage", v as JobStage)}
               >
                 <SelectTrigger id="jobStage">
                   <SelectValue />
@@ -181,7 +204,7 @@ export function InputStep() {
                 id="highlightSkills"
                 placeholder="如：AI 产品规划、数据驱动、ToB 需求分析"
                 value={userInput.highlightSkills}
-                onChange={(e) => setUserInput({ highlightSkills: e.target.value })}
+                onChange={(e) => updateMaterial("highlightSkills", e.target.value)}
               />
             </div>
           </CardContent>
@@ -200,7 +223,7 @@ export function InputStep() {
               className="min-h-[200px] font-mono text-xs leading-relaxed"
               placeholder="粘贴岗位 JD..."
               value={userInput.jobDescription}
-              onChange={(e) => setUserInput({ jobDescription: e.target.value })}
+              onChange={(e) => updateMaterial("jobDescription", e.target.value)}
             />
           </CardContent>
         </Card>
@@ -218,7 +241,7 @@ export function InputStep() {
               className="min-h-[240px] font-mono text-xs leading-relaxed"
               placeholder="粘贴简历内容..."
               value={userInput.originalResume}
-              onChange={(e) => setUserInput({ originalResume: e.target.value })}
+              onChange={(e) => updateMaterial("originalResume", e.target.value)}
             />
           </CardContent>
         </Card>
@@ -235,7 +258,7 @@ export function InputStep() {
               className="min-h-[100px] text-sm"
               placeholder="补充 Agent 需要了解的信息..."
               value={userInput.additionalInfo}
-              onChange={(e) => setUserInput({ additionalInfo: e.target.value })}
+              onChange={(e) => updateMaterial("additionalInfo", e.target.value)}
             />
           </CardContent>
         </Card>

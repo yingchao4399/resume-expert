@@ -2,10 +2,11 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import type { CareerEvidence, ResumeDocument, ResumeLibraryState } from "@/types/resume";
-import { WORKFLOW_STEPS } from "@/config/workflow";
+import type { CareerEvidence, FinalResume, ResumeDocument, ResumeLibraryState } from "@/types/resume";
+import { WORKFLOW_STAGES } from "@/config/workflow";
 import { sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
-import { buildEvidenceCandidates, normalizeFinalResumeBullets } from "@/lib/evidence/resume-evidence";
+import { buildEvidenceCandidates, evidenceSourceReference, mapResumeBullets, normalizeFinalResumeBullets } from "@/lib/evidence/resume-evidence";
+import { isAnalysisFresh } from "@/lib/analysis-revision";
 import { parseResumeBackup } from "@/lib/backup/resume-backup";
 import { EXAMPLE_USER_INPUT } from "@/store/resume-store-example";
 import type { ResumeStore } from "@/store/resume-store.types";
@@ -49,6 +50,40 @@ function confirmUnsavedChanges(state: ResumeStore): boolean {
   return window.confirm(`${label}还有未保存修改，离开后将丢失。是否继续？`);
 }
 
+const ANALYSIS_STEPS = new Set(WORKFLOW_STAGES.slice(1).flatMap((stage) => stage.steps.map((step) => step.id)));
+
+function mapDocumentResume(document: ResumeDocument, mapper: (resume: FinalResume) => FinalResume): ResumeDocument {
+  if (!document.analysisResult) return document;
+  return { ...document, analysisResult: { ...document.analysisResult, finalResume: mapper(document.analysisResult.finalResume) } };
+}
+
+function updateEvidenceLinks(document: ResumeDocument, evidenceId: string, mode: "review" | "remove"): ResumeDocument {
+  let affected = false;
+  const next = mapDocumentResume(document, (resume) => mapResumeBullets(resume, (bullet) => {
+    if (!bullet.evidenceLinks.some((link) => link.evidenceId === evidenceId)) return bullet;
+    affected = true;
+    const links = mode === "remove"
+      ? bullet.evidenceLinks.filter((link) => link.evidenceId !== evidenceId)
+      : bullet.evidenceLinks.map((link) => link.evidenceId === evidenceId ? { ...link, status: "needs-review" as const } : link);
+    return { ...bullet, evidenceLinks: links, evidenceIds: links.map((link) => link.evidenceId) };
+  }));
+  return affected ? { ...next, finalResumeStatus: "stale", updatedAt: nowISO() } : next;
+}
+
+function remapDocumentEvidence(document: ResumeDocument, evidenceIdMap: Map<string, string>, existingIds: Set<string>): ResumeDocument {
+  return mapDocumentResume(document, (resume) => mapResumeBullets(resume, (bullet) => {
+    const links = bullet.evidenceLinks.flatMap((link) => {
+      const mapped = evidenceIdMap.get(link.evidenceId) ?? (existingIds.has(link.evidenceId) ? link.evidenceId : null);
+      return mapped ? [{ ...link, evidenceId: mapped }] : [];
+    });
+    return { ...bullet, evidenceLinks: links, evidenceIds: links.map((link) => link.evidenceId) };
+  }));
+}
+
+function migrateEvidence(item: CareerEvidence): CareerEvidence {
+  return { ...item, sourceReference: item.sourceReference ?? null };
+}
+
 const initialDocument = createEmptyDocument("initial-draft");
 
 export const useResumeStore = create<ResumeStore>()(
@@ -63,6 +98,7 @@ export const useResumeStore = create<ResumeStore>()(
       storageError: null,
       recoveryAvailable: false,
       recoveryReason: null,
+      recoveryReport: null,
       dirtyScope: null,
 
       ...workingStateFromDocument(initialDocument),
@@ -172,45 +208,73 @@ export const useResumeStore = create<ResumeStore>()(
           hasHydrated: true,
           recoveryAvailable: Boolean(recovery),
           recoveryReason: recovery?.reason ?? null,
+          recoveryReport: null,
         });
       },
       setDirtyScope: (scope) => set({ dirtyScope: scope }),
       attemptStorageRecovery: () => {
         const recovery = readRecoveryRecord();
-        if (!recovery) return false;
+        if (!recovery) return null;
         try {
           const parsed = JSON.parse(recovery.raw) as { state?: Partial<ResumeLibraryState> };
           const candidates = Array.isArray(parsed.state?.documents) ? parsed.state.documents : [];
           const recoveredDocuments: ResumeDocument[] = [];
+          let skipped = 0;
           for (const candidate of candidates) {
             try {
-              const backup = parseResumeBackup({ backupVersion: 2, exportedAt: nowISO(), documents: [candidate] });
+              const backup = parseResumeBackup({ backupVersion: 3, exportedAt: nowISO(), documents: [candidate] });
               recoveredDocuments.push(...backup.documents);
             } catch {
-              // Keep recovering other independent documents.
+              skipped += 1;
             }
           }
-          if (recoveredDocuments.length === 0) return false;
+          const recoverCollection = <T,>(values: unknown, key: "careerEvidence" | "jobApplications" | "interviewReviews"): T[] => {
+            if (!Array.isArray(values)) return [];
+            const recovered: T[] = [];
+            for (const value of values) {
+              try {
+                const base = { backupVersion: 3, exportedAt: nowISO(), documents: recoveredDocuments.length ? [recoveredDocuments[0]] : [createEmptyDocument("recovery-placeholder")], careerEvidence: [], jobApplications: [], interviewReviews: [], [key]: [value] };
+                const backup = parseResumeBackup(base);
+                recovered.push(...(backup[key] as T[]));
+              } catch { skipped += 1; }
+            }
+            return recovered;
+          };
+          const careerEvidence = recoverCollection<CareerEvidence>(parsed.state?.careerEvidence, "careerEvidence");
+          const jobApplications = recoverCollection<ResumeLibraryState["jobApplications"][number]>(parsed.state?.jobApplications, "jobApplications");
+          const interviewReviews = recoverCollection<ResumeLibraryState["interviewReviews"][number]>(parsed.state?.interviewReviews, "interviewReviews");
+          if (recoveredDocuments.length === 0 && careerEvidence.length === 0 && jobApplications.length === 0 && interviewReviews.length === 0) return null;
+          if (recoveredDocuments.length === 0) recoveredDocuments.push(createEmptyDocument());
           const activeDocumentId = recoveredDocuments.some((item) => item.id === parsed.state?.activeDocumentId)
             ? parsed.state?.activeDocumentId as string
             : recoveredDocuments[0].id;
           const recoveredValue = JSON.stringify({
-            state: { schemaVersion: 6, documents: recoveredDocuments, activeDocumentId, careerEvidence: [], jobApplications: [], interviewReviews: [] },
-            version: 6,
+            state: { schemaVersion: 7, documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
+            version: 7,
           });
           validatePersistedLibrary(recoveredValue);
           unlockStorageWrites();
           window.localStorage.setItem(RESUME_STORAGE_KEY, recoveredValue);
-          window.localStorage.removeItem(RESUME_RECOVERY_KEY);
           lockStorageWrites();
-          clearPendingRecovery();
-          set({ recoveryAvailable: false, recoveryReason: null, storageError: null });
-          queueMicrotask(() => void useResumeStore.persist.rehydrate());
-          return true;
+          const warnings = skipped ? [`${skipped} 项损坏数据无法恢复，已跳过。`] : [];
+          const report = { documents: recoveredDocuments.length, careerEvidence: careerEvidence.length, jobApplications: jobApplications.length, interviewReviews: interviewReviews.length, skipped, warnings };
+          const active = recoveredDocuments.find((item) => item.id === activeDocumentId) ?? recoveredDocuments[0];
+          set({
+            documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews,
+            recoveryReport: report, storageError: null, ...workingStateFromDocument(active),
+          });
+          return report;
         } catch {
           lockStorageWrites();
-          return false;
+          return null;
         }
+      },
+      confirmStorageRecovery: () => {
+        unlockStorageWrites();
+        window.localStorage.removeItem(RESUME_RECOVERY_KEY);
+        clearPendingRecovery();
+        lockStorageWrites();
+        set({ recoveryAvailable: false, recoveryReason: null, recoveryReport: null });
       },
       clearCorruptStorage: () => {
         unlockStorageWrites();
@@ -220,7 +284,7 @@ export const useResumeStore = create<ResumeStore>()(
         const document = createEmptyDocument();
         set({
           documents: [document], activeDocumentId: document.id, recoveryAvailable: false,
-          recoveryReason: null, storageError: null, dirtyScope: null,
+          recoveryReason: null, recoveryReport: null, storageError: null, dirtyScope: null,
           ...workingStateFromDocument(document),
         });
         lockStorageWrites();
@@ -230,8 +294,10 @@ export const useResumeStore = create<ResumeStore>()(
         set((state) => {
           if (documents.length === 0) return state;
           const idMap = new Map<string, string>();
+          const evidenceIdMap = new Map<string, string>();
           const applicationIdMap = new Map<string, string>();
-          const imported = documents.map((document) => {
+          evidence.forEach((item) => evidenceIdMap.set(item.id, mode === "merge" ? createId() : item.id));
+          const migrated = documents.map((document) => {
             const nextId = mode === "merge" ? createId() : document.id;
             idMap.set(document.id, nextId);
             return migrateDocument({
@@ -241,9 +307,11 @@ export const useResumeStore = create<ResumeStore>()(
               updatedAt: nowISO(),
             });
           });
+          const existingEvidenceIds = new Set(mode === "replace" ? evidence.map((item) => item.id) : state.careerEvidence.map((item) => item.id));
+          const imported = migrated.map((document) => remapDocumentEvidence(document, evidenceIdMap, existingEvidenceIds));
           const importedEvidence = evidence.map((item) => ({
             ...structuredClone(item),
-            id: mode === "merge" ? createId() : item.id,
+            id: evidenceIdMap.get(item.id)!,
             sourceDocumentId: item.sourceDocumentId ? idMap.get(item.sourceDocumentId) ?? item.sourceDocumentId : null,
             updatedAt: nowISO(),
           }));
@@ -278,6 +346,12 @@ export const useResumeStore = create<ResumeStore>()(
       addCareerEvidence: (evidence) =>
         set((state) => {
           const timestamp = nowISO();
+          const sourceReference = evidence.sourceReference;
+          if (sourceReference && state.careerEvidence.some((item) =>
+            item.sourceReference?.kind === sourceReference.kind &&
+            item.sourceReference.referenceId === sourceReference.referenceId &&
+            item.sourceReference.fingerprint === sourceReference.fingerprint
+          )) return state;
           return {
             careerEvidence: [
               ...state.careerEvidence,
@@ -294,16 +368,34 @@ export const useResumeStore = create<ResumeStore>()(
         })),
 
       updateCareerEvidence: (id, patch) =>
-        set((state) => ({
-          careerEvidence: state.careerEvidence.map((item) =>
-            item.id === id ? { ...item, ...patch, id: item.id, updatedAt: nowISO() } : item
-          ),
-        })),
+        set((state) => {
+          const current = state.careerEvidence.find((item) => item.id === id);
+          if (!current) return state;
+          const factualKeys = ["title", "organization", "role", "period", "description", "metrics", "skills"] as const;
+          const factualChange = factualKeys.some((key) => patch[key] !== undefined && JSON.stringify(patch[key]) !== JSON.stringify(current[key]));
+          return {
+            careerEvidence: state.careerEvidence.map((item) => item.id === id ? { ...item, ...patch, id: item.id, status: factualChange ? "candidate" : patch.status ?? item.status, updatedAt: nowISO() } : item),
+            documents: factualChange ? state.documents.map((document) => updateEvidenceLinks(document, id, "review")) : state.documents,
+            ...(factualChange ? workingStateFromDocument(updateEvidenceLinks(getActiveDocument(state), id, "review")) : {}),
+          };
+        }),
 
       deleteCareerEvidence: (id) =>
-        set((state) => ({
-          careerEvidence: state.careerEvidence.filter((item) => item.id !== id),
-        })),
+        set((state) => {
+          const documents = state.documents.map((document) => updateEvidenceLinks(document, id, "remove"));
+          const active = documents.find((document) => document.id === state.activeDocumentId) ?? documents[0];
+          return { careerEvidence: state.careerEvidence.filter((item) => item.id !== id), documents, ...workingStateFromDocument(active) };
+        }),
+
+      setResumeEvidenceLinkStatus: (bulletId, evidenceId, status) =>
+        set((state) => {
+          const document = mapDocumentResume(getActiveDocument(state), (resume) => mapResumeBullets(resume, (bullet) => {
+            if (bullet.id !== bulletId) return bullet;
+            const links = status === "removed" ? bullet.evidenceLinks.filter((link) => link.evidenceId !== evidenceId) : bullet.evidenceLinks.map((link) => link.evidenceId === evidenceId ? { ...link, status, method: status === "confirmed" ? "manual" as const : link.method } : link);
+            return { ...bullet, evidenceLinks: links, evidenceIds: links.map((link) => link.evidenceId) };
+          }));
+          return updateActiveDocument(state, { ...document, finalResumeStatus: status === "confirmed" ? state.finalResumeStatus : "stale" });
+        }),
 
       addJobApplication: (application) =>
         set((state) => {
@@ -361,6 +453,8 @@ export const useResumeStore = create<ResumeStore>()(
       setUserInput: (input) =>
         set((state) => {
           const userInput = { ...state.userInput, ...input };
+          const changed = Object.entries(input).some(([key, value]) => state.userInput[key as keyof typeof state.userInput] !== value);
+          if (!changed) return state;
           const active = getActiveDocument(state);
           const title =
             active.title === "未命名简历" && userInput.targetRole.trim()
@@ -369,6 +463,7 @@ export const useResumeStore = create<ResumeStore>()(
           return updateActiveDocument(state, {
             userInput,
             title,
+            materialRevision: state.materialRevision + 1,
             finalResumeStatus: state.analysisResult ? "stale" : "draft",
           });
         }),
@@ -390,10 +485,9 @@ export const useResumeStore = create<ResumeStore>()(
               userInput: { ...state.userInput, originalResume: text },
               sourceResume: normalizedSource,
               importMetadata: metadata,
-              analysisResult: null,
+              materialRevision: state.materialRevision + 1,
               currentStep: "input",
-              finalResumeStatus: "draft",
-              hasManualEdits: false,
+              finalResumeStatus: state.analysisResult ? "stale" : "draft",
             }),
             careerEvidence: [...retained, ...candidates],
           };
@@ -408,6 +502,8 @@ export const useResumeStore = create<ResumeStore>()(
             title: suggestedTitle(EXAMPLE_USER_INPUT),
             userInput: { ...EXAMPLE_USER_INPUT },
             analysisResult: null,
+            materialRevision: state.materialRevision + 1,
+            analysisRevision: null,
             sourceResume: null,
             importMetadata: null,
             currentStep: "input",
@@ -425,8 +521,11 @@ export const useResumeStore = create<ResumeStore>()(
 
       setAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
 
-      setAnalysisResult: (result) =>
+      setAnalysisResult: (result, expectedMaterialRevision) => {
+        let accepted = false;
         set((state) => {
+          if (state.materialRevision !== expectedMaterialRevision) return { analysisError: "材料已在分析期间发生变化，本次结果未写入。请重新分析。" };
+          accepted = true;
           const active = getActiveDocument(state);
           return {
             ...updateActiveDocument(state, {
@@ -435,12 +534,15 @@ export const useResumeStore = create<ResumeStore>()(
                   ? suggestedTitle(state.userInput)
                   : active.title,
               analysisResult: { ...result, finalResume: normalizeFinalResumeBullets(result.finalResume, "ai-generated", state.careerEvidence) },
+              analysisRevision: expectedMaterialRevision,
               finalResumeStatus: "draft",
               hasManualEdits: false,
             }),
             analysisError: null,
           };
-        }),
+        });
+        return accepted;
+      },
 
       setOptimizedItems: (items) =>
         set((state) => {
@@ -491,7 +593,9 @@ export const useResumeStore = create<ResumeStore>()(
           if (!state.analysisResult) return state;
           const question = state.analysisResult.followUpQuestions.find((item) => item.id === id);
           const timestamp = nowISO();
-          const candidate: CareerEvidence | null = question
+          const reference = question ? evidenceSourceReference("follow-up", `${state.activeDocumentId}:${id}`, bullet) : null;
+          const previous = question ? state.careerEvidence.find((item) => item.sourceReference?.kind === "follow-up" && item.sourceReference.referenceId === `${state.activeDocumentId}:${id}`) : null;
+          const candidate: CareerEvidence | null = question && (!previous || previous.status === "confirmed")
             ? {
                 id: createId(),
                 type: "achievement",
@@ -505,10 +609,14 @@ export const useResumeStore = create<ResumeStore>()(
                 status: "candidate",
                 sourceType: "follow-up",
                 sourceDocumentId: state.activeDocumentId,
+                sourceReference: reference,
                 createdAt: timestamp,
                 updatedAt: timestamp,
               }
             : null;
+          const careerEvidence = previous?.status === "candidate"
+            ? state.careerEvidence.map((item) => item.id === previous.id ? { ...item, description: bullet, metrics: bullet.match(/\d+(?:\.\d+)?\s*(?:%|％|万|千|百|家|人|次|项|天|月|年|倍)/g) ?? [], sourceReference: reference, updatedAt: timestamp } : item)
+            : candidate ? [...state.careerEvidence, candidate] : state.careerEvidence;
           return {
             ...updateActiveDocument(state, {
               analysisResult: {
@@ -519,16 +627,14 @@ export const useResumeStore = create<ResumeStore>()(
               },
               finalResumeStatus: "stale",
             }),
-            careerEvidence: candidate ? [...state.careerEvidence, candidate] : state.careerEvidence,
+            careerEvidence,
           };
         }),
 
       getStepStatus: (step) => {
-        const { currentStep, analysisResult } = get();
-        const stepIndex = WORKFLOW_STEPS.findIndex((item) => item.id === step);
-        const currentIndex = WORKFLOW_STEPS.findIndex(
-          (item) => item.id === currentStep
-        );
+        const state = get();
+        const { currentStep, analysisResult } = state;
+        const analysisFresh = isAnalysisFresh(state);
 
         if (step === "evidence") {
           if (currentStep === "evidence") return "active";
@@ -537,24 +643,29 @@ export const useResumeStore = create<ResumeStore>()(
 
         if (step === "input") {
           if (currentStep === "input") return "active";
-          return analysisResult ? "completed" : "pending";
+          return analysisFresh ? "completed" : "pending";
         }
 
-        if (!analysisResult) return "disabled";
-        if (stepIndex < currentIndex) return "completed";
-        if (stepIndex === currentIndex) return "active";
-        return "pending";
+        const analysisSteps = new Set(["jd-analysis", "diagnosis", "match", "follow-up", "interview"]);
+        if (step === "interview-recording") return currentStep === step ? "active" : "pending";
+        if (analysisResult && analysisSteps.has(step)) return currentStep === step ? "active" : analysisFresh ? "completed" : "pending";
+        if (!analysisResult || !analysisFresh) return "disabled";
+        if (currentStep === step) return "active";
+        if (step === "optimize") return state.finalResumeStatus === "confirmed" ? "completed" : "pending";
+        if (step === "final-resume") return state.finalResumeStatus === "confirmed" ? "completed" : "pending";
+        if (step === "applications" || step === "export") return state.finalResumeStatus === "confirmed" ? "pending" : "disabled";
+        return ANALYSIS_STEPS.has(step) ? "pending" : "disabled";
       },
 
       setCopied: (copied) => set({ copied }),
     }),
     {
       name: RESUME_STORAGE_KEY,
-      version: 6,
+      version: 7,
       skipHydration: true,
       storage: createJSONStorage<ResumeLibraryState>(() => safeLocalStorage),
       partialize: (state) => ({
-        schemaVersion: 6,
+        schemaVersion: 7,
         documents: state.documents,
         activeDocumentId: state.activeDocumentId,
         careerEvidence: state.careerEvidence,
@@ -569,11 +680,11 @@ export const useResumeStore = create<ResumeStore>()(
           ? persisted.documents.map((document) => migrateDocument(document))
           : [];
         return {
-          schemaVersion: 6,
+          schemaVersion: 7,
           documents,
           activeDocumentId: persisted.activeDocumentId ?? documents[0]?.id ?? "",
           careerEvidence: Array.isArray(persisted.careerEvidence)
-            ? persisted.careerEvidence
+            ? persisted.careerEvidence.map(migrateEvidence)
             : [],
           jobApplications: Array.isArray(persisted.jobApplications) ? persisted.jobApplications : [],
           interviewReviews: Array.isArray(persisted.interviewReviews) ? persisted.interviewReviews : [],
@@ -595,7 +706,7 @@ export const useResumeStore = create<ResumeStore>()(
         return {
           ...currentState,
           documents,
-          careerEvidence: Array.isArray(persisted.careerEvidence) ? persisted.careerEvidence : [],
+          careerEvidence: Array.isArray(persisted.careerEvidence) ? persisted.careerEvidence.map(migrateEvidence) : [],
           jobApplications: Array.isArray(persisted.jobApplications) ? persisted.jobApplications : [],
           interviewReviews: Array.isArray(persisted.interviewReviews) ? persisted.interviewReviews : [],
           activeDocumentId: active.id,

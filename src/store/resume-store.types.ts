@@ -1,6 +1,7 @@
 import type {
   AnalysisResult,
   CareerEvidence,
+  ResumeEvidenceLinkStatus,
   FinalResumeStatus,
   FinalResume,
   JobApplication,
@@ -17,6 +18,15 @@ import type { InterviewReviewRecord } from "@/types/interview";
 
 export type UnsavedScope = "resume" | "layout";
 
+export interface StorageRecoveryReport {
+  documents: number;
+  careerEvidence: number;
+  jobApplications: number;
+  interviewReviews: number;
+  skipped: number;
+  warnings: string[];
+}
+
 export interface ResumeStore {
   documents: ResumeDocument[];
   activeDocumentId: string;
@@ -27,12 +37,15 @@ export interface ResumeStore {
   storageError: string | null;
   recoveryAvailable: boolean;
   recoveryReason: string | null;
+  recoveryReport: StorageRecoveryReport | null;
   dirtyScope: UnsavedScope | null;
 
   userInput: UserInput;
   currentStep: StepId;
   isAnalyzing: boolean;
   analysisResult: AnalysisResult | null;
+  materialRevision: number;
+  analysisRevision: number | null;
   sourceResume: FinalResume | null;
   importMetadata: ResumeImportMetadata | null;
   layoutConfig: ResumeLayoutConfig;
@@ -51,13 +64,15 @@ export interface ResumeStore {
   setStorageError: (error: string | null) => void;
   markHydrated: () => void;
   setDirtyScope: (scope: UnsavedScope | null) => void;
-  attemptStorageRecovery: () => boolean;
+  attemptStorageRecovery: () => StorageRecoveryReport | null;
+  confirmStorageRecovery: () => void;
   clearCorruptStorage: () => void;
   importDocuments: (documents: ResumeDocument[], mode: "merge" | "replace", evidence?: CareerEvidence[], applications?: JobApplication[], reviews?: InterviewReviewRecord[]) => void;
   addCareerEvidence: (evidence: Omit<CareerEvidence, "id" | "createdAt" | "updatedAt">) => void;
   confirmCareerEvidence: (id: string) => void;
   updateCareerEvidence: (id: string, patch: Partial<CareerEvidence>) => void;
   deleteCareerEvidence: (id: string) => void;
+  setResumeEvidenceLinkStatus: (bulletId: string, evidenceId: string, status: ResumeEvidenceLinkStatus | "removed") => void;
   addJobApplication: (application: Omit<JobApplication, "id" | "createdAt" | "updatedAt">) => void;
   updateJobApplication: (id: string, patch: Partial<JobApplication>) => void;
   deleteJobApplication: (id: string) => void;
@@ -71,7 +86,7 @@ export interface ResumeStore {
   loadExampleData: () => void;
   setCurrentStep: (step: StepId) => void;
   setAnalyzing: (analyzing: boolean) => void;
-  setAnalysisResult: (result: AnalysisResult) => void;
+  setAnalysisResult: (result: AnalysisResult, expectedMaterialRevision: number) => boolean;
   setOptimizedItems: (items: AnalysisResult["optimizedItems"]) => void;
   setFinalResume: (
     resume: AnalysisResult["finalResume"],

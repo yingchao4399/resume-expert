@@ -40,6 +40,7 @@ export async function runProjectEvidence(
     ? Promise.resolve(buildMockDraft(input))
     : provider === "direct" ? runDirect(input) : runFlowise(input), () => buildMockDraft(input));
   return {
+    runId: crypto.randomUUID(),
     draft: outcome.value,
     requestedProvider: provider,
     actualProvider: outcome.actual,

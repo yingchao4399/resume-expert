@@ -22,7 +22,8 @@ import {
 } from "@/services/ai/resumeAgent";
 import type { OptimizeStyle } from "@/types/resume";
 import { cn } from "@/lib/utils";
-import { confirmedEvidencePrompt } from "@/lib/evidence/resume-evidence";
+import { confirmedEvidencePrompt, selectRelevantEvidence } from "@/lib/evidence/resume-evidence";
+import { isAnalysisFresh } from "@/lib/analysis-revision";
 
 const STYLE_OPTIONS: { value: OptimizeStyle; label: string }[] = [
   { value: "concise", label: "更简洁" },
@@ -43,6 +44,9 @@ export function OptimizeStep() {
     setOptimizedItems,
     setFinalResume,
     setCurrentStep,
+    activeDocumentId,
+    materialRevision,
+    analysisRevision,
   } = useResumeStore();
   const [regenerating, setRegenerating] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
@@ -51,13 +55,18 @@ export function OptimizeStep() {
   if (!analysisResult) {
     return <EmptyState message="请先完成输入材料并开始分析" />;
   }
+  if (!isAnalysisFresh({ analysisResult, materialRevision, analysisRevision })) {
+    return <EmptyState message="材料已变化，旧优化结果已锁定。请返回材料页重新分析。" />;
+  }
+
+  const evidencePrompt = confirmedEvidencePrompt(selectRelevantEvidence(careerEvidence, userInput.targetRole, userInput.jobDescription, activeDocumentId));
 
   const handleStyleChange = async (style: OptimizeStyle) => {
     setOptimizeStyle(style);
     setRegenerating(true);
     setOptimizeError(null);
     try {
-      const items = await regenerateOptimizedItems({ ...userInput, additionalInfo: [userInput.additionalInfo, confirmedEvidencePrompt(careerEvidence)].filter(Boolean).join("\n\n") }, style);
+      const items = await regenerateOptimizedItems({ ...userInput, additionalInfo: [userInput.additionalInfo, evidencePrompt].filter(Boolean).join("\n\n") }, style);
       setOptimizedItems(items);
     } catch (error) {
       setOptimizeError(error instanceof Error ? error.message : "优化生成失败");
@@ -87,7 +96,7 @@ export function OptimizeStep() {
       const latestResult = useResumeStore.getState().analysisResult;
       if (!latestResult) return;
       const resume = await finalizeResume(
-        { ...userInput, additionalInfo: [userInput.additionalInfo, confirmedEvidencePrompt(careerEvidence)].filter(Boolean).join("\n\n") },
+        { ...userInput, additionalInfo: [userInput.additionalInfo, evidencePrompt].filter(Boolean).join("\n\n") },
         optimizeStyle,
         latestResult.optimizedItems,
         latestResult.followUpQuestions

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Download, RotateCcw, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, Download, RotateCcw, Trash2, X } from "lucide-react";
 import { StepSidebar } from "@/components/layout/step-sidebar";
 import { TopNav } from "@/components/layout/top-nav";
 import { StepContent } from "@/components/steps/step-content";
@@ -13,7 +13,7 @@ import {
 } from "@/store/resume-store";
 
 export function AppShell() {
-  const { storageError, setStorageError, recoveryAvailable, recoveryReason, attemptStorageRecovery, clearCorruptStorage, dirtyScope } = useResumeStore();
+  const { storageError, setStorageError, recoveryAvailable, recoveryReason, recoveryReport, attemptStorageRecovery, confirmStorageRecovery, clearCorruptStorage, dirtyScope } = useResumeStore();
   const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,7 +56,8 @@ export function AppShell() {
             <AlertTriangle className="h-4 w-4" />
             <span className="flex-1">检测到损坏或非法的本地数据，自动覆盖已锁定。{recoveryReason ? `原因：${recoveryReason}` : ""}</span>
             <Button variant="outline" size="sm" onClick={() => downloadRecoveryData()}><Download className="h-3.5 w-3.5" />下载异常数据</Button>
-            <Button variant="outline" size="sm" onClick={() => setRecoveryMessage(attemptStorageRecovery() ? "已恢复可识别的简历文档。" : "自动恢复失败，请先下载异常数据后再决定是否清空。")}><RotateCcw className="h-3.5 w-3.5" />尝试恢复</Button>
+            {!recoveryReport && <Button variant="outline" size="sm" onClick={() => { const report = attemptStorageRecovery(); setRecoveryMessage(report ? `已恢复：简历 ${report.documents}、证据 ${report.careerEvidence}、投递 ${report.jobApplications}、复盘 ${report.interviewReviews}；跳过 ${report.skipped} 项。请核对后确认。` : "自动恢复失败，请先下载异常数据后再决定是否清空。"); }}><RotateCcw className="h-3.5 w-3.5" />尝试恢复</Button>}
+            {recoveryReport && <Button variant="outline" size="sm" onClick={() => { confirmStorageRecovery(); setRecoveryMessage(null); }}><Check className="h-3.5 w-3.5" />确认恢复结果</Button>}
             <Button variant="destructive" size="sm" onClick={() => { if (window.confirm("确认清空损坏存储并创建空白草稿？此操作不会保留恢复槽，请先下载异常数据。")) clearCorruptStorage(); }}><Trash2 className="h-3.5 w-3.5" />确认清空</Button>
           </div>
           {recoveryMessage && <p className="mt-2" role="status">{recoveryMessage}</p>}

@@ -25,6 +25,7 @@ import type { StepId } from "@/types/resume";
 import { INTERVIEW_REVIEW_STEPS, WORKFLOW_STAGES } from "@/config/workflow";
 import { getWorkflowProgress, type WorkflowStageStatus } from "@/lib/workflow-progress";
 import { calculateATSAssessment } from "@/lib/ats";
+import { isAnalysisFresh } from "@/lib/analysis-revision";
 
 const STEP_ICONS: Record<StepId, React.ElementType> = {
   input: FileText,
@@ -56,11 +57,13 @@ export function StepSidebar() {
     userInput,
     currentStep,
     finalResumeStatus,
+    materialRevision,
+    analysisRevision,
   } = useResumeStore();
-  const progress = getWorkflowProgress({ currentStep, userInput, analysisResult, finalResumeStatus });
+  const progress = getWorkflowProgress({ currentStep, userInput, analysisResult, finalResumeStatus, materialRevision, analysisRevision });
   const atsAssessment = useMemo(
-    () => (analysisResult ? calculateATSAssessment(userInput, analysisResult) : null),
-    [analysisResult, userInput]
+    () => (isAnalysisFresh({ analysisResult, materialRevision, analysisRevision }) ? calculateATSAssessment(userInput, analysisResult!) : null),
+    [analysisResult, userInput, materialRevision, analysisRevision]
   );
   const progressById = new Map(progress.map((item) => [item.id, item]));
 

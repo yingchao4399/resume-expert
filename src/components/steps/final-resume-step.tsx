@@ -13,6 +13,7 @@ import { ResumeSourceTrace } from "@/components/resume/resume-source-trace";
 import { useResumeStore } from "@/store/resume-store";
 import type { FinalResume, ResumeBulletValue } from "@/types/resume";
 import { getBulletText, normalizeResumeBullet } from "@/lib/evidence/resume-evidence";
+import { isAnalysisFresh } from "@/lib/analysis-revision";
 
 function cloneResume(resume: FinalResume): FinalResume {
   return JSON.parse(JSON.stringify(resume)) as FinalResume;
@@ -86,6 +87,8 @@ export function FinalResumeStep() {
     setCurrentStep,
     dirtyScope,
     setDirtyScope,
+    materialRevision,
+    analysisRevision,
   } = useResumeStore();
   const finalResume = analysisResult?.finalResume ?? null;
   const [editing, setEditing] = useState(false);
@@ -101,6 +104,9 @@ export function FinalResumeStep() {
 
   if (!analysisResult || !finalResume) {
     return <EmptyState message="请先完成输入材料并开始分析" />;
+  }
+  if (!isAnalysisFresh({ analysisResult, materialRevision, analysisRevision })) {
+    return <EmptyState message="材料已变化，旧最终简历仅供查看且不可编辑或交付。请返回材料页重新分析。" />;
   }
 
   const beginEditing = () => {
@@ -194,9 +200,9 @@ export function FinalResumeStep() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentStep("interview")}
+              onClick={() => setCurrentStep("applications")}
             >
-              下一步：面试准备
+              下一步：投递准备
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>

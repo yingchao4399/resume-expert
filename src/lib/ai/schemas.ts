@@ -81,6 +81,15 @@ const resumeBulletSchema = z.union([
     text: z.string(),
     sourceType: z.enum(["imported", "ai-generated", "manual"]),
     evidenceIds: z.array(z.string()),
+    evidenceLinks: z.array(z.object({
+      evidenceId: z.string(),
+      status: z.enum(["candidate", "confirmed", "needs-review"]),
+      method: z.enum(["suggested", "manual"]),
+      sourceReference: z.object({
+        kind: z.enum(["resume-import", "manual", "follow-up", "flowise"]),
+        referenceId: z.string(), runId: z.string().nullable(), fingerprint: z.string(),
+      }).nullable(),
+    })).optional().default([]),
     originalText: z.string(),
     aiText: z.string(),
     manualText: z.string(),
@@ -127,7 +136,7 @@ const interviewQuestionSchema = z.object({
   evidenceNeeded: z.array(z.string()),
 });
 
-export const interviewPrepSchema = z.object({
+export const persistedInterviewPrepSchema = z.object({
   likelyQuestions: z.array(interviewQuestionSchema),
   evidenceToPrepare: z.array(z.string()),
   possibleExaggerations: z.array(z.string()),
@@ -135,14 +144,29 @@ export const interviewPrepSchema = z.object({
   selfIntroduction: z.string(),
 });
 
-export const analysisResultSchema = z.object({
+export const interviewPrepSchema = persistedInterviewPrepSchema.extend({
+  likelyQuestions: z.array(interviewQuestionSchema).min(5).max(10),
+});
+
+export const persistedAnalysisResultSchema = z.object({
   jdAnalysis: jdAnalysisSchema,
   diagnosis: resumeDiagnosisSchema,
   matchItems: z.array(matchItemSchema),
   followUpQuestions: z.array(followUpQuestionSchema),
   optimizedItems: z.array(optimizedItemSchema),
   finalResume: finalResumeSchema,
+  interviewPrep: persistedInterviewPrepSchema,
+});
+
+export const analysisResultSchema = persistedAnalysisResultSchema.extend({
+  matchItems: z.array(matchItemSchema).min(1).max(12),
+  followUpQuestions: z.array(followUpQuestionSchema).max(10),
+  optimizedItems: z.array(optimizedItemSchema).max(12),
   interviewPrep: interviewPrepSchema,
+}).superRefine((result, context) => {
+  if (result.matchItems.some((item) => item.needsSupplement) && result.followUpQuestions.length === 0) {
+    context.addIssue({ code: "custom", path: ["followUpQuestions"], message: "存在证据缺口时至少需要一个补证问题" });
+  }
 });
 
 export const jdAnalysisResultSchema = z.object({
@@ -151,12 +175,16 @@ export const jdAnalysisResultSchema = z.object({
 
 export const diagnosisMatchResultSchema = z.object({
   diagnosis: resumeDiagnosisSchema,
-  matchItems: z.array(matchItemSchema),
-  followUpQuestions: z.array(followUpQuestionSchema),
+  matchItems: z.array(matchItemSchema).min(1).max(12),
+  followUpQuestions: z.array(followUpQuestionSchema).max(10),
+}).superRefine((result, context) => {
+  if (result.matchItems.some((item) => item.needsSupplement) && result.followUpQuestions.length === 0) {
+    context.addIssue({ code: "custom", path: ["followUpQuestions"], message: "存在证据缺口时至少需要一个补证问题" });
+  }
 });
 
 export const optimizeResumeResultSchema = z.object({
-  optimizedItems: z.array(optimizedItemSchema),
+  optimizedItems: z.array(optimizedItemSchema).max(12),
   finalResume: finalResumeSchema,
 });
 
@@ -165,7 +193,7 @@ export const interviewPrepResultSchema = z.object({
 });
 
 export const optimizedItemsResultSchema = z.object({
-  optimizedItems: z.array(optimizedItemSchema),
+  optimizedItems: z.array(optimizedItemSchema).max(12),
 });
 
 export const followUpBulletResultSchema = z.object({

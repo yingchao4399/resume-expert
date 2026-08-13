@@ -31,7 +31,7 @@ export function suggestedTitle(input: UserInput): string {
 export function createEmptyDocument(id = createId()): ResumeDocument {
   const timestamp = nowISO();
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     id,
     title: "未命名简历",
     createdAt: timestamp,
@@ -39,6 +39,8 @@ export function createEmptyDocument(id = createId()): ResumeDocument {
     userInput: { ...defaultUserInput },
     currentStep: "input",
     analysisResult: null,
+    materialRevision: 0,
+    analysisRevision: null,
     sourceResume: null,
     importMetadata: null,
     layoutConfig: getDefaultLayoutConfig(),
@@ -53,6 +55,8 @@ export function workingStateFromDocument(document: ResumeDocument) {
     userInput: document.userInput,
     currentStep: document.currentStep,
     analysisResult: document.analysisResult,
+    materialRevision: document.materialRevision,
+    analysisRevision: document.analysisRevision,
     sourceResume: document.sourceResume,
     importMetadata: document.importMetadata,
     layoutConfig: document.layoutConfig,

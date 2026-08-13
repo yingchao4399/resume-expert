@@ -32,6 +32,7 @@ import { useResumeStore } from "@/store/resume-store";
 import { calculateATSAssessment } from "@/lib/ats";
 import { downloadResumeDocx } from "@/lib/export/docx";
 import { copyToClipboard, formatResumeAsText } from "@/lib/utils";
+import { isAnalysisFresh } from "@/lib/analysis-revision";
 
 export function ExportStep() {
   const {
@@ -42,6 +43,8 @@ export function ExportStep() {
     layoutConfig,
     setCopied,
     setCurrentStep,
+    materialRevision,
+    analysisRevision,
   } = useResumeStore();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -61,7 +64,8 @@ export function ExportStep() {
   }
 
   const resumeText = formatResumeAsText(finalResume);
-  const exportBlocked = finalResumeStatus !== "confirmed";
+  const analysisFresh = isAnalysisFresh({ analysisResult, materialRevision, analysisRevision });
+  const exportBlocked = finalResumeStatus !== "confirmed" || !analysisFresh;
 
   const handleCopy = async () => {
     if (exportBlocked) return;
@@ -107,7 +111,9 @@ export function ExportStep() {
       {exportBlocked && (
         <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <p>
-            {finalResumeStatus === "stale"
+            {!analysisFresh
+              ? "岗位或简历材料已变化，旧分析与旧简历已锁定。"
+              : finalResumeStatus === "stale"
               ? "当前内容尚未应用最新补充、材料或优化风格，交付已锁定。"
               : "当前内容仍是分析草稿，请先生成并确认最终简历。"}
           </p>
@@ -115,9 +121,9 @@ export function ExportStep() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentStep("optimize")}
+              onClick={() => setCurrentStep(analysisFresh ? "optimize" : "input")}
             >
-              返回重新生成
+              {analysisFresh ? "返回重新生成" : "返回重新分析"}
             </Button>
           </div>
         </div>

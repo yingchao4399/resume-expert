@@ -16,6 +16,8 @@ interface ProgressInput {
   userInput: UserInput;
   analysisResult: AnalysisResult | null;
   finalResumeStatus: FinalResumeStatus;
+  materialRevision?: number;
+  analysisRevision?: number | null;
 }
 
 const STAGE_STEPS: Record<WorkflowStageId, StepId[]> = {
@@ -32,7 +34,8 @@ export function getWorkflowProgress(input: ProgressInput): WorkflowStageProgress
     !input.userInput.originalResume.trim() && "原始简历",
   ].filter(Boolean) as string[];
   const materialsReady = missingMaterials.length === 0;
-  const analysisReady = Boolean(input.analysisResult);
+  const analysisReady = Boolean(input.analysisResult) &&
+    (input.materialRevision === undefined || input.analysisRevision === input.materialRevision);
   const finalReady = Boolean(input.analysisResult?.finalResume) && input.finalResumeStatus === "confirmed";
 
   const active = (id: WorkflowStageId) => STAGE_STEPS[id].includes(input.currentStep);
@@ -47,9 +50,15 @@ export function getWorkflowProgress(input: ProgressInput): WorkflowStageProgress
     {
       id: "analysis",
       status: active("analysis") ? (materialsReady ? "active" : "blocked") : analysisReady ? "completed" : "pending",
-      blocker: materialsReady ? (analysisReady ? null : "需要先运行岗位分析") : "材料未齐，暂不能分析",
+      blocker: materialsReady
+        ? analysisReady
+          ? null
+          : input.analysisResult
+            ? "材料已变化，旧分析已锁定，请重新分析"
+            : "需要先运行岗位分析"
+        : "材料未齐，暂不能分析",
       nextStep: analysisReady ? "jd-analysis" : "input",
-      actionLabel: analysisReady ? "查看分析" : "开始分析",
+      actionLabel: analysisReady ? "查看分析" : input.analysisResult ? "重新分析" : "开始分析",
     },
     {
       id: "creation",

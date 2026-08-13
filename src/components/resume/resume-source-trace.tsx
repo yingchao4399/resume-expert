@@ -2,6 +2,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getBulletText, normalizeResumeBullet } from "@/lib/evidence/resume-evidence";
 import type { CareerEvidence, FinalResume, ResumeBulletValue } from "@/types/resume";
+import { Button } from "@/components/ui/button";
+import { useResumeStore } from "@/store/resume-store";
 
 export function ResumeSourceTrace({ resume, evidence }: { resume: FinalResume; evidence: CareerEvidence[] }) {
   const bullets = [
@@ -26,7 +28,8 @@ export function ResumeSourceTrace({ resume, evidence }: { resume: FinalResume; e
 
 function TraceItem({ section, bullet, evidenceMap }: { section: string; bullet: ResumeBulletValue; evidenceMap: Map<string, CareerEvidence> }) {
   const item = normalizeResumeBullet(bullet);
-  const linked = item.evidenceIds.map((id) => evidenceMap.get(id)).filter((value): value is CareerEvidence => Boolean(value));
+  const setLinkStatus = useResumeStore((state) => state.setResumeEvidenceLinkStatus);
+  const links = item.evidenceLinks.map((link) => ({ link, evidence: evidenceMap.get(link.evidenceId) })).filter((value): value is { link: typeof item.evidenceLinks[number]; evidence: CareerEvidence } => Boolean(value.evidence));
   return (
     <div className="rounded-md border border-neutral-200 p-3 text-xs">
       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -44,9 +47,17 @@ function TraceItem({ section, bullet, evidenceMap }: { section: string; bullet: 
           {item.manualText && <p><span className="font-medium">人工：</span>{item.manualText}</p>}
         </div>
       )}
-      <p className="mt-2 text-neutral-500">
-        关联证据：{linked.length ? linked.map((entry) => entry.title).join("、") : "暂无；建议回到证据库核对或补充"}
-      </p>
+      {links.length ? <div className="mt-2 space-y-2">
+        <p className="text-neutral-500">证据关联（系统推荐不会自动视为可信）：</p>
+        {links.map(({ link, evidence }) => <div key={link.evidenceId} className="flex flex-wrap items-center gap-2 rounded border px-2 py-1.5">
+          <span className="flex-1">{evidence.title}</span>
+          <Badge variant={link.status === "confirmed" ? "success" : link.status === "needs-review" ? "warning" : "outline"}>
+            {link.status === "confirmed" ? "已确认" : link.status === "needs-review" ? "待复核" : "候选"}
+          </Badge>
+          {link.status !== "confirmed" && <Button size="sm" variant="outline" onClick={() => setLinkStatus(item.id, link.evidenceId, "confirmed")}>确认关联</Button>}
+          <Button size="sm" variant="ghost" onClick={() => setLinkStatus(item.id, link.evidenceId, "removed")}>移除</Button>
+        </div>)}
+      </div> : <p className="mt-2 text-neutral-500">关联证据：暂无；建议回到证据库核对或补充</p>}
     </div>
   );
 }

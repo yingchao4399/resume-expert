@@ -108,11 +108,30 @@ export interface ProjectExperience {
 
 export type ResumeBulletSource = "imported" | "ai-generated" | "manual";
 
+export type ResumeEvidenceLinkStatus = "candidate" | "confirmed" | "needs-review";
+export type ResumeEvidenceLinkMethod = "suggested" | "manual";
+
+export interface EvidenceSourceReference {
+  kind: "resume-import" | "manual" | "follow-up" | "flowise";
+  referenceId: string;
+  runId: string | null;
+  fingerprint: string;
+}
+
+export interface ResumeEvidenceLink {
+  evidenceId: string;
+  status: ResumeEvidenceLinkStatus;
+  method: ResumeEvidenceLinkMethod;
+  sourceReference: EvidenceSourceReference | null;
+}
+
 export interface ResumeBullet {
   id: string;
   text: string;
   sourceType: ResumeBulletSource;
+  /** @deprecated Kept for V1.7.2 backup compatibility. Use evidenceLinks. */
   evidenceIds: string[];
+  evidenceLinks: ResumeEvidenceLink[];
   originalText: string;
   aiText: string;
   manualText: string;
@@ -132,8 +151,9 @@ export interface CareerEvidence {
   metrics: string[];
   skills: string[];
   status: "candidate" | "confirmed";
-  sourceType: "resume-import" | "manual" | "follow-up";
+  sourceType: "resume-import" | "manual" | "follow-up" | "flowise";
   sourceDocumentId: string | null;
+  sourceReference: EvidenceSourceReference | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -220,7 +240,7 @@ export interface StepConfig {
 export type FinalResumeStatus = "draft" | "confirmed" | "stale";
 
 export interface ResumeDocument {
-  schemaVersion: 5;
+  schemaVersion: 6;
   id: string;
   title: string;
   createdAt: string;
@@ -228,6 +248,8 @@ export interface ResumeDocument {
   userInput: UserInput;
   currentStep: StepId;
   analysisResult: AnalysisResult | null;
+  materialRevision: number;
+  analysisRevision: number | null;
   sourceResume: FinalResume | null;
   importMetadata: ResumeImportMetadata | null;
   layoutConfig: ResumeLayoutConfig;
@@ -254,7 +276,7 @@ export interface JobApplication {
 }
 
 export interface ResumeLibraryState {
-  schemaVersion: 6;
+  schemaVersion: 7;
   documents: ResumeDocument[];
   activeDocumentId: string;
   careerEvidence: CareerEvidence[];

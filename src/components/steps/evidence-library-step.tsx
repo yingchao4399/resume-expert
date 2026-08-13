@@ -82,6 +82,7 @@ export function EvidenceLibraryStep() {
       status: "confirmed",
       sourceType: "manual",
       sourceDocumentId: null,
+      sourceReference: null,
     });
     setDraft(EMPTY_DRAFT);
     setAdding(false);
@@ -162,7 +163,7 @@ export function EvidenceLibraryStep() {
                         )}
                         {item.status === "confirmed" && <ShieldCheck className="mt-2 h-4 w-4 text-emerald-600" aria-label="已核验" />}
                         <Button aria-label={`编辑证据 ${item.title}`} variant="ghost" size="sm" onClick={() => beginEdit(item)}><Pencil className="h-3.5 w-3.5" /></Button>
-                        <Button aria-label={`删除证据 ${item.title}`} variant="ghost" size="sm" className="text-red-600" onClick={() => { if (window.confirm("确定删除这条证据？已生成的岗位简历不会被自动改写。")) deleteCareerEvidence(item.id); }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                        <Button aria-label={`删除证据 ${item.title}`} variant="ghost" size="sm" className="text-red-600" onClick={() => { if (window.confirm("确定删除这条证据？引用会被解除，相关最终简历将标记为过期。")) deleteCareerEvidence(item.id); }}><Trash2 className="h-3.5 w-3.5" /></Button>
                       </div>
                     </div>
                   )}
@@ -201,5 +202,6 @@ function splitList(value: string): string[] {
 function sourceLabel(source: CareerEvidence["sourceType"]): string {
   if (source === "resume-import") return "简历导入";
   if (source === "follow-up") return "经历补证";
+  if (source === "flowise") return "Flowise 实验";
   return "人工录入";
 }

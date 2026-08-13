@@ -28,6 +28,7 @@ export type ProjectEvidenceDraft = z.infer<typeof projectEvidenceDraftSchema>;
 export type ProjectEvidenceProvider = z.infer<typeof projectEvidenceRequestSchema>["provider"];
 
 export interface ProjectEvidenceResult {
+  runId: string;
   draft: ProjectEvidenceDraft;
   requestedProvider: ProjectEvidenceProvider;
   actualProvider: ProjectEvidenceProvider;

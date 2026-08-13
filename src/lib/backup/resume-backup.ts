@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import {
-  analysisResultSchema,
+  persistedAnalysisResultSchema,
   finalResumeSchema,
   optimizeStyleSchema,
   userInputSchema,
@@ -48,14 +48,16 @@ const layoutConfigSchema = z.object({
 });
 
 const documentSchema = z.object({
-  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]),
   id: z.string().min(1),
   title: z.string().min(1),
   createdAt: z.string(),
   updatedAt: z.string(),
   userInput: userInputSchema,
   currentStep: stepIdSchema,
-  analysisResult: analysisResultSchema.nullable(),
+  analysisResult: persistedAnalysisResultSchema.nullable(),
+  materialRevision: z.number().int().nonnegative().optional(),
+  analysisRevision: z.number().int().nonnegative().nullable().optional(),
   sourceResume: finalResumeSchema.nullable().optional(),
   importMetadata: importMetadataSchema.nullable().optional(),
   layoutConfig: layoutConfigSchema.optional(),
@@ -76,8 +78,12 @@ const careerEvidenceSchema = z.object({
   metrics: z.array(z.string()),
   skills: z.array(z.string()),
   status: z.enum(["candidate", "confirmed"]),
-  sourceType: z.enum(["resume-import", "manual", "follow-up"]),
+  sourceType: z.enum(["resume-import", "manual", "follow-up", "flowise"]),
   sourceDocumentId: z.string().nullable(),
+  sourceReference: z.object({
+    kind: z.enum(["resume-import", "manual", "follow-up", "flowise"]),
+    referenceId: z.string(), runId: z.string().nullable(), fingerprint: z.string(),
+  }).nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -97,7 +103,7 @@ const interviewReviewSchema = z.object({
 });
 
 const backupSchema = z.object({
-  backupVersion: z.union([z.literal(1), z.literal(2)]),
+  backupVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   exportedAt: z.string(),
   documents: z.array(documentSchema).min(1),
   careerEvidence: z.array(careerEvidenceSchema).optional().default([]),
@@ -106,7 +112,7 @@ const backupSchema = z.object({
 });
 
 export interface ResumeBackup {
-  backupVersion: 2;
+  backupVersion: 3;
   exportedAt: string;
   documents: ResumeDocument[];
   careerEvidence: CareerEvidence[];
@@ -116,7 +122,7 @@ export interface ResumeBackup {
 
 export function createResumeBackup(documents: ResumeDocument[], careerEvidence: CareerEvidence[] = [], jobApplications: JobApplication[] = [], interviewReviews: InterviewReviewRecord[] = []): ResumeBackup {
   return {
-    backupVersion: 2,
+    backupVersion: 3,
     exportedAt: new Date().toISOString(),
     documents: structuredClone(documents),
     careerEvidence: structuredClone(careerEvidence),
@@ -133,7 +139,7 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
     throw new Error(`备份文件结构无效（${path}）：${issue?.message ?? "未知错误"}`);
   }
   return {
-    backupVersion: 2,
+    backupVersion: 3,
     exportedAt: parsed.data.exportedAt,
     documents: parsed.data.documents.map((document) => {
       const finalResumeStatus = document.finalResumeStatus ??
@@ -146,14 +152,18 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
       void _legacyStatus;
       return {
         ...currentDocument,
-        schemaVersion: 5,
+        schemaVersion: 6,
+        materialRevision: document.materialRevision ?? 0,
+        analysisRevision: document.analysisResult
+          ? document.analysisRevision ?? document.materialRevision ?? 0
+          : null,
         sourceResume: document.sourceResume ?? null,
         importMetadata: document.importMetadata ?? null,
         layoutConfig: sanitizeLayoutConfig(document.layoutConfig),
         finalResumeStatus,
       };
     }),
-    careerEvidence: parsed.data.careerEvidence,
+    careerEvidence: parsed.data.careerEvidence.map((item) => ({ ...item, sourceReference: item.sourceReference ?? null })),
     jobApplications: parsed.data.jobApplications,
     interviewReviews: parsed.data.interviewReviews,
   };

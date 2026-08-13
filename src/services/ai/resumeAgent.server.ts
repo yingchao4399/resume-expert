@@ -47,7 +47,7 @@ export async function regenerateOptimizedItemsServer(
     return { optimizedItems, mode };
   }
 
-  const optimizedItems = await runMockRegenerateOptimizedItems(style);
+  const optimizedItems = await runMockRegenerateOptimizedItems(style, input);
   return { optimizedItems, mode };
 }
 

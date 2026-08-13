@@ -82,7 +82,7 @@ export function validatePersistedLibrary(raw: string): void {
     throw new Error("持久化数据缺少文档库结构");
   }
   parseResumeBackup({
-    backupVersion: 2,
+    backupVersion: 3,
     exportedAt: nowISO(),
     documents: parsed.state.documents,
     careerEvidence: parsed.state.careerEvidence ?? [],
@@ -164,7 +164,7 @@ export function migrateDocument(document: LegacyResumeDocument): ResumeDocument 
   const analysisResult = document.analysisResult
     ? {
         ...document.analysisResult,
-        finalResume: normalizeFinalResumeBullets(document.analysisResult.finalResume, "ai-generated"),
+        finalResume: normalizeFinalResumeBullets(document.analysisResult.finalResume, "ai-generated", [], "needs-review"),
       }
     : null;
   const finalResumeStatus: FinalResumeStatus =
@@ -182,7 +182,11 @@ export function migrateDocument(document: LegacyResumeDocument): ResumeDocument 
   return {
     ...base,
     ...documentWithoutLegacyStatus,
-    schemaVersion: 5,
+    schemaVersion: 6,
+    materialRevision: typeof document.materialRevision === "number" ? document.materialRevision : 0,
+    analysisRevision: analysisResult
+      ? typeof document.analysisRevision === "number" ? document.analysisRevision : 0
+      : null,
     sourceResume,
     analysisResult,
     finalResumeStatus,

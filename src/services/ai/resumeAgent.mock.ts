@@ -4,6 +4,7 @@ import type {
   OptimizeStyle,
   UserInput,
 } from "@/types/resume";
+import { EXAMPLE_USER_INPUT } from "@/store/resume-store-example";
 
 const STYLE_LABELS: Record<OptimizeStyle, string> = {
   concise: "更简洁",
@@ -313,6 +314,7 @@ function buildOptimizedItems(
 }
 
 function buildFinalResume(input: UserInput): AnalysisResult["finalResume"] {
+  if (input.originalResume !== EXAMPLE_USER_INPUT.originalResume) return buildConservativeResume(input);
   return {
     personalInfo: {
       name: "张明",
@@ -390,6 +392,26 @@ function buildFinalResume(input: UserInput): AnalysisResult["finalResume"] {
       degree: "信息管理与信息系统 | 本科",
       period: "2016 - 2020",
     },
+  };
+}
+
+function originalLine(input: UserInput, pattern: RegExp): string {
+  return input.originalResume.split(/\r?\n/).map((line) => line.trim()).find((line) => pattern.test(line)) ?? "";
+}
+
+function buildConservativeResume(input: UserInput): AnalysisResult["finalResume"] {
+  const firstLine = originalLine(input, /\S/);
+  const email = input.originalResume.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/)?.[0] ?? "";
+  const phone = input.originalResume.match(/(?:\+?86[-\s]?)?1[3-9]\d{9}/)?.[0] ?? "";
+  const nameCandidate = firstLine.split(/[|｜·]/)[0]?.trim() ?? "";
+  const safeName = nameCandidate && nameCandidate.length <= 20 && !/简历|经历|求职|resume/i.test(nameCandidate) ? nameCandidate : "";
+  const summaryLines = input.originalResume.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length >= 12 && !/[【】]/.test(line)).slice(0, 2);
+  return {
+    personalInfo: { name: safeName, email, phone, location: "" },
+    jobIntent: input.targetRole.trim(),
+    summary: summaryLines.join(" "),
+    coreSkills: [], workExperience: [], projectExperience: [], skillsAndTools: [],
+    education: { school: "", degree: "", period: "" },
   };
 }
 
@@ -485,6 +507,7 @@ export async function runMockResumeAnalysis(
 ): Promise<AnalysisResult> {
   await delay(1800);
 
+  if (input.originalResume !== EXAMPLE_USER_INPUT.originalResume) return buildConservativeAnalysis(input);
   return {
     jdAnalysis: buildJDAnalysis(),
     diagnosis: buildDiagnosis(),
@@ -496,10 +519,63 @@ export async function runMockResumeAnalysis(
   };
 }
 
+function uniqueText(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter((value) => value.length >= 2))];
+}
+
+function jobRequirementLines(input: UserInput): string[] {
+  return uniqueText(input.jobDescription.split(/\r?\n|[。；;]/).map((line) => line.replace(/^\s*[\d一二三四五六七八九十]+[.、）)]?\s*/, ""))).slice(0, 12);
+}
+
+function buildConservativeAnalysis(input: UserInput): AnalysisResult {
+  const requirements = jobRequirementLines(input);
+  const matchItems = (requirements.length ? requirements : [input.targetRole]).map((requirement) => ({
+    jdRequirement: requirement,
+    resumeEvidence: input.originalResume.includes(requirement) ? requirement : "原始材料中未找到可直接核验的对应表述",
+    evidenceStrength: input.originalResume.includes(requirement) ? "medium" as const : "none" as const,
+    needsSupplement: !input.originalResume.includes(requirement),
+    optimizationSuggestion: input.originalResume.includes(requirement) ? "核对事实后保留" : "补充真实案例、职责范围或结果证据",
+  }));
+  const missing = matchItems.filter((item) => item.needsSupplement).slice(0, 10);
+  return {
+    jdAnalysis: {
+      responsibilities: requirements,
+      hardRequirements: requirements,
+      implicitRequirements: [],
+      keywords: uniqueText([input.targetRole, ...input.highlightSkills.split(/[、,，/]/), ...requirements.flatMap((value) => value.split(/[\s、,，/]/))]).slice(0, 20),
+      idealCandidate: `能够提供与“${input.targetRole}”岗位要求对应的可核验经历。`,
+      coreCompetencies: uniqueText(input.highlightSkills.split(/[、,，/]/)).slice(0, 6).map((name) => ({ name, importance: "medium" as const, description: "来自用户希望突出能力，仍需经历证据验证" })),
+    },
+    diagnosis: {
+      overallScore: 0,
+      dimensionScores: [],
+      mainIssues: missing.length ? ["Mock 仅检查明显文本对应关系，不能替代真实模型诊断。"] : [],
+      prioritySuggestions: missing.slice(0, 5).map((item) => `为“${item.jdRequirement}”补充可核验事实。`),
+    },
+    matchItems,
+    followUpQuestions: missing.map((item, index) => ({ id: `fu-${index + 1}`, question: `请提供能证明“${item.jdRequirement}”的真实经历；没有也可以明确说明。`, purpose: `补充“${item.jdRequirement}”证据`, userAnswer: "", generatedBullet: "" })),
+    optimizedItems: [],
+    finalResume: buildConservativeResume(input),
+    interviewPrep: {
+      likelyQuestions: [
+        `请介绍你与“${input.targetRole}”最相关的一段真实经历。`,
+        "你在项目中的具体职责和边界是什么？",
+        "你如何验证所描述成果的数据口径？",
+        "遇到关键分歧时你如何推进？",
+        "哪些岗位要求目前还缺少直接证据？",
+      ].map((question) => ({ question, suggestedAnswer: "请仅使用原始材料或已确认事实作答。", evidenceNeeded: ["可核验的经历、过程或结果"] })),
+      evidenceToPrepare: missing.map((item) => item.jdRequirement), possibleExaggerations: [], dataToSupplement: missing.map((item) => item.jdRequirement),
+      selfIntroduction: `我正在应聘${input.targetRole}。请基于原始简历中的真实经历完善这段自我介绍。`,
+    },
+  };
+}
+
 export async function runMockRegenerateOptimizedItems(
-  style: OptimizeStyle
+  style: OptimizeStyle,
+  input?: UserInput
 ): Promise<AnalysisResult["optimizedItems"]> {
   await delay(800);
+  if (input && input.originalResume !== EXAMPLE_USER_INPUT.originalResume) return [];
   return buildOptimizedItems(style);
 }
 
@@ -535,11 +611,11 @@ export async function runMockFinalizeResume(
 }
 
 export async function runMockFollowUpBullet(
-  purpose: string,
+  _purpose: string,
   userAnswer: string
 ): Promise<string> {
   await delay(400);
-  return `基于${purpose.replace(/[？?]/g, "")}，${userAnswer.trim().replace(/[。.!！]$/, "")}，体现 AI 产品落地能力与业务理解深度。`;
+  return userAnswer.trim();
 }
 
 export { STYLE_LABELS };
