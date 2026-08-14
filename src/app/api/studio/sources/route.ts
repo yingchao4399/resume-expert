@@ -10,4 +10,3 @@ export async function GET() {
     return Response.json({ error: error instanceof Error ? error.message : "无法读取底层文件目录" }, { status });
   }
 }
-

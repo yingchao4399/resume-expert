@@ -132,6 +132,7 @@ npm run eval:jd
 npm run test:e2e
 npm run build
 npm run verify:local
+npm run prompt:validate
 ```
 
 ### AI 质量评测
@@ -140,7 +141,11 @@ npm run verify:local
 
 ### 开发者工作台
 
-在“AI 设置 → 高级功能”中开启后，可从顶部进入 `/studio`。工作台展示 TypeScript 产品工作流、最近 AI 运行追踪、批准的测评基线、可审计开发记录和 Flowise 实验室。追踪正文仅保存在当前浏览器 IndexedDB，默认折叠且可以导出或清空；工作台不会展示模型隐藏思维链。
+在“AI 设置 → 高级功能”中开启后，可从顶部进入 `/studio`。工作台展示 TypeScript 产品工作流、提示词与设定、最近 AI 运行追踪、批准的测评基线、可审计开发记录和 Flowise 实验室；不会展示模型隐藏思维链。
+
+“提示词与设定”是只读透明化页面：提示词中心展示系统提示词、用户提示词模板、输出 Schema、模型策略和底层来源；底层文件页可查看仓库内 Markdown 及已注册的 TypeScript 提示词源码；运行快照展示 Provider 适配后模型实际收到的 System/User、Schema、参数和结构修复尝试；版本页显示提示词版本、注册表指纹和测评覆盖。
+
+完整运行快照仅保存在当前浏览器 IndexedDB，最多保留 50 次或 30 天，总量默认不超过 50MB。快照和 Trace 导出包含简历、JD、面试转写等敏感正文，但不会包含 API Key 或 Authorization Header；导出文件请按敏感资料保管。底层文件接口严格只读，`prd/` 等未跟踪 Markdown 可以查看但不会自动提交 Git。
 
 Flowise 不是主业务工作流，只用于可替换 AI 节点实验。详细安装、安全状态、导入流程和本机配置见 [`flowise/README.md`](flowise/README.md)。服务固定为 `http://127.0.0.1:3200`，Playwright 仍使用 `3100`。
 

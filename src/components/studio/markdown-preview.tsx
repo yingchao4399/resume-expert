@@ -43,7 +43,6 @@ export function MarkdownPreview({ content }: { content: string }) {
   if (code.length) blocks.push(<pre key="code-final" className="overflow-auto rounded-md bg-neutral-950 p-3 text-[11px] text-neutral-100"><code>{code.join("\n")}</code></pre>);
   return <div className="space-y-2 text-sm leading-6 text-neutral-700">{blocks}</div>;
 }
-
 function inline(value: string): ReactNode {
   const parts = value.split(/(`[^`]+`|\*\*[^*]+\*\*)/g).filter(Boolean);
   return parts.map((part, index) => {
@@ -52,4 +51,3 @@ function inline(value: string): ReactNode {
     return part;
   });
 }
-

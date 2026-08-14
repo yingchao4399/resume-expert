@@ -22,6 +22,7 @@ jobs:
       - run: npm run audit:prod
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run prompt:validate
       - run: npm test
       - run: npm run eval:validate
       - run: npm run eval:mock

@@ -1,4 +1,7 @@
 export const RELEASE_RECORDS = [
+  { version: "1.9.2", goal: "提示词透明工作台只读试用版", modules: ["提示词注册中心", "完整运行快照", "底层文件目录", "版本与测评关联"], tests: "119+ Vitest / 31+ Playwright / evals / CI", status: "released" },
+  { version: "1.9.1", goal: "本地运行与全流程稳定性修复", modules: ["本地脚本来源", "示例数据", "AI 设置", "截断批处理降级"], tests: "108+ Vitest / 30 Playwright / CI success", commit: "0817dc6", status: "released" },
+  { version: "1.9.0", goal: "岗位需求地图与深度 JD 分析", modules: ["原子岗位要求", "事实匹配", "逐条面试策略", "安全回答帮助"], tests: "validated and released", commit: "2ad1a9a", status: "released" },
   { version: "1.8.1", goal: "多模型兼容与官方模型清单修复", modules: ["结构化输出适配", "项目访谈确定性元数据", "模型清单刷新", "中文错误恢复"], tests: "97 unit + 28 e2e + evals + build", status: "released" },
   { version: "1.8.0", goal: "个人经历事实与能力底座", modules: ["项目化经历库", "原子事实与指标", "能力等级", "自适应访谈", "V4 备份"], tests: "validated and released", status: "released" },
   { version: "1.7.3", goal: "可信度与数据一致性修复", modules: ["材料修订锁", "证据候选确认", "安全 Mock", "备份恢复"], tests: "75 Vitest / 23 Playwright / CI success", commit: "d4d0a07", status: "released" },

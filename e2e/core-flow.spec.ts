@@ -81,6 +81,36 @@ test("enables the developer studio and switches between product and workflow vie
   await expect(page.getByRole("heading", { name: "简历专家" })).toBeVisible();
 });
 
+test("audits prompt definitions, source files and full local runtime snapshots", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("resume-expert-studio-enabled", "true"));
+  await page.goto("/studio");
+  await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("resume-expert-studio", 2);
+      request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains("traces")) request.result.createObjectStore("traces", { keyPath: "id" }); };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const now = new Date().toISOString();
+    const transaction = db.transaction("traces", "readwrite");
+    transaction.objectStore("traces").put({ schemaVersion: 2, id: "prompt-e2e-trace", status: "success", createdAt: now, updatedAt: now, spans: [{ id: "prompt-e2e-span", nodeId: "analyze", label: "岗位分析", status: "success", mode: "llm", provider: "deepseek", model: "deepseek-v4-flash", startedAt: now, finishedAt: now, latencyMs: 10, input: {}, output: {}, promptSnapshots: [{ schemaVersion: 1, id: "snapshot-e2e", invocationId: "invocation-e2e", traceId: "prompt-e2e-trace", promptId: "resume.deep-jd", promptVersion: "deep-jd-v1", attempt: 1, attemptKind: "primary", status: "success", createdAt: now, finishedAt: now, provider: "deepseek", model: "deepseek-v4-flash", structuredOutputStrategy: "json-object", responseFormat: '{"type":"json_object"}', schemaName: "deep_jd_requirement_map", schemaContract: "{}", schemaHash: "schema-hash", promptHash: "prompt-hash", baseSystemPrompt: "system", runtimeUserPrompt: "sensitive user prompt", sentSystemPrompt: "system with schema", sentUserPrompt: "sensitive user prompt", temperature: 0.2, maxTokens: 12000, timeoutMs: 120000, validationIssues: [] }] }] });
+    await new Promise<void>((resolve, reject) => { transaction.oncomplete = () => resolve(); transaction.onerror = () => reject(transaction.error); });
+    db.close();
+  });
+  await page.getByRole("button", { name: "提示词与设定" }).click();
+  await expect(page.getByRole("heading", { name: "提示词与设定" })).toBeVisible();
+  await expect(page.getByText("深度 JD 解析", { exact: true }).first()).toBeVisible();
+  await page.getByText("深度 JD 解析", { exact: true }).first().click();
+  await expect(page.getByText("resume.deep-jd", { exact: true }).last()).toBeVisible();
+  await page.getByRole("button", { name: /src\/lib\/ai\/jd-prompts.ts/ }).click();
+  await expect(page.getByText("src/lib/ai/jd-prompts.ts", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /README.md/ }).first().click();
+  await expect(page.getByRole("heading", { name: "README.md" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "查看原文" })).toBeVisible();
+  await page.getByRole("tab", { name: "运行快照" }).click();
+  await expect(page.getByText(/resume\.deep-jd · primary · deepseek\/deepseek-v4-flash/)).toBeVisible();
+});
+
 test("tests, publishes, restores and rolls back a workflow version", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("resume-expert-studio-enabled", "true"));
   await page.goto("/studio");

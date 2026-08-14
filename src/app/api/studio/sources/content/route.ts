@@ -12,4 +12,3 @@ export async function GET(request: Request) {
     return Response.json({ error: error instanceof Error ? error.message : "无法读取底层文件" }, { status });
   }
 }
-

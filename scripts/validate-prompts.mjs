@@ -27,4 +27,3 @@ for (const sourceFile of sourceFiles) {
   }
 }
 console.log(`Prompt registry valid: ${callableIds.length} callable prompts.`);
-

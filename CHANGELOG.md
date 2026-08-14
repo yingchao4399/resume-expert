@@ -1,5 +1,14 @@
 # 更新日志
 
+## 1.9.2
+
+- 开发者工作台新增只读“提示词与设定”，统一展示 12 个正式 AI 调用、运行时 Schema 注入和一次结构修复提示词。
+- 新增提示词注册表、版本、来源、变量、模型参数与测评绑定；所有正式 `chatCompletionJSON` 调用必须使用已注册的 `promptId`。
+- 真实模型调用可在本机保存完整运行快照，记录 Provider 适配后的 System/User、输出 Schema、哈希、参数、降级和修复尝试，不记录 API Key 或 Authorization Header。
+- 新增只读 Source Catalog，可查看仓库内已跟踪和未跟踪 Markdown，以及注册的提示词、Schema 和模型策略源码；路径限制在项目根目录内。
+- Trace 可跳转到提示词定义并完整导出敏感正文；Studio Trace Schema 升级为 2，旧记录继续可读，简历业务数据 Schema 不变。
+- 新增提示词注册校验、运行快照、Source Catalog 安全边界和 Studio 浏览流程测试。
+
 ## 1.9.1
 
 - 开发服务器固定绑定 `127.0.0.1` 并受限允许本机双主机名访问，修复 Next.js 开发脚本 403 导致页面只显示却无法操作的问题。
