@@ -4,7 +4,6 @@ export const CALLABLE_PROMPT_IDS = [
   "resume.deep-jd",
   "resume.requirement-match",
   "resume.interview-strategy",
-  "resume.analysis-output",
   "resume.follow-up-guidance",
   "resume.optimize-items",
   "resume.follow-up-bullet",
@@ -41,6 +40,7 @@ export interface PromptEvaluationBinding {
 export interface PromptDefinition {
   id: string;
   callable: boolean;
+  lifecycle?: "active" | "retired";
   name: string;
   description: string;
   module: string;
@@ -62,7 +62,7 @@ export interface PromptDefinition {
 }
 
 export type PromptAttemptKind = "primary" | "response-format-fallback" | "schema-repair";
-export type PromptSnapshotStatus = "prepared" | "success" | "http-error" | "validation-error";
+export type PromptSnapshotStatus = "prepared" | "success" | "http-error" | "validation-error" | "cancelled";
 
 export interface PromptRuntimeSnapshot {
   schemaVersion: 1;

@@ -109,7 +109,8 @@ export type AIConnectionErrorCategory =
   | "base_url"
   | "rate_limit"
   | "network"
-  | "timeout";
+  | "timeout"
+  | "cancelled";
 
 export type AIConnectionTestRequest = SaveAIConfigBody;
 

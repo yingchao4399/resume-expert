@@ -16,6 +16,17 @@ import {
 import type { CareerAnalysisClaim } from "@/lib/career/career-context";
 import type { AnalysisResult, JobTargetContext, OptimizeStyle, UserInput } from "@/types/resume";
 import type { WorkflowExecutionOptions } from "@/lib/studio/execution";
+import {
+  ANALYSIS_STAGE_COUNT,
+  AnalysisExecutionBudget,
+  type AnalysisStageId,
+} from "@/lib/ai/analysis-execution";
+
+const MOCK_STAGES: Array<{ id: AnalysisStageId; label: string }> = [
+  { id: "jd-analysis", label: "解析 JD 需求" },
+  { id: "requirement-match", label: "匹配经历事实" },
+  { id: "interview-strategy", label: "生成面试策略" },
+];
 
 function currentMode(forceMock = false): AIMode {
   return forceMock ? "mock" : getAIConfig().mode;
@@ -29,13 +40,44 @@ export async function analyzeResumeServer(
   execution: WorkflowExecutionOptions = { forceMock: false }
 ): Promise<{ result: AnalysisResult; mode: AIMode }> {
   const mode = currentMode(execution.forceMock);
+  const budget = execution.analysisBudget ?? new AnalysisExecutionBudget({ signal: execution.signal });
+  const boundedExecution = { ...execution, analysisBudget: budget };
+  budget.assertActive();
+  execution.onAnalysisProgress?.(budget.progress({ type: "started" }));
 
   if (mode === "llm") {
-    const result = await runLLMResumeAnalysis(input, jobTargetContext, careerClaims, optimizeStyle, execution);
+    const result = await runLLMResumeAnalysis(input, jobTargetContext, careerClaims, optimizeStyle, boundedExecution);
     return { result, mode };
   }
 
-  const result = await runMockResumeAnalysis(input, optimizeStyle, jobTargetContext, careerClaims);
+  const firstStage = MOCK_STAGES[0];
+  execution.onAnalysisProgress?.(budget.progress({
+    type: "stage-started",
+    stage: firstStage.id,
+    stageIndex: 1,
+    stageCount: ANALYSIS_STAGE_COUNT,
+    message: firstStage.label,
+  }));
+  const result = await runMockResumeAnalysis(input, optimizeStyle, jobTargetContext, careerClaims, execution.signal);
+  budget.assertActive();
+  for (const [index, stage] of MOCK_STAGES.entries()) {
+    if (index > 0) {
+      execution.onAnalysisProgress?.(budget.progress({
+        type: "stage-started",
+        stage: stage.id,
+        stageIndex: index + 1,
+        stageCount: ANALYSIS_STAGE_COUNT,
+        message: stage.label,
+      }));
+    }
+    execution.onAnalysisProgress?.(budget.progress({
+      type: "stage-completed",
+      stage: stage.id,
+      stageIndex: index + 1,
+      stageCount: ANALYSIS_STAGE_COUNT,
+      message: stage.label,
+    }));
+  }
   return { result, mode };
 }
 

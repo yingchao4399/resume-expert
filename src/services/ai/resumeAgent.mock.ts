@@ -8,6 +8,7 @@ import type {
 import type { CareerAnalysisClaim } from "@/lib/career/career-context";
 import { assembleRequirements, cleanRequirementText, rankCareerClaimsForRequirements, splitJDSourceItems } from "@/lib/jd/deep-analysis";
 import { EXAMPLE_USER_INPUT } from "@/store/resume-store-example";
+import { buildConservativeResume } from "@/lib/resume/conservative-resume";
 
 const STYLE_LABELS: Record<OptimizeStyle, string> = {
   concise: "更简洁",
@@ -402,26 +403,6 @@ function buildFinalResume(input: UserInput): AnalysisResult["finalResume"] {
   };
 }
 
-function originalLine(input: UserInput, pattern: RegExp): string {
-  return input.originalResume.split(/\r?\n/).map((line) => line.trim()).find((line) => pattern.test(line)) ?? "";
-}
-
-function buildConservativeResume(input: UserInput): AnalysisResult["finalResume"] {
-  const firstLine = originalLine(input, /\S/);
-  const email = input.originalResume.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/)?.[0] ?? "";
-  const phone = input.originalResume.match(/(?:\+?86[-\s]?)?1[3-9]\d{9}/)?.[0] ?? "";
-  const nameCandidate = firstLine.split(/[|｜·]/)[0]?.trim() ?? "";
-  const safeName = nameCandidate && nameCandidate.length <= 20 && !/简历|经历|求职|resume/i.test(nameCandidate) ? nameCandidate : "";
-  const summaryLines = input.originalResume.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length >= 12 && !/[【】]/.test(line)).slice(0, 2);
-  return {
-    personalInfo: { name: safeName, email, phone, location: "" },
-    jobIntent: input.targetRole.trim(),
-    summary: summaryLines.join(" "),
-    coreSkills: [], workExperience: [], projectExperience: [], skillsAndTools: [],
-    education: { school: "", degree: "", period: "" },
-  };
-}
-
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function _buildInterviewPrep() {
   return {
@@ -592,8 +573,9 @@ export async function runMockResumeAnalysis(
   optimizeStyle: OptimizeStyle = "ai-product",
   jobTargetContext: JobTargetContext = { companyName: "", notes: "", companySnapshotId: null },
   careerClaims: CareerAnalysisClaim[] = [],
+  signal?: AbortSignal,
 ): Promise<AnalysisResult> {
-  await delay(1800);
+  await delay(1800, signal);
   void optimizeStyle;
   return buildDeepMockAnalysis(input, jobTargetContext, careerClaims);
 }

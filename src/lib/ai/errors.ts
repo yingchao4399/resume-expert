@@ -32,6 +32,27 @@ export class LLMTruncationError extends LLMError {
   }
 }
 
+export class AnalysisCancelledError extends LLMError {
+  constructor() {
+    super("分析已取消，当前材料和已有结果均未改变。", 499, "cancelled");
+    this.name = "AnalysisCancelledError";
+  }
+}
+
+export class AnalysisDeadlineError extends LLMError {
+  constructor() {
+    super("深度分析已达到 6 分钟上限，系统已停止后续调用且未写入半成品。请缩短 JD、测试当前模型或切换模型后重试。", 504, "timeout");
+    this.name = "AnalysisDeadlineError";
+  }
+}
+
+export class AnalysisRetryBudgetError extends LLMError {
+  constructor(readonly maxRequests: number) {
+    super(`模型连续截断或结构修复，已达到 ${maxRequests} 次调用上限。系统已停止且未写入半成品。`, 502, "model");
+    this.name = "AnalysisRetryBudgetError";
+  }
+}
+
 export function classifyAIHTTPError(status: number, detail = ""): {
   category: AIConnectionErrorCategory;
   message: string;

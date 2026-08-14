@@ -6,12 +6,10 @@ import {
   finalResumeResultSchema,
   followUpBulletResultSchema,
   optimizedItemsResultSchema,
-  optimizeResumeResultSchema,
 } from "@/lib/ai/schemas";
 import { followUpGuidanceResultSchema } from "@/lib/ai/schemas";
 import {
   RESUME_AGENT_SYSTEM_PROMPT,
-  buildAnalyzeOutputPrompt,
   buildFinalizeResumePrompt,
   buildFollowUpBulletPrompt,
   buildOptimizeUserPrompt,
@@ -25,6 +23,12 @@ import type { CareerAnalysisClaim } from "@/lib/career/career-context";
 import type { AnalysisResult, JobTargetContext, OptimizeStyle, UserInput } from "@/types/resume";
 import type { WorkflowExecutionOptions } from "@/lib/studio/execution";
 import { runWithTruncationFallback } from "@/lib/ai/truncation-fallback";
+import {
+  ANALYSIS_STAGE_COUNT,
+  AnalysisExecutionBudget,
+  type AnalysisStageId,
+} from "@/lib/ai/analysis-execution";
+import { buildConservativeResume } from "@/lib/resume/conservative-resume";
 import type { z } from "zod";
 
 type DiagnosisMatchResult = Pick<
@@ -98,34 +102,78 @@ function mergeInterviewResults(results: InterviewPrepResult[]): InterviewPrepRes
   } };
 }
 
-function buildCoreSummary(parts: DiagnosisMatchResult): string {
-  return [
-    `匹配度：${parts.diagnosis.overallScore}/100`,
-    `主要问题：${parts.diagnosis.mainIssues.slice(0, 3).join("；") || "无"}`,
-    `优先建议：${parts.diagnosis.prioritySuggestions.slice(0, 3).join("；") || "无"}`,
-    `关键缺口：${
-      parts.matchItems
-        .filter((item) => item.needsSupplement)
-        .slice(0, 4)
-        .map((item) => item.jdRequirement)
-        .join("；") || "无"
-    }`,
-  ].join("\n");
+type AnalysisExecution = Pick<
+  WorkflowExecutionOptions,
+  "model" | "timeoutMs" | "capture" | "signal" | "analysisBudget" | "onAnalysisProgress"
+>;
+
+const ANALYSIS_STAGE_DETAILS: Record<AnalysisStageId, { index: number; label: string }> = {
+  "jd-analysis": { index: 1, label: "解析 JD 需求" },
+  "requirement-match": { index: 2, label: "匹配经历事实" },
+  "interview-strategy": { index: 3, label: "生成面试策略" },
+};
+
+function emitStage(
+  execution: AnalysisExecution,
+  budget: AnalysisExecutionBudget,
+  type: "stage-started" | "stage-completed",
+  stage: AnalysisStageId,
+): void {
+  const detail = ANALYSIS_STAGE_DETAILS[stage];
+  execution.onAnalysisProgress?.(budget.progress({
+    type,
+    stage,
+    stageIndex: detail.index,
+    stageCount: ANALYSIS_STAGE_COUNT,
+    message: detail.label,
+  }));
+}
+
+function batchProgress(
+  execution: AnalysisExecution,
+  budget: AnalysisExecutionBudget,
+  stage: AnalysisStageId,
+) {
+  return (progress: { batchIndex: number; batchCount: number; status: "started" | "completed" | "split" }) => {
+    const detail = ANALYSIS_STAGE_DETAILS[stage];
+    const action = progress.status === "started" ? "正在处理" : progress.status === "completed" ? "已完成" : "输出截断，拆分重试";
+    execution.onAnalysisProgress?.(budget.progress({
+      type: "batch-progress",
+      stage,
+      stageIndex: detail.index,
+      stageCount: ANALYSIS_STAGE_COUNT,
+      batchIndex: progress.batchIndex,
+      batchCount: progress.batchCount,
+      batchStatus: progress.status,
+      message: `${action}第 ${progress.batchIndex}/${progress.batchCount} 批`,
+    }));
+  };
 }
 
 export async function runLLMResumeAnalysis(
   input: UserInput,
   jobTargetContext: JobTargetContext,
   careerClaims: CareerAnalysisClaim[],
-  optimizeStyle: OptimizeStyle = "ai-product",
-  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture"> = {}
+  _optimizeStyle: OptimizeStyle = "ai-product",
+  execution: AnalysisExecution = {},
 ): Promise<AnalysisResult> {
+  void _optimizeStyle;
+  const budget = execution.analysisBudget ?? new AnalysisExecutionBudget({ signal: execution.signal });
+  const completionExecution = {
+    model: execution.model,
+    timeoutMs: execution.timeoutMs,
+    capture: execution.capture,
+    signal: execution.signal,
+    analysisBudget: budget,
+  };
+  budget.assertActive();
   const sourceItems = splitJDSourceItems(input.jobDescription);
   if (!sourceItems.length) throw new Error("JD 中没有可分析的文本条目。");
+  emitStage(execution, budget, "stage-started", "jd-analysis");
   const jdModel = await runWithTruncationFallback({
     stage: "JD 需求解析",
     items: sourceItems,
-    run: (items) => chatCompletionJSON({
+    run: (items, signal) => chatCompletionJSON({
       promptId: "resume.deep-jd",
       system: RESUME_AGENT_SYSTEM_PROMPT,
       user: buildDeepJDPrompt(input, jobTargetContext, items),
@@ -133,22 +181,28 @@ export async function runLLMResumeAnalysis(
       schemaName: "deep_jd_requirement_map",
       maxTokens: 12000,
       analysisStage: "JD 需求解析",
-      ...execution,
+      ...completionExecution,
+      signal,
     }),
     merge: mergeDeepJDResults,
+    signal: execution.signal,
+    onProgress: batchProgress(execution, budget, "jd-analysis"),
   });
+  budget.assertActive();
 
   const classificationById = new Map(jdModel.sourceClassifications.map((item) => [item.sourceItemId, item.classification]));
   const classifiedSources = sourceItems.map((item) => ({ ...item, classification: classificationById.get(item.id) ?? item.classification }));
   const requirements = assembleRequirements(classifiedSources, jdModel.requirements);
   const validatedRequirements = requirements.filter((item) => item.anchorStatus === "validated");
   if (!validatedRequirements.length) throw new Error("模型未能生成可校验的 JD 原文引用，请检查 JD 后重新分析。");
+  emitStage(execution, budget, "stage-completed", "jd-analysis");
   const selectedClaims = rankCareerClaimsForRequirements(careerClaims, validatedRequirements, input, 12);
 
+  emitStage(execution, budget, "stage-started", "requirement-match");
   const diagnosisMatch = await runWithTruncationFallback({
     stage: "要求—事实匹配",
     items: validatedRequirements,
-    run: (requirements) => chatCompletionJSON({
+    run: (requirements, signal) => chatCompletionJSON({
       promptId: "resume.requirement-match",
       system: RESUME_AGENT_SYSTEM_PROMPT,
       user: buildRequirementMatchPrompt(input, jobTargetContext, requirements, selectedClaims),
@@ -156,10 +210,14 @@ export async function runLLMResumeAnalysis(
       schemaName: "requirement_fact_match",
       maxTokens: 12000,
       analysisStage: "要求—事实匹配",
-      ...execution,
+      ...completionExecution,
+      signal,
     }),
     merge: mergeDiagnosisMatchResults,
+    signal: execution.signal,
+    onProgress: batchProgress(execution, budget, "requirement-match"),
   });
+  budget.assertActive();
 
   const validatedMatches = validateMatchReferences(diagnosisMatch.matchItems, validatedRequirements, selectedClaims, input.originalResume);
   const followUpQuestions = [...diagnosisMatch.followUpQuestions];
@@ -178,13 +236,13 @@ export async function runLLMResumeAnalysis(
       generatedBullet: "",
     });
   }
+  emitStage(execution, budget, "stage-completed", "requirement-match");
 
-  const coreSummary = buildCoreSummary(diagnosisMatch);
-
+  emitStage(execution, budget, "stage-started", "interview-strategy");
   const interview = await runWithTruncationFallback({
     stage: "面试策略",
     items: validatedRequirements,
-    run: (requirements) => {
+    run: (requirements, signal) => {
       const ids = new Set(requirements.map((item) => item.id));
       return chatCompletionJSON({
         promptId: "resume.interview-strategy",
@@ -194,22 +252,16 @@ export async function runLLMResumeAnalysis(
         schemaName: "requirement_interview_strategy",
         maxTokens: 12000,
         analysisStage: "面试策略",
-        ...execution,
+        ...completionExecution,
+        signal,
       });
     },
     merge: mergeInterviewResults,
+    signal: execution.signal,
+    onProgress: batchProgress(execution, budget, "interview-strategy"),
   });
-
-  const optimizeResume = await chatCompletionJSON({
-      promptId: "resume.analysis-output",
-      system: RESUME_AGENT_SYSTEM_PROMPT,
-      user: buildAnalyzeOutputPrompt(input, optimizeStyle, coreSummary),
-      schema: optimizeResumeResultSchema,
-      schemaName: "resume_optimized_output",
-      maxTokens: 12000,
-      analysisStage: "简历优化",
-      ...execution,
-  });
+  budget.assertActive();
+  emitStage(execution, budget, "stage-completed", "interview-strategy");
 
   const raw: AnalysisResult = {
     jdAnalysis: {
@@ -221,11 +273,12 @@ export async function runLLMResumeAnalysis(
     diagnosis: diagnosisMatch.diagnosis,
     matchItems: validatedMatches,
     followUpQuestions,
-    optimizedItems: optimizeResume.optimizedItems,
-    finalResume: optimizeResume.finalResume,
+    optimizedItems: [],
+    finalResume: buildConservativeResume(input),
     interviewPrep: interview.interviewPrep,
   };
 
+  budget.assertActive();
   return normalizeAnalysisResult(raw, input);
 }
 

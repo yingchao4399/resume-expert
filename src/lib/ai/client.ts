@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { z, type ZodType } from "zod";
 import { getAIConfig, type AIConfig } from "@/lib/ai/config";
 import { classifyAIHTTPError, LLMError, LLMStructureError, LLMTruncationError, type AnalysisStage } from "@/lib/ai/errors";
+import { AnalysisCancelledError, AnalysisDeadlineError } from "@/lib/ai/errors";
+import type { AnalysisExecutionBudget } from "@/lib/ai/analysis-execution";
 import { parseJSONFromMessage } from "@/lib/ai/parse-json";
 import { getProviderPreset, getStructuredOutputStrategy, type StructuredOutputStrategy } from "@/lib/ai/presets";
 import { getCallablePromptDefinition } from "@/lib/studio/prompt-registry";
@@ -24,6 +26,8 @@ export interface ChatCompletionOptions<T> {
   analysisStage?: AnalysisStage;
   capture?: PromptCaptureContext;
   invocationId?: string;
+  signal?: AbortSignal;
+  analysisBudget?: AnalysisExecutionBudget;
 }
 
 interface ChatMessage { content?: string | null; reasoning_content?: string | null }
@@ -161,16 +165,25 @@ async function performChatCompletion<T>(
   validationIssues: string[],
 ): Promise<ChatCompletionData> {
   const requestBody = buildCompletionRequestBody(config, options, omitResponseFormat);
-  const snapshot = capturePromptSnapshot(config, options, requestBody, attemptKind, validationIssues);
+  const requestTimeoutMs = options.analysisBudget
+    ? options.analysisBudget.claimProviderRequest(options.timeoutMs)
+    : options.timeoutMs ?? FORMAL_AI_TIMEOUT_MS;
+  const snapshot = capturePromptSnapshot(
+    config,
+    { ...options, timeoutMs: requestTimeoutMs },
+    requestBody,
+    attemptKind,
+    validationIssues,
+  );
   let response: Response;
   try {
     response = await fetchAIResponse(`${config.baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
       body: JSON.stringify(requestBody),
-    }, options.timeoutMs ?? FORMAL_AI_TIMEOUT_MS);
+    }, requestTimeoutMs, options.signal, options.analysisBudget);
   } catch (error) {
-    finishSnapshot(snapshot, "http-error");
+    finishSnapshot(snapshot, error instanceof AnalysisCancelledError ? "cancelled" : "http-error");
     throw error;
   }
 
@@ -248,18 +261,32 @@ function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-export async function fetchAIResponse(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+export async function fetchAIResponse(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  externalSignal?: AbortSignal,
+  analysisBudget?: AnalysisExecutionBudget,
+): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const abortFromCaller = () => controller.abort();
+  externalSignal?.addEventListener("abort", abortFromCaller, { once: true });
   try {
+    if (externalSignal?.aborted) throw new AnalysisCancelledError();
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (error) {
+    if (error instanceof AnalysisCancelledError || externalSignal?.aborted) {
+      throw new AnalysisCancelledError();
+    }
     if (error instanceof Error && (error.name === "AbortError" || controller.signal.aborted)) {
+      if (analysisBudget?.remainingMs() === 0) throw new AnalysisDeadlineError();
       throw new LLMError(`模型请求超时（${Math.round(timeoutMs / 1000)} 秒）`, 504, "timeout");
     }
     throw new LLMError("无法连接模型服务，请检查网络和 Base URL", 503, "network");
   } finally {
     clearTimeout(timeout);
+    externalSignal?.removeEventListener("abort", abortFromCaller);
   }
 }
 
