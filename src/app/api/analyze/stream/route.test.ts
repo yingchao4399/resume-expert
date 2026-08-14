@@ -24,7 +24,7 @@ async function eventsFrom(response: Response) {
 }
 
 describe("streaming analysis route", () => {
-  it("streams three bounded analysis stages and a conservative draft", async () => {
+  it("streams two bounded quick-analysis stages and leaves interview preparation empty", async () => {
     const response = await POST(request());
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/x-ndjson");
@@ -34,10 +34,10 @@ describe("streaming analysis route", () => {
       "started",
       "stage-started", "stage-completed",
       "stage-started", "stage-completed",
-      "stage-started", "stage-completed",
       "completed",
     ]);
     expect(events.at(-1)?.result?.optimizedItems).toEqual([]);
+    expect((events.at(-1)?.result as { interviewPrep?: { likelyQuestions?: unknown[] } })?.interviewPrep?.likelyQuestions).toEqual([]);
   });
 
   it("emits cancellation instead of a completed result", async () => {

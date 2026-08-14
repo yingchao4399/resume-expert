@@ -67,15 +67,13 @@ async function waitForLibraryHydration(page: Page) {
 }
 
 function analysisStreamBody(analysis: NonNullable<ResumeLibraryState["documents"][number]["analysisResult"]>) {
-  const base = { requestId: "e2e-analysis", elapsedMs: 10, remainingMs: 359_990 };
+  const base = { requestId: "e2e-analysis", elapsedMs: 10, remainingMs: 179_990 };
   return [
     { ...base, type: "started" },
-    { ...base, type: "stage-started", stage: "jd-analysis", stageIndex: 1, stageCount: 3, message: "解析 JD 需求" },
-    { ...base, type: "stage-completed", stage: "jd-analysis", stageIndex: 1, stageCount: 3, message: "解析 JD 需求" },
-    { ...base, type: "stage-started", stage: "requirement-match", stageIndex: 2, stageCount: 3, message: "匹配经历事实" },
-    { ...base, type: "stage-completed", stage: "requirement-match", stageIndex: 2, stageCount: 3, message: "匹配经历事实" },
-    { ...base, type: "stage-started", stage: "interview-strategy", stageIndex: 3, stageCount: 3, message: "生成面试策略" },
-    { ...base, type: "stage-completed", stage: "interview-strategy", stageIndex: 3, stageCount: 3, message: "生成面试策略" },
+    { ...base, type: "stage-started", stage: "jd-requirements", stageIndex: 1, stageCount: 2, message: "生成 JD 需求地图" },
+    { ...base, type: "stage-completed", stage: "jd-requirements", stageIndex: 1, stageCount: 2, message: "生成 JD 需求地图" },
+    { ...base, type: "stage-started", stage: "match-and-insights", stageIndex: 2, stageCount: 2, message: "匹配事实并生成岗位概览" },
+    { ...base, type: "stage-completed", stage: "match-and-insights", stageIndex: 2, stageCount: 2, message: "匹配事实并生成岗位概览" },
     { ...base, type: "completed", result: analysis, mode: "mock" },
   ].map((event) => JSON.stringify(event)).join("\n") + "\n";
 }
@@ -101,7 +99,10 @@ test("audits prompt definitions, source files and full local runtime snapshots",
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open("resume-expert-studio", 2);
-      request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains("traces")) request.result.createObjectStore("traces", { keyPath: "id" }); };
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains("traces")) request.result.createObjectStore("traces", { keyPath: "id" });
+        if (!request.result.objectStoreNames.contains("workflow-workspace")) request.result.createObjectStore("workflow-workspace");
+      };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
@@ -237,7 +238,7 @@ test("keeps creation pending until the final resume is generated", async ({ page
   await expect(page.getByText("最终简历尚未生成确认")).toBeVisible();
   await page.getByRole("button", { name: /AI 优化 3\.1/ }).click();
   await page.getByRole("button", { name: "生成优化方案" }).click();
-  await page.getByRole("button", { name: "确认并生成最终简历" }).click();
+  await page.getByRole("button", { name: /生成最终简历/ }).click();
   await expect(page.getByRole("heading", { name: "最终简历" })).toBeVisible();
 });
 
@@ -250,7 +251,7 @@ test("streams analysis progress, cancels actively and recovers after refresh", a
 
   await page.getByRole("button", { name: "开始分析", exact: true }).click();
   await expect(page.getByRole("button", { name: "取消分析" })).toBeVisible();
-  await expect(page.getByText("解析 JD 需求")).toBeVisible();
+  await expect(page.getByText("生成 JD 需求地图")).toBeVisible();
   await page.getByRole("button", { name: "取消分析" }).click();
   await expect(page.getByText(/分析已取消/)).toBeVisible();
   await expect(page.getByRole("button", { name: "开始分析", exact: true })).toBeEnabled();
@@ -404,6 +405,25 @@ test("uses the same deterministic ATS score in sidebar and delivery", async ({ p
   await page.getByRole("button", { name: /ATS 与导出 4\.2/ }).click();
   const exportScore = await page.getByTestId("export-ats-score").innerText();
   expect(sidebarScore.replace("/100", "").trim()).toBe(exportScore.trim());
+});
+
+test("generates interview strategy on demand without blocking quick analysis", async ({ page }) => {
+  await seed(page);
+  const prep = {
+    likelyQuestions: [{ requirementId: "req-1", question: "如何规划企业服务产品？", suggestedAnswer: "只使用已确认事实作答。", evidenceNeeded: ["项目事实"] }],
+    evidenceToPrepare: ["项目事实"], possibleExaggerations: ["不要扩大个人职责"], dataToSupplement: [], selfIntroduction: "这是按需生成的面试自我介绍。",
+    requirementStrategies: [{ requirementId: "req-1", validationApproaches: ["追问案例"], demonstrationPoints: ["个人行动"], answerStructure: ["场景", "行动", "结果"], evidenceNeeded: ["事实"], metricsNeeded: [], exaggerationRisks: ["避免虚构"] }],
+    reverseQuestions: [],
+  };
+  await page.route("**/api/interview/prepare/stream", (route) => route.fulfill({ status: 200, contentType: "application/x-ndjson", body: [
+    { type: "started", requestId: "interview-e2e", elapsedMs: 0, remainingMs: 180000, message: "开始生成面试策略" },
+    { type: "completed", requestId: "interview-e2e", elapsedMs: 20, remainingMs: 179980, interviewPrep: prep, mode: "mock" },
+  ].map((event) => JSON.stringify(event)).join("\n") + "\n" }));
+  await page.goto("/");
+  await page.getByRole("button", { name: /面试准备/ }).click();
+  await expect(page.getByText("尚未生成面试策略")).toBeVisible();
+  await page.getByRole("button", { name: "生成面试策略" }).click();
+  await expect(page.getByText("这是按需生成的面试自我介绍。")).toBeVisible();
 });
 
 test("asks before leaving a manually edited resume draft", async ({ page }) => {

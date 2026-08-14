@@ -6,7 +6,7 @@ import {
 } from "@/lib/ai/analysis-execution";
 
 describe("analysis execution budget", () => {
-  it("caps every provider request at 90 seconds and the remaining deadline", () => {
+  it("caps every provider request at 60 seconds and the remaining deadline", () => {
     let now = 1_000;
     const budget = new AnalysisExecutionBudget({ startedAt: now, deadlineAt: now + 100_000, now: () => now });
     expect(budget.claimProviderRequest(120_000)).toBe(ANALYSIS_PROVIDER_TIMEOUT_MS);
@@ -27,7 +27,6 @@ describe("analysis execution budget", () => {
     expect(() => cancelled.assertActive()).toThrow(/分析已取消/);
 
     const expired = new AnalysisExecutionBudget({ startedAt: 0, deadlineAt: 10, now: () => 10 });
-    expect(() => expired.assertActive()).toThrow(/6 分钟上限/);
+    expect(() => expired.assertActive()).toThrow(/3 分钟上限/);
   });
 });
-

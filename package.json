@@ -1,6 +1,6 @@
 {
   "name": "resume-expert",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "private": true,
   "engines": {
     "node": ">=24 <25"
@@ -22,7 +22,8 @@
     "eval:compare": "node evals/runner.mjs compare",
     "eval:report": "node evals/runner.mjs report",
     "verify:local": "node scripts/verify-local.mjs",
-    "prompt:validate": "node scripts/validate-prompts.mjs"
+    "prompt:validate": "node scripts/validate-prompts.mjs",
+    "smoke:analysis": "node scripts/smoke-analysis.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

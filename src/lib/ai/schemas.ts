@@ -40,9 +40,13 @@ const jobRequirementSchema = z.object({
 });
 
 const conciseText = z.string().max(500);
+const boundedInferenceEvidenceSchema = z.preprocess(
+  (value) => (Array.isArray(value) ? value.slice(0, 4) : value),
+  z.array(conciseText).max(4),
+);
 const roleInferenceItemSchema = z.object({
   topic: z.enum(["work-content", "work-focus", "business-line", "team-state", "business-scenario", "team-pain", "implicit-expectation", "reporting-line", "industry-experience"]),
-  level: z.enum(["explicit", "inferred", "unknown"]), conclusion: conciseText, evidence: z.array(conciseText).max(4),
+  level: z.enum(["explicit", "inferred", "unknown"]), conclusion: conciseText, evidence: boundedInferenceEvidenceSchema,
   confidence: z.enum(["high", "medium", "low"]), verificationQuestion: conciseText,
 });
 
@@ -70,7 +74,19 @@ export const jdAnalysisSchema = z.object({
 });
 
 const jdRequirementDraftSchema = jobRequirementSchema.omit({ id: true, anchorStatus: true });
-const sourceClassificationSchema = z.object({ sourceItemId: z.string(), classification: z.enum(["requirement", "background", "benefit", "irrelevant"]) });
+function normalizeSourceClassification(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const normalized = value.trim().toLocaleLowerCase();
+  if (/benefit|福利|待遇|薪酬/.test(normalized)) return "benefit";
+  if (/background|背景|公司介绍|团队介绍/.test(normalized)) return "background";
+  if (/irrelevant|无关|其他内容/.test(normalized)) return "irrelevant";
+  if (/requirement|qualification|preferred|preference|要求|职责|任职|资格|技能|经验|优先/.test(normalized)) return "requirement";
+  return value;
+}
+const sourceClassificationSchema = z.object({
+  sourceItemId: z.string(),
+  classification: z.preprocess(normalizeSourceClassification, z.enum(["requirement", "background", "benefit", "irrelevant"])),
+});
 
 export function createDeepJDModelResultSchema(sourceItemIds: string[]) {
   const allowed = new Set(sourceItemIds);

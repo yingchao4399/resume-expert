@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDeepJDModelResultSchema, createDiagnosisMatchResultSchema, followUpGuidanceResultSchema } from "@/lib/ai/schemas";
+import { createCompactJDModelResultSchema, createDeepJDModelResultSchema, createDiagnosisMatchResultSchema, followUpGuidanceResultSchema } from "@/lib/ai/schemas";
 
 describe("deep JD runtime schemas", () => {
   it("requires complete source classification coverage", () => {
@@ -7,6 +7,38 @@ describe("deep JD runtime schemas", () => {
       sourceClassifications: [{ sourceItemId: "jd-source-1", classification: "requirement" }], requirements: [], responsibilities: [], hardRequirements: [], implicitRequirements: [], keywords: [], idealCandidate: "", coreCompetencies: [], roleInference: { items: [] }, clarificationNeeds: [],
     });
     expect(parsed.success).toBe(false);
+  });
+
+  it("normalizes common Chinese source classification labels", () => {
+    const parsed = createCompactJDModelResultSchema(["jd-source-1"]).parse({
+      sourceClassifications: [{ sourceItemId: "jd-source-1", classification: "优先条件" }],
+      requirements: [],
+    });
+    expect(parsed.sourceClassifications[0].classification).toBe("requirement");
+  });
+
+  it("keeps a bounded set of model-provided inference evidence", () => {
+    const parsed = createDeepJDModelResultSchema(["jd-source-1"]).safeParse({
+      sourceClassifications: [{ sourceItemId: "jd-source-1", classification: "background" }],
+      requirements: [], responsibilities: [], hardRequirements: [], implicitRequirements: [], keywords: [], idealCandidate: "", coreCompetencies: [],
+      roleInference: {
+        items: [
+          { topic: "work-content", level: "explicit", conclusion: "负责需求", evidence: ["1", "2", "3", "4", "5"], confidence: "high", verificationQuestion: "范围是什么？" },
+          { topic: "work-focus", level: "unknown", conclusion: "信息不足", evidence: [], confidence: "low", verificationQuestion: "重点是什么？" },
+          { topic: "business-line", level: "unknown", conclusion: "信息不足", evidence: [], confidence: "low", verificationQuestion: "业务线是什么？" },
+          { topic: "team-state", level: "unknown", conclusion: "信息不足", evidence: [], confidence: "low", verificationQuestion: "团队现状如何？" },
+          { topic: "business-scenario", level: "unknown", conclusion: "信息不足", evidence: [], confidence: "low", verificationQuestion: "场景是什么？" },
+          { topic: "team-pain", level: "unknown", conclusion: "信息不足", evidence: [], confidence: "low", verificationQuestion: "痛点是什么？" },
+          { topic: "implicit-expectation", level: "unknown", conclusion: "信息不足", evidence: [], confidence: "low", verificationQuestion: "隐性期望是什么？" },
+          { topic: "reporting-line", level: "unknown", conclusion: "信息不足", evidence: [], confidence: "low", verificationQuestion: "向谁汇报？" },
+          { topic: "industry-experience", level: "unknown", conclusion: "信息不足", evidence: [], confidence: "low", verificationQuestion: "行业要求是什么？" },
+        ],
+      },
+      clarificationNeeds: [],
+    });
+
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.roleInference.items[0].evidence).toEqual(["1", "2", "3", "4"]);
   });
 
   it("does not allow firm conclusions for unknown inferences", () => {

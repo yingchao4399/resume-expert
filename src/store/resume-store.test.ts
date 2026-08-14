@@ -196,6 +196,18 @@ describe("resume document library", () => {
     expect(useResumeStore.getState().analysisError).toContain("材料已在分析期间发生变化");
   });
 
+  it("writes interview preparation atomically only for the current material revision", () => {
+    const revision = useResumeStore.getState().materialRevision;
+    const result = analysisWithLinkedEvidence("evidence-1");
+    expect(useResumeStore.getState().setAnalysisResult(result, revision)).toBe(true);
+    const prep = { ...result.interviewPrep, selfIntroduction: "当前版本面试策略" };
+    expect(useResumeStore.getState().setInterviewPrep(prep, revision)).toBe(true);
+    expect(useResumeStore.getState().analysisResult?.interviewPrep.selfIntroduction).toBe("当前版本面试策略");
+    useResumeStore.getState().setUserInput({ targetRole: "变化后的岗位" });
+    expect(useResumeStore.getState().setInterviewPrep({ ...prep, selfIntroduction: "迟到结果" }, revision)).toBe(false);
+    expect(useResumeStore.getState().analysisResult?.interviewPrep.selfIntroduction).toBe("当前版本面试策略");
+  });
+
   it("updates repeated follow-up candidates instead of duplicating them", () => {
     const state = useResumeStore.getState();
     const result = {
