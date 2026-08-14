@@ -577,7 +577,21 @@ export async function runMockResumeAnalysis(
 ): Promise<AnalysisResult> {
   await delay(1800, signal);
   void optimizeStyle;
-  return buildDeepMockAnalysis(input, jobTargetContext, careerClaims);
+  const result = buildDeepMockAnalysis(input, jobTargetContext, careerClaims);
+  return {
+    ...result,
+    interviewPrep: { likelyQuestions: [], evidenceToPrepare: [], possibleExaggerations: [], dataToSupplement: [], selfIntroduction: "", requirementStrategies: [], reverseQuestions: [] },
+  };
+}
+
+export async function runMockInterviewPreparation(
+  input: UserInput,
+  jobTargetContext: JobTargetContext,
+  careerClaims: CareerAnalysisClaim[] = [],
+  signal?: AbortSignal,
+): Promise<AnalysisResult["interviewPrep"]> {
+  await delay(800, signal);
+  return buildDeepMockAnalysis(input, jobTargetContext, careerClaims).interviewPrep;
 }
 
 function uniqueText(values: string[]): string[] {

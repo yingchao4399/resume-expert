@@ -94,6 +94,7 @@ export interface ResumeStore {
   setAnalyzing: (analyzing: boolean) => void;
   setAnalysisResult: (result: AnalysisResult, expectedMaterialRevision: number) => boolean;
   setOptimizedItems: (items: AnalysisResult["optimizedItems"]) => void;
+  setInterviewPrep: (prep: AnalysisResult["interviewPrep"], expectedMaterialRevision: number) => boolean;
   setFinalResume: (
     resume: AnalysisResult["finalResume"],
     options?: { manual?: boolean }

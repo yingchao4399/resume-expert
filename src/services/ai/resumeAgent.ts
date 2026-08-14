@@ -15,7 +15,7 @@ import type {
   SaveAIConfigBody,
 } from "@/lib/ai/types";
 import type { CareerAnalysisClaim } from "@/lib/career/career-context";
-import type { AnalysisResult, JobTargetContext, OptimizeStyle, UserInput } from "@/types/resume";
+import type { AnalysisResult, InterviewPrep, JobTargetContext, OptimizeStyle, UserInput } from "@/types/resume";
 import type { InterviewAnalysisResult } from "@/types/interview";
 import { reportTraceStorageError, saveTraceSpan } from "@/lib/studio/trace-store";
 import type { WorkflowNodeId } from "@/lib/studio/trace-types";
@@ -23,6 +23,7 @@ import { getPublishedWorkflowNode } from "@/lib/studio/workflow-store";
 import { isStudioEnabled } from "@/lib/studio/settings";
 import type { PromptRuntimeSnapshot } from "@/lib/studio/prompt-types";
 import type { AnalysisProgressEvent } from "@/lib/ai/analysis-execution";
+import type { InterviewPreparationProgressEvent } from "@/lib/ai/interview-preparation";
 
 export { STYLE_LABELS } from "@/lib/ai/types";
 
@@ -142,7 +143,7 @@ export async function runResumeAnalysisStreaming(
   const watchdog = globalThis.setTimeout(() => {
     watchdogExpired = true;
     controller.abort();
-  }, options.watchdogMs ?? 365_000);
+  }, options.watchdogMs ?? 185_000);
   let result: AnalysisResult | undefined;
   let mode: "mock" | "llm" | undefined;
   let promptSnapshots: PromptRuntimeSnapshot[] = [];
@@ -175,7 +176,7 @@ export async function runResumeAnalysisStreaming(
           elapsedMs: event.elapsedMs,
           remainingMs: event.remainingMs,
           ...("stage" in event ? { stage: event.stage } : {}),
-          ...("batchIndex" in event ? { batchIndex: event.batchIndex, batchCount: event.batchCount, batchStatus: event.batchStatus } : {}),
+          ...(event.type === "batch-progress" ? { batchIndex: event.batchIndex, batchCount: event.batchCount, batchStatus: event.batchStatus } : {}),
         });
         if ("promptSnapshots" in event && event.promptSnapshots?.length) {
           promptSnapshots = event.promptSnapshots;
@@ -208,7 +209,7 @@ export async function runResumeAnalysisStreaming(
       throw new ResumeAnalysisCancelledError(terminalError);
     }
     if (watchdogExpired) {
-      terminalError = "分析连接已超过 365 秒，客户端已停止等待；本次未写入任何数据。";
+      terminalError = "快速分析连接已超过 185 秒，客户端已停止等待；本次未写入任何数据。";
       throw new ResumeAgentClientError(terminalError);
     }
     terminalError = error instanceof Error ? error.message : "分析失败";
@@ -234,6 +235,62 @@ export async function runResumeAnalysisStreaming(
       error: result ? undefined : terminalError,
       promptSnapshots,
     }).catch(reportTraceStorageError);
+  }
+}
+
+export async function prepareInterviewStreaming(
+  input: UserInput,
+  jobTargetContext: JobTargetContext,
+  analysisResult: AnalysisResult,
+  materialRevision: number,
+  options: { signal?: AbortSignal; onProgress?: (event: InterviewPreparationProgressEvent) => void; watchdogMs?: number } = {},
+): Promise<InterviewPrep> {
+  const url = "/api/interview/prepare/stream";
+  const body = { input, jobTargetContext, analysisResult, materialRevision };
+  const traceId = crypto.randomUUID();
+  const headers = await buildWorkflowHeaders(url, traceId);
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  options.signal?.addEventListener("abort", abortFromCaller, { once: true });
+  const watchdog = globalThis.setTimeout(() => controller.abort(), options.watchdogMs ?? 185_000);
+  let result: InterviewPrep | undefined;
+  let terminalError: string | undefined;
+  let snapshots: PromptRuntimeSnapshot[] = [];
+  const startedAt = new Date();
+  try {
+    const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal });
+    if (!response.ok || !response.body) throw new ResumeAgentClientError(`面试策略请求失败 (${response.status})`);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line) as InterviewPreparationProgressEvent;
+        options.onProgress?.(event);
+        if ("promptSnapshots" in event && event.promptSnapshots?.length) snapshots = event.promptSnapshots;
+        if (event.type === "completed") result = event.interviewPrep;
+        if (event.type === "failed") throw new ResumeAgentClientError(event.error);
+        if (event.type === "cancelled") throw new ResumeAnalysisCancelledError(event.message);
+      }
+      if (done) break;
+    }
+    if (!result) throw new ResumeAgentClientError("面试策略连接意外结束，未收到完整结果；已有内容未改变。");
+    return result;
+  } catch (error) {
+    if (options.signal?.aborted) throw new ResumeAnalysisCancelledError("面试策略生成已取消，已有内容未改变。");
+    terminalError = error instanceof Error ? error.message : "面试策略生成失败";
+    throw error;
+  } finally {
+    clearTimeout(watchdog);
+    options.signal?.removeEventListener("abort", abortFromCaller);
+    const finishedAt = new Date();
+    const latest = snapshots.at(-1);
+    void saveTraceSpan({ id: traceId, nodeId: "interview-review", label: "按需面试策略", status: result ? "success" : "error", provider: latest?.provider, model: latest?.model, startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), latencyMs: finishedAt.getTime() - startedAt.getTime(), input: body, output: result, error: result ? undefined : terminalError, promptSnapshots: snapshots }).catch(reportTraceStorageError);
   }
 }
 

@@ -26,9 +26,8 @@ import { COMPANY_TYPES, isCompanyType, isJobStage, JOB_STAGES } from "@/config/j
 import type { AnalysisProgressEvent, AnalysisStageId } from "@/lib/ai/analysis-execution";
 
 const ANALYSIS_STAGES: Array<{ id: AnalysisStageId; label: string }> = [
-  { id: "jd-analysis", label: "JD 解析" },
-  { id: "requirement-match", label: "经历匹配" },
-  { id: "interview-strategy", label: "面试策略" },
+  { id: "jd-requirements", label: "JD 需求地图" },
+  { id: "match-and-insights", label: "事实匹配与岗位概览" },
 ];
 
 
@@ -145,11 +144,11 @@ export function InputStep() {
   };
 
   const currentStageIndex = analysisProgress && "stageIndex" in analysisProgress
-    ? analysisProgress.stageIndex
+    ? analysisProgress.stageIndex ?? 1
     : 1;
   const currentStage = analysisProgress && "stage" in analysisProgress
     ? analysisProgress.stage
-    : "jd-analysis";
+    : "jd-requirements";
   const completedStageIndex = analysisProgress?.type === "stage-completed"
     ? analysisProgress.stageIndex
     : Math.max(0, currentStageIndex - 1);
@@ -204,7 +203,7 @@ export function InputStep() {
               {analysisProgress && "message" in analysisProgress ? analysisProgress.message : "正在启动深度分析"}
             </p>
             <span className="text-xs text-blue-700">
-              已用 {elapsedSeconds}s · 最多剩余 {Math.max(0, 360 - elapsedSeconds)}s
+              已用 {elapsedSeconds}s · 最多剩余 {Math.max(0, 180 - elapsedSeconds)}s
             </span>
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
@@ -220,9 +219,9 @@ export function InputStep() {
               );
             })}
           </div>
-          {elapsedSeconds >= 45 && (
+          {elapsedSeconds >= 30 && (
             <p className="mt-3 text-xs text-amber-700">
-              当前模型响应较慢。系统仍会继续执行，但整次分析达到 6 分钟后将自动停止，不会写入半成品。
+              当前模型响应较慢。系统仍会继续执行，但快速分析达到 3 分钟后将自动停止，不会写入半成品。
             </p>
           )}
         </div>

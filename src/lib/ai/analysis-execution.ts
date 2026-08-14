@@ -8,12 +8,12 @@ import {
   AnalysisRetryBudgetError,
 } from "@/lib/ai/errors";
 
-export const ANALYSIS_TOTAL_TIMEOUT_MS = 360_000;
-export const ANALYSIS_PROVIDER_TIMEOUT_MS = 90_000;
+export const ANALYSIS_TOTAL_TIMEOUT_MS = 180_000;
+export const ANALYSIS_PROVIDER_TIMEOUT_MS = 60_000;
 export const ANALYSIS_MAX_PROVIDER_REQUESTS = 10;
-export const ANALYSIS_STAGE_COUNT = 3;
+export const ANALYSIS_STAGE_COUNT = 2;
 
-export type AnalysisStageId = "jd-analysis" | "requirement-match" | "interview-strategy";
+export type AnalysisStageId = "jd-requirements" | "match-and-insights";
 
 interface AnalysisProgressBase {
   requestId: string;
@@ -23,6 +23,15 @@ interface AnalysisProgressBase {
 
 export type AnalysisProgressEvent =
   | (AnalysisProgressBase & { type: "started" })
+  | (AnalysisProgressBase & {
+      type: "heartbeat";
+      stage?: AnalysisStageId;
+      stageIndex?: number;
+      stageCount: number;
+      batchIndex?: number;
+      batchCount?: number;
+      message: string;
+    })
   | (AnalysisProgressBase & {
       type: "stage-started" | "stage-completed";
       stage: AnalysisStageId;

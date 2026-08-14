@@ -1,13 +1,22 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronRight, CircleStop, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState, ListSection, SectionTitle } from "@/components/shared/ui-helpers";
 import { useResumeStore } from "@/store/resume-store";
+import { prepareInterviewStreaming, ResumeAnalysisCancelledError } from "@/services/ai/resumeAgent";
+import type { InterviewPreparationProgressEvent } from "@/lib/ai/interview-preparation";
 
 export function InterviewStep() {
-  const { analysisResult, setCurrentStep } = useResumeStore();
+  const { analysisResult, userInput, jobTargetContext, materialRevision, analysisRevision, setInterviewPrep, setCurrentStep } = useResumeStore();
+  const [generating, setGenerating] = useState(false);
+  const [progress, setProgress] = useState<InterviewPreparationProgressEvent | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   if (!analysisResult) {
     return <EmptyState message="请先完成输入材料并开始分析" />;
@@ -17,13 +26,52 @@ export function InterviewStep() {
   const requirements = new Map((analysisResult.jdAnalysis.requirements ?? []).map((item) => [item.id, item]));
   const strategies = interviewPrep.requirementStrategies ?? [];
   const reverseQuestions = interviewPrep.reverseQuestions ?? [];
+  const hasInterviewPrep = Boolean(interviewPrep.selfIntroduction.trim() || interviewPrep.likelyQuestions.length || strategies.length || reverseQuestions.length);
+  const analysisFresh = materialRevision === analysisRevision;
+
+  const generate = async () => {
+    if (!analysisFresh || generating) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setGenerating(true); setError(null); setNotice(null); setProgress(null);
+    try {
+      const prep = await prepareInterviewStreaming(userInput, jobTargetContext, analysisResult, materialRevision, { signal: controller.signal, onProgress: setProgress });
+      if (!setInterviewPrep(prep, materialRevision)) setError("材料已在生成期间变化，迟到结果未保存。请重新分析后再生成。");
+    } catch (next) {
+      if (next instanceof ResumeAnalysisCancelledError) setNotice(next.message);
+      else setError(next instanceof Error ? next.message : "面试策略生成失败");
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setGenerating(false);
+    }
+  };
 
   return (
     <div>
       <SectionTitle
         title="面试准备"
-        description="基于简历与 JD 生成面试追问、证据准备与自我介绍"
+        description="核心诊断完成后按需生成，不阻塞简历制作"
       />
+
+      {!hasInterviewPrep && (
+        <Card className="mb-4">
+          <CardContent className="py-8 text-center">
+            <p className="text-sm font-medium">尚未生成面试策略</p>
+            <p className="mt-2 text-xs text-neutral-500">将按每批最多 5 条岗位要求生成，已有分析和材料不会被覆盖。</p>
+            <Button className="mt-4" size="sm" onClick={() => void generate()} disabled={!analysisFresh || generating}>
+              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {generating ? "生成中" : "生成面试策略"}
+            </Button>
+            {generating && <Button className="ml-2 mt-4" size="sm" variant="outline" onClick={() => abortRef.current?.abort()}><CircleStop className="h-4 w-4" />取消</Button>}
+            {!analysisFresh && <p className="mt-3 text-xs text-amber-700">材料已变化，请先重新分析。</p>}
+            {progress && "message" in progress && <p className="mt-3 text-xs text-blue-700" role="status" aria-live="polite">{progress.message} · 已用 {Math.round(progress.elapsedMs / 1000)}s</p>}
+            {notice && <p className="mt-3 text-xs text-neutral-600" role="status">{notice}</p>}
+            {error && <div className="mt-3 text-xs text-red-700" role="alert">{error}<div><Button className="mt-2" size="sm" variant="outline" onClick={() => void generate()}>重新尝试</Button></div></div>}
+          </CardContent>
+        </Card>
+      )}
+
+      {hasInterviewPrep && <>
 
       <Card className="mb-4">
         <CardHeader className="pb-3">
@@ -102,10 +150,11 @@ export function InterviewStep() {
           </CardContent>
         </Card>
       </div>
+      </>}
 
       <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={() => setCurrentStep("export")}>
-          下一步：导出结果
+        <Button variant="outline" size="sm" onClick={() => setCurrentStep("optimize")}>
+          下一步：制作优化
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>

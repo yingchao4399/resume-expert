@@ -92,6 +92,7 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
             </SelectContent></Select>
             <Label htmlFor="ai-model" className="block text-[11px] text-neutral-500">手动模型 ID</Label><Input id="ai-model" value={model} onChange={(event) => setModel(event.target.value)} placeholder="输入服务商官网或 /models 返回的模型 ID" className="font-mono text-xs" />
             {currentPreset && <div className="flex flex-wrap gap-3 text-[11px]"><span className="text-neutral-400">官方清单更新：{currentPreset.catalogUpdatedAt}</span>{currentPreset.modelDocsUrl && <a href={currentPreset.modelDocsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:underline">查看官方模型文档<ExternalLink className="h-3 w-3" /></a>}</div>}
+            {provider === "deepseek" && <p className="text-[11px] text-blue-700">结构抽取会关闭 DeepSeek V4 思考模式以缩短等待；当前模型不会被静默替换。更看重速度时建议使用 deepseek-v4-flash。</p>}
             {oldModelWarning && <Alert tone="amber">当前模型“{model}”不在最新官方预设或账号返回清单中，可能已下线；不会自动替换。建议改用“{currentPreset?.recommendedModel}”并先测试连接。</Alert>}
             {catalog && <div className="rounded-md border bg-neutral-50 px-3 py-2 text-[11px]" role="status" aria-live="polite">已于 {new Date(catalog.refreshedAt).toLocaleString("zh-CN")} 刷新，共 {catalog.models.filter((item) => item.source === "account").length} 个账号模型。{catalog.warning && <span className="block text-amber-700">{catalog.warning}</span>}</div>}
           </div>

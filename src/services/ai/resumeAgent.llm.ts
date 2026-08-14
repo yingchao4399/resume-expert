@@ -1,11 +1,12 @@
 import { chatCompletionJSON } from "@/lib/ai/client";
 import {
-  createDeepJDModelResultSchema,
-  createDiagnosisMatchResultSchema,
+  createCompactJDModelResultSchema,
+  createDiagnosisMatchCoreResultSchema,
   createInterviewPrepResultSchema,
   finalResumeResultSchema,
   followUpBulletResultSchema,
   optimizedItemsResultSchema,
+  jobOverviewModelResultSchema,
 } from "@/lib/ai/schemas";
 import { followUpGuidanceResultSchema } from "@/lib/ai/schemas";
 import {
@@ -17,12 +18,12 @@ import {
   normalizeFinalResume,
   normalizeOptimizedItems,
 } from "@/lib/ai/prompts";
-import { buildDeepJDPrompt, buildFollowUpGuidancePrompt, buildRequirementInterviewPrompt, buildRequirementMatchPrompt } from "@/lib/ai/jd-prompts";
-import { assembleRequirements, rankCareerClaimsForRequirements, splitJDSourceItems, validateMatchReferences } from "@/lib/jd/deep-analysis";
+import { buildDeepJDPrompt, buildFollowUpGuidancePrompt, buildJobOverviewPrompt, buildRequirementInterviewPrompt, buildRequirementMatchPrompt } from "@/lib/ai/jd-prompts";
+import { assembleRequirements, rankCareerClaimsForRequirements, splitJDSourceItems, summarizeRequirementMap, validateMatchReferences } from "@/lib/jd/deep-analysis";
 import type { CareerAnalysisClaim } from "@/lib/career/career-context";
 import type { AnalysisResult, JobTargetContext, OptimizeStyle, UserInput } from "@/types/resume";
 import type { WorkflowExecutionOptions } from "@/lib/studio/execution";
-import { runWithTruncationFallback } from "@/lib/ai/truncation-fallback";
+import { StructuredAnalysisExecutor } from "@/lib/ai/structured-analysis-executor";
 import {
   ANALYSIS_STAGE_COUNT,
   AnalysisExecutionBudget,
@@ -31,39 +32,19 @@ import {
 import { buildConservativeResume } from "@/lib/resume/conservative-resume";
 import type { z } from "zod";
 
-type DiagnosisMatchResult = Pick<
-  AnalysisResult,
-  "diagnosis" | "matchItems" | "followUpQuestions"
->;
-type DeepJDModelResult = z.infer<ReturnType<typeof createDeepJDModelResultSchema>>;
+type DiagnosisMatchResult = Pick<AnalysisResult, "diagnosis" | "matchItems">;
+type DeepJDModelResult = z.infer<ReturnType<typeof createCompactJDModelResultSchema>>;
 type InterviewPrepResult = z.infer<ReturnType<typeof createInterviewPrepResultSchema>>;
+type JobOverviewResult = z.infer<typeof jobOverviewModelResultSchema>;
 
 function uniqueTexts(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 function mergeDeepJDResults(results: DeepJDModelResult[]): DeepJDModelResult {
-  const inferenceRank = { explicit: 3, inferred: 2, unknown: 1 } as const;
-  const inferenceByTopic = new Map<string, DeepJDModelResult["roleInference"]["items"][number]>();
-  for (const item of results.flatMap((result) => result.roleInference.items)) {
-    const current = inferenceByTopic.get(item.topic);
-    if (!current || inferenceRank[item.level] > inferenceRank[current.level]) inferenceByTopic.set(item.topic, item);
-  }
-  const clarificationNeeds = results.flatMap((result) => result.clarificationNeeds)
-    .filter((item, index, all) => all.findIndex((candidate) => candidate.topic === item.topic && candidate.missingInformation === item.missingInformation) === index)
-    .map((item, index) => ({ ...item, id: `clarification-${index + 1}` }));
   return {
     sourceClassifications: results.flatMap((result) => result.sourceClassifications),
     requirements: results.flatMap((result) => result.requirements),
-    responsibilities: uniqueTexts(results.flatMap((result) => result.responsibilities)).slice(0, 12),
-    hardRequirements: uniqueTexts(results.flatMap((result) => result.hardRequirements)).slice(0, 12),
-    implicitRequirements: uniqueTexts(results.flatMap((result) => result.implicitRequirements)).slice(0, 12),
-    keywords: uniqueTexts(results.flatMap((result) => result.keywords)).slice(0, 30),
-    idealCandidate: results.map((result) => result.idealCandidate.trim()).filter(Boolean).sort((a, b) => b.length - a.length)[0] ?? "",
-    coreCompetencies: results.flatMap((result) => result.coreCompetencies)
-      .filter((item, index, all) => all.findIndex((candidate) => candidate.name === item.name) === index).slice(0, 12),
-    roleInference: { items: [...inferenceByTopic.values()] },
-    clarificationNeeds,
   };
 }
 
@@ -78,10 +59,6 @@ function mergeDiagnosisMatchResults(results: DiagnosisMatchResult[]): DiagnosisM
       prioritySuggestions: uniqueTexts(results.flatMap((result) => result.diagnosis.prioritySuggestions)),
     },
     matchItems: results.flatMap((result) => result.matchItems),
-    followUpQuestions: results.flatMap((result) => result.followUpQuestions)
-      .filter((item, index, all) => all.findIndex((candidate) => candidate.requirementId === item.requirementId) === index)
-      .slice(0, 10)
-      .map((item, index) => ({ ...item, id: `fu-${index + 1}` })),
   };
 }
 
@@ -108,9 +85,8 @@ type AnalysisExecution = Pick<
 >;
 
 const ANALYSIS_STAGE_DETAILS: Record<AnalysisStageId, { index: number; label: string }> = {
-  "jd-analysis": { index: 1, label: "解析 JD 需求" },
-  "requirement-match": { index: 2, label: "匹配经历事实" },
-  "interview-strategy": { index: 3, label: "生成面试策略" },
+  "jd-requirements": { index: 1, label: "生成 JD 需求地图" },
+  "match-and-insights": { index: 2, label: "匹配事实并生成岗位概览" },
 };
 
 function emitStage(
@@ -161,32 +137,35 @@ export async function runLLMResumeAnalysis(
   const budget = execution.analysisBudget ?? new AnalysisExecutionBudget({ signal: execution.signal });
   const completionExecution = {
     model: execution.model,
-    timeoutMs: execution.timeoutMs,
     capture: execution.capture,
     signal: execution.signal,
     analysisBudget: budget,
   };
+  const executor = new StructuredAnalysisExecutor(undefined, budget);
   budget.assertActive();
   const sourceItems = splitJDSourceItems(input.jobDescription);
   if (!sourceItems.length) throw new Error("JD 中没有可分析的文本条目。");
-  emitStage(execution, budget, "stage-started", "jd-analysis");
-  const jdModel = await runWithTruncationFallback({
+  emitStage(execution, budget, "stage-started", "jd-requirements");
+  const jdModel = await executor.executeBatched({
     stage: "JD 需求解析",
     items: sourceItems,
-    run: (items, signal) => chatCompletionJSON({
+    batchSize: 16,
+    createRequest: (items, signal) => ({
       promptId: "resume.deep-jd",
       system: RESUME_AGENT_SYSTEM_PROMPT,
       user: buildDeepJDPrompt(input, jobTargetContext, items),
-      schema: createDeepJDModelResultSchema(items.map((item) => item.id)),
-      schemaName: "deep_jd_requirement_map",
-      maxTokens: 12000,
+      schema: createCompactJDModelResultSchema(items.map((item) => item.id)),
+      schemaName: "compact_jd_requirement_map",
+      maxTokens: 6000,
+      timeoutMs: 60_000,
+      batchSize: items.length,
       analysisStage: "JD 需求解析",
       ...completionExecution,
       signal,
     }),
     merge: mergeDeepJDResults,
     signal: execution.signal,
-    onProgress: batchProgress(execution, budget, "jd-analysis"),
+    onProgress: batchProgress(execution, budget, "jd-requirements"),
   });
   budget.assertActive();
 
@@ -195,32 +174,49 @@ export async function runLLMResumeAnalysis(
   const requirements = assembleRequirements(classifiedSources, jdModel.requirements);
   const validatedRequirements = requirements.filter((item) => item.anchorStatus === "validated");
   if (!validatedRequirements.length) throw new Error("模型未能生成可校验的 JD 原文引用，请检查 JD 后重新分析。");
-  emitStage(execution, budget, "stage-completed", "jd-analysis");
+  emitStage(execution, budget, "stage-completed", "jd-requirements");
   const selectedClaims = rankCareerClaimsForRequirements(careerClaims, validatedRequirements, input, 12);
 
-  emitStage(execution, budget, "stage-started", "requirement-match");
-  const diagnosisMatch = await runWithTruncationFallback({
-    stage: "要求—事实匹配",
-    items: validatedRequirements,
-    run: (requirements, signal) => chatCompletionJSON({
-      promptId: "resume.requirement-match",
+  emitStage(execution, budget, "stage-started", "match-and-insights");
+  const [diagnosisMatch, overview] = await Promise.all([
+    executor.executeBatched({
+      stage: "要求—事实匹配",
+      items: validatedRequirements,
+      batchSize: 12,
+      createRequest: (requirements, signal) => ({
+        promptId: "resume.requirement-match",
+        system: RESUME_AGENT_SYSTEM_PROMPT,
+        user: buildRequirementMatchPrompt(input, jobTargetContext, requirements, selectedClaims),
+        schema: createDiagnosisMatchCoreResultSchema(requirements.map((item) => item.id), selectedClaims.map((item) => item.id)),
+        schemaName: "requirement_fact_match_core",
+        maxTokens: 6000,
+        timeoutMs: 60_000,
+        batchSize: requirements.length,
+        analysisStage: "要求—事实匹配",
+        ...completionExecution,
+        signal,
+      }),
+      merge: mergeDiagnosisMatchResults,
+      signal: execution.signal,
+      onProgress: batchProgress(execution, budget, "match-and-insights"),
+    }),
+    executor.execute<JobOverviewResult>({
+      promptId: "resume.job-overview",
       system: RESUME_AGENT_SYSTEM_PROMPT,
-      user: buildRequirementMatchPrompt(input, jobTargetContext, requirements, selectedClaims),
-      schema: createDiagnosisMatchResultSchema(requirements.map((item) => item.id), selectedClaims.map((item) => item.id)),
-      schemaName: "requirement_fact_match",
-      maxTokens: 12000,
+      user: buildJobOverviewPrompt(input, jobTargetContext, validatedRequirements),
+      schema: jobOverviewModelResultSchema,
+      schemaName: "job_overview",
+      maxTokens: 4000,
+      timeoutMs: 60_000,
+      batchSize: validatedRequirements.length,
       analysisStage: "要求—事实匹配",
       ...completionExecution,
-      signal,
     }),
-    merge: mergeDiagnosisMatchResults,
-    signal: execution.signal,
-    onProgress: batchProgress(execution, budget, "requirement-match"),
-  });
+  ]);
   budget.assertActive();
 
   const validatedMatches = validateMatchReferences(diagnosisMatch.matchItems, validatedRequirements, selectedClaims, input.originalResume);
-  const followUpQuestions = [...diagnosisMatch.followUpQuestions];
+  const followUpQuestions: AnalysisResult["followUpQuestions"] = [];
   for (const match of validatedMatches.filter((item) => item.needsSupplement)) {
     if (followUpQuestions.length >= 10 || followUpQuestions.some((item) => item.requirementId === match.requirementId)) continue;
     followUpQuestions.push({
@@ -236,50 +232,69 @@ export async function runLLMResumeAnalysis(
       generatedBullet: "",
     });
   }
-  emitStage(execution, budget, "stage-completed", "requirement-match");
-
-  emitStage(execution, budget, "stage-started", "interview-strategy");
-  const interview = await runWithTruncationFallback({
-    stage: "面试策略",
-    items: validatedRequirements,
-    run: (requirements, signal) => {
-      const ids = new Set(requirements.map((item) => item.id));
-      return chatCompletionJSON({
-        promptId: "resume.interview-strategy",
-        system: RESUME_AGENT_SYSTEM_PROMPT,
-        user: buildRequirementInterviewPrompt(input, jobTargetContext, requirements, validatedMatches.filter((item) => Boolean(item.requirementId && ids.has(item.requirementId))), jdModel.clarificationNeeds),
-        schema: createInterviewPrepResultSchema(requirements.map((item) => item.id), jdModel.clarificationNeeds.map((item) => item.id)),
-        schemaName: "requirement_interview_strategy",
-        maxTokens: 12000,
-        analysisStage: "面试策略",
-        ...completionExecution,
-        signal,
-      });
-    },
-    merge: mergeInterviewResults,
-    signal: execution.signal,
-    onProgress: batchProgress(execution, budget, "interview-strategy"),
-  });
-  budget.assertActive();
-  emitStage(execution, budget, "stage-completed", "interview-strategy");
+  emitStage(execution, budget, "stage-completed", "match-and-insights");
+  const summary = summarizeRequirementMap(requirements);
 
   const raw: AnalysisResult = {
     jdAnalysis: {
-      responsibilities: jdModel.responsibilities, hardRequirements: jdModel.hardRequirements,
-      implicitRequirements: jdModel.implicitRequirements, keywords: jdModel.keywords,
-      idealCandidate: jdModel.idealCandidate, coreCompetencies: jdModel.coreCompetencies,
-      sourceItems: classifiedSources, requirements, roleInference: jdModel.roleInference, clarificationNeeds: jdModel.clarificationNeeds,
+      ...summary,
+      idealCandidate: overview.idealCandidate,
+      sourceItems: classifiedSources, requirements, roleInference: overview.roleInference, clarificationNeeds: overview.clarificationNeeds,
     },
     diagnosis: diagnosisMatch.diagnosis,
     matchItems: validatedMatches,
     followUpQuestions,
     optimizedItems: [],
     finalResume: buildConservativeResume(input),
-    interviewPrep: interview.interviewPrep,
+    interviewPrep: emptyInterviewPrep(),
   };
 
   budget.assertActive();
   return normalizeAnalysisResult(raw, input);
+}
+
+function emptyInterviewPrep(): AnalysisResult["interviewPrep"] {
+  return { likelyQuestions: [], evidenceToPrepare: [], possibleExaggerations: [], dataToSupplement: [], selfIntroduction: "", requirementStrategies: [], reverseQuestions: [] };
+}
+
+export async function runLLMInterviewPreparation(
+  input: UserInput,
+  jobTargetContext: JobTargetContext,
+  analysisResult: AnalysisResult,
+  execution: AnalysisExecution = {},
+  onBatchProgress?: (progress: { batchIndex: number; batchCount: number; status: "started" | "completed" | "split" }) => void,
+): Promise<AnalysisResult["interviewPrep"]> {
+  const requirements = (analysisResult.jdAnalysis.requirements ?? []).filter((item) => item.anchorStatus === "validated");
+  if (!requirements.length) throw new Error("当前分析没有可校验的岗位要求，请重新分析后再生成面试策略。");
+  const budget = execution.analysisBudget ?? new AnalysisExecutionBudget({ signal: execution.signal });
+  const executor = new StructuredAnalysisExecutor(undefined, budget);
+  const result = await executor.executeBatched({
+    stage: "面试策略",
+    items: requirements,
+    batchSize: 5,
+    createRequest: (batch, signal) => {
+      const ids = new Set(batch.map((item) => item.id));
+      return {
+        promptId: "resume.interview-strategy",
+        system: RESUME_AGENT_SYSTEM_PROMPT,
+        user: buildRequirementInterviewPrompt(input, jobTargetContext, batch, analysisResult.matchItems.filter((item) => Boolean(item.requirementId && ids.has(item.requirementId))), analysisResult.jdAnalysis.clarificationNeeds ?? []),
+        schema: createInterviewPrepResultSchema(batch.map((item) => item.id), (analysisResult.jdAnalysis.clarificationNeeds ?? []).map((item) => item.id)),
+        schemaName: "requirement_interview_strategy",
+        maxTokens: 6000,
+        timeoutMs: 60_000,
+        batchSize: batch.length,
+        analysisStage: "面试策略",
+        model: execution.model,
+        capture: execution.capture,
+        signal,
+      };
+    },
+    merge: mergeInterviewResults,
+    signal: execution.signal,
+    onProgress: onBatchProgress,
+  });
+  budget.assertActive();
+  return result.interviewPrep;
 }
 
 export async function runLLMFollowUpGuidance(

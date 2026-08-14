@@ -5,6 +5,7 @@ import {
   runMockFollowUpBullet,
   runMockRegenerateOptimizedItems,
   runMockResumeAnalysis,
+  runMockInterviewPreparation,
 } from "@/services/ai/resumeAgent.mock";
 import {
   runLLMFinalizeResume,
@@ -12,6 +13,7 @@ import {
   runLLMFollowUpBullet,
   runLLMRegenerateOptimizedItems,
   runLLMResumeAnalysis,
+  runLLMInterviewPreparation,
 } from "@/services/ai/resumeAgent.llm";
 import type { CareerAnalysisClaim } from "@/lib/career/career-context";
 import type { AnalysisResult, JobTargetContext, OptimizeStyle, UserInput } from "@/types/resume";
@@ -23,9 +25,8 @@ import {
 } from "@/lib/ai/analysis-execution";
 
 const MOCK_STAGES: Array<{ id: AnalysisStageId; label: string }> = [
-  { id: "jd-analysis", label: "解析 JD 需求" },
-  { id: "requirement-match", label: "匹配经历事实" },
-  { id: "interview-strategy", label: "生成面试策略" },
+  { id: "jd-requirements", label: "生成 JD 需求地图" },
+  { id: "match-and-insights", label: "匹配事实并生成岗位概览" },
 ];
 
 function currentMode(forceMock = false): AIMode {
@@ -79,6 +80,20 @@ export async function analyzeResumeServer(
     }));
   }
   return { result, mode };
+}
+
+export async function prepareInterviewServer(
+  input: UserInput,
+  jobTargetContext: JobTargetContext,
+  analysisResult: AnalysisResult,
+  execution: WorkflowExecutionOptions = { forceMock: false },
+  onBatchProgress?: (progress: { batchIndex: number; batchCount: number; status: "started" | "completed" | "split" }) => void,
+): Promise<{ interviewPrep: AnalysisResult["interviewPrep"]; mode: AIMode }> {
+  const mode = currentMode(execution.forceMock);
+  if (mode === "llm") {
+    return { interviewPrep: await runLLMInterviewPreparation(input, jobTargetContext, analysisResult, execution, onBatchProgress), mode };
+  }
+  return { interviewPrep: await runMockInterviewPreparation(input, jobTargetContext, [], execution.signal), mode };
 }
 
 export async function generateFollowUpGuidanceServer(

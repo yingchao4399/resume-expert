@@ -583,6 +583,16 @@ export const useResumeStore = create<ResumeStore>()(
           });
         }),
 
+      setInterviewPrep: (prep, expectedMaterialRevision) => {
+        let accepted = false;
+        set((state) => {
+          if (!state.analysisResult || state.materialRevision !== expectedMaterialRevision || state.analysisRevision !== expectedMaterialRevision) return state;
+          accepted = true;
+          return updateActiveDocument(state, { analysisResult: { ...state.analysisResult, interviewPrep: prep } });
+        });
+        return accepted;
+      },
+
       setFinalResume: (resume, options) =>
         set((state) => {
           if (!state.analysisResult) return state;
@@ -685,8 +695,14 @@ export const useResumeStore = create<ResumeStore>()(
           return analysisFresh ? "completed" : "pending";
         }
 
-        const analysisSteps = new Set(["jd-analysis", "diagnosis", "match", "follow-up", "interview"]);
+        const analysisSteps = new Set(["jd-analysis", "diagnosis", "match", "follow-up"]);
         if (step === "interview-recording") return currentStep === step ? "active" : "pending";
+        if (step === "interview") {
+          if (!analysisResult || !analysisFresh) return "disabled";
+          if (currentStep === step) return "active";
+          const prep = analysisResult.interviewPrep;
+          return prep.selfIntroduction.trim() || prep.likelyQuestions.length || (prep.requirementStrategies?.length ?? 0) ? "completed" : "pending";
+        }
         if (analysisResult && analysisSteps.has(step)) return currentStep === step ? "active" : analysisFresh ? "completed" : "pending";
         if (!analysisResult || !analysisFresh) return "disabled";
         if (currentStep === step) return "active";

@@ -41,7 +41,7 @@ export class AnalysisCancelledError extends LLMError {
 
 export class AnalysisDeadlineError extends LLMError {
   constructor() {
-    super("深度分析已达到 6 分钟上限，系统已停止后续调用且未写入半成品。请缩短 JD、测试当前模型或切换模型后重试。", 504, "timeout");
+    super("快速分析已达到 3 分钟上限，系统已停止后续调用且未写入半成品。请缩短 JD、测试当前模型或切换更快的模型后重试。", 504, "timeout");
     this.name = "AnalysisDeadlineError";
   }
 }

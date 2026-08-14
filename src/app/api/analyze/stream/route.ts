@@ -13,9 +13,8 @@ const encoder = new TextEncoder();
 
 function stageForError(error: unknown): AnalysisStageId | undefined {
   if (!(error instanceof LLMTruncationError)) return undefined;
-  if (error.stage === "JD 需求解析") return "jd-analysis";
-  if (error.stage === "要求—事实匹配") return "requirement-match";
-  if (error.stage === "面试策略") return "interview-strategy";
+  if (error.stage === "JD 需求解析") return "jd-requirements";
+  if (error.stage === "要求—事实匹配") return "match-and-insights";
   return undefined;
 }
 
@@ -36,6 +35,9 @@ export async function POST(request: Request) {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       let closed = false;
+      let currentStage: AnalysisStageId | undefined;
+      let currentStageIndex: number | undefined;
+      let currentBatch: { index: number; count: number } | undefined;
       const send = (event: AnalysisProgressEvent) => {
         if (closed) return;
         try {
@@ -48,6 +50,7 @@ export async function POST(request: Request) {
       const close = () => {
         if (closed) return;
         closed = true;
+        clearInterval(heartbeat);
         request.signal.removeEventListener("abort", abortTask);
         try {
           controller.close();
@@ -55,18 +58,32 @@ export async function POST(request: Request) {
           // The browser may already have cancelled the stream.
         }
       };
+      const heartbeat = setInterval(() => send(budget.progress({
+        type: "heartbeat",
+        stage: currentStage,
+        stageIndex: currentStageIndex,
+        stageCount: 2,
+        batchIndex: currentBatch?.index,
+        batchCount: currentBatch?.count,
+        message: currentBatch ? `模型仍在处理第 ${currentBatch.index}/${currentBatch.count} 批` : "模型仍在处理当前阶段",
+      })), 5_000);
 
       void (async () => {
         const execution = {
           ...baseExecution,
           signal: taskController.signal,
           analysisBudget: budget,
-          onAnalysisProgress: (event: AnalysisProgressEvent) => send({
-            ...event,
+          onAnalysisProgress: (event: AnalysisProgressEvent) => {
+            if ("stage" in event && event.stage) currentStage = event.stage;
+            if ("stageIndex" in event && event.stageIndex) currentStageIndex = event.stageIndex;
+            if (event.type === "batch-progress") currentBatch = { index: event.batchIndex, count: event.batchCount };
+            send({
+              ...event,
             ...(event.type === "stage-completed" && execution.capture?.snapshots.length
               ? { promptSnapshots: [...execution.capture.snapshots] }
               : {}),
-          }),
+            });
+          },
         };
         try {
           const { result, mode } = await analyzeResumeServer(
