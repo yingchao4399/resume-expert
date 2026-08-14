@@ -24,6 +24,7 @@
 - [目标公司公开研究模块规范](./company-research-spec.md)
 - [评分与证据链建议规范](./scoring-and-evidence-spec.md)
 - [简历评分体系心理测量学审查与重设计报告](./resume-scoring-psychometrics-report.md)
+- [JD 深度解析审查与下一版建议](./jd-deep-analysis-review-2026-08-15.md)
 - [求职 AI 产品与 Agent 项目对比借鉴报告](./job-agent-comparison-data/merged.md)
 - [推荐版本路线图](./roadmap.md)
 - [后续建设验收矩阵](./acceptance-matrix.md)
