@@ -22,6 +22,7 @@ import type { WorkflowNodeId } from "@/lib/studio/trace-types";
 import { getPublishedWorkflowNode } from "@/lib/studio/workflow-store";
 import { isStudioEnabled } from "@/lib/studio/settings";
 import type { PromptRuntimeSnapshot } from "@/lib/studio/prompt-types";
+import type { AnalysisProgressEvent } from "@/lib/ai/analysis-execution";
 
 export { STYLE_LABELS } from "@/lib/ai/types";
 
@@ -32,15 +33,27 @@ class ResumeAgentClientError extends Error {
   }
 }
 
-export async function postWorkflowJSON<T>(url: string, body: unknown): Promise<T> {
-  const startedAt = new Date();
-  const traceId = crypto.randomUUID();
+export class ResumeAnalysisCancelledError extends Error {
+  constructor(message = "分析已取消，当前材料和已有结果均未改变。") {
+    super(message);
+    this.name = "ResumeAnalysisCancelledError";
+  }
+}
+
+async function buildWorkflowHeaders(url: string, traceId: string): Promise<Record<string, string>> {
   const publishedNode = await getPublishedWorkflowNode(workflowDefinitionNodeId(nodeIdForURL(url))).catch(() => null);
   const headers: Record<string, string> = { "Content-Type": "application/json", "X-Workflow-Trace-Id": traceId };
   if (isStudioEnabled()) headers["X-Studio-Capture"] = "full";
   if (publishedNode?.provider === "mock") headers["X-Workflow-Provider"] = "mock";
   if (publishedNode?.provider === "direct" && publishedNode.model && publishedNode.model !== "configured-model") headers["X-Workflow-Model"] = publishedNode.model;
   if (publishedNode?.provider === "direct" && publishedNode.timeoutMs) headers["X-Workflow-Timeout"] = String(publishedNode.timeoutMs);
+  return headers;
+}
+
+export async function postWorkflowJSON<T>(url: string, body: unknown): Promise<T> {
+  const startedAt = new Date();
+  const traceId = crypto.randomUUID();
+  const headers = await buildWorkflowHeaders(url, traceId);
   const response = await fetch(url, {
     method: "POST",
     headers,
@@ -104,6 +117,124 @@ export async function runResumeAnalysis(
 ): Promise<AnalysisResult> {
   const data = await postWorkflowJSON<AnalyzeResponseBody>("/api/analyze", { input, jobTargetContext, careerClaims, optimizeStyle });
   return data.result;
+}
+
+export async function runResumeAnalysisStreaming(
+  input: UserInput,
+  jobTargetContext: JobTargetContext,
+  careerClaims: CareerAnalysisClaim[],
+  optimizeStyle: OptimizeStyle = "ai-product",
+  options: {
+    signal?: AbortSignal;
+    onProgress?: (event: AnalysisProgressEvent) => void;
+    watchdogMs?: number;
+  } = {},
+): Promise<AnalysisResult> {
+  const url = "/api/analyze/stream";
+  const body = { input, jobTargetContext, careerClaims, optimizeStyle };
+  const startedAt = new Date();
+  const traceId = crypto.randomUUID();
+  const headers = await buildWorkflowHeaders(url, traceId);
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  options.signal?.addEventListener("abort", abortFromCaller, { once: true });
+  let watchdogExpired = false;
+  const watchdog = globalThis.setTimeout(() => {
+    watchdogExpired = true;
+    controller.abort();
+  }, options.watchdogMs ?? 365_000);
+  let result: AnalysisResult | undefined;
+  let mode: "mock" | "llm" | undefined;
+  let promptSnapshots: PromptRuntimeSnapshot[] = [];
+  const traceProgress: Array<Record<string, unknown>> = [];
+  let terminalError: string | undefined;
+
+  try {
+    if (options.signal?.aborted) throw new ResumeAnalysisCancelledError();
+    const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({})) as { error?: string };
+      throw new ResumeAgentClientError(data.error || `请求失败 (${response.status})`);
+    }
+    if (!response.body) throw new ResumeAgentClientError("分析连接未返回可读取的数据流");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line) as AnalysisProgressEvent;
+        traceProgress.push({
+          type: event.type,
+          requestId: event.requestId,
+          elapsedMs: event.elapsedMs,
+          remainingMs: event.remainingMs,
+          ...("stage" in event ? { stage: event.stage } : {}),
+          ...("batchIndex" in event ? { batchIndex: event.batchIndex, batchCount: event.batchCount, batchStatus: event.batchStatus } : {}),
+        });
+        if ("promptSnapshots" in event && event.promptSnapshots?.length) {
+          promptSnapshots = event.promptSnapshots;
+        }
+        options.onProgress?.(event);
+        if (event.type === "completed") {
+          result = event.result;
+          mode = event.mode;
+          promptSnapshots = event.promptSnapshots ?? [];
+        } else if (event.type === "failed") {
+          promptSnapshots = event.promptSnapshots ?? [];
+          throw new ResumeAgentClientError(event.error);
+        } else if (event.type === "cancelled") {
+          promptSnapshots = event.promptSnapshots ?? [];
+          throw new ResumeAnalysisCancelledError(event.message);
+        }
+      }
+      if (done) break;
+    }
+
+    if (!result || !mode) throw new ResumeAgentClientError("分析连接意外结束，未收到完整结果；本次未写入任何数据。请重试。");
+    return result;
+  } catch (error) {
+    if (error instanceof ResumeAnalysisCancelledError) {
+      terminalError = error.message;
+      throw error;
+    }
+    if (options.signal?.aborted) {
+      terminalError = "分析已取消，当前材料和已有结果均未改变。";
+      throw new ResumeAnalysisCancelledError(terminalError);
+    }
+    if (watchdogExpired) {
+      terminalError = "分析连接已超过 365 秒，客户端已停止等待；本次未写入任何数据。";
+      throw new ResumeAgentClientError(terminalError);
+    }
+    terminalError = error instanceof Error ? error.message : "分析失败";
+    throw error;
+  } finally {
+    globalThis.clearTimeout(watchdog);
+    options.signal?.removeEventListener("abort", abortFromCaller);
+    const finishedAt = new Date();
+    const latestSnapshot = promptSnapshots.at(-1);
+    void saveTraceSpan({
+      id: traceId,
+      nodeId: "analyze",
+      label: "岗位分析",
+      status: result ? "success" : "error",
+      mode,
+      provider: latestSnapshot?.provider,
+      model: latestSnapshot?.model,
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      latencyMs: finishedAt.getTime() - startedAt.getTime(),
+      input: body,
+      output: result ?? { progress: traceProgress },
+      error: result ? undefined : terminalError,
+      promptSnapshots,
+    }).catch(reportTraceStorageError);
+  }
 }
 
 export async function generateFollowUpGuidance(input: FollowUpGuidanceRequestBody): Promise<string> {

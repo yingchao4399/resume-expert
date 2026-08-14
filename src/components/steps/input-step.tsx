@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { FileUp, Loader2, Sparkles, Wand2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CheckCircle2, CircleStop, FileUp, Loader2, Sparkles, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,12 +17,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { SectionTitle } from "@/components/shared/ui-helpers";
 import { ResumeImportDialog } from "@/components/import/resume-import-dialog";
 import { useResumeStore } from "@/store/resume-store";
-import { runResumeAnalysis } from "@/services/ai/resumeAgent";
+import { ResumeAnalysisCancelledError, runResumeAnalysisStreaming } from "@/services/ai/resumeAgent";
 import type { CompanyType, JobStage } from "@/types/resume";
 import { buildCareerAnalysisClaims } from "@/lib/career/career-context";
 import { useCareerDomain } from "@/hooks/use-career-domain";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 import { COMPANY_TYPES, isCompanyType, isJobStage, JOB_STAGES } from "@/config/job-options";
+import type { AnalysisProgressEvent, AnalysisStageId } from "@/lib/ai/analysis-execution";
+
+const ANALYSIS_STAGES: Array<{ id: AnalysisStageId; label: string }> = [
+  { id: "jd-analysis", label: "JD 解析" },
+  { id: "requirement-match", label: "经历匹配" },
+  { id: "interview-strategy", label: "面试策略" },
+];
 
 
 export function InputStep() {
@@ -50,6 +57,9 @@ export function InputStep() {
   const [showValidation, setShowValidation] = useState(false);
   const [exampleLoaded, setExampleLoaded] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgressEvent | null>(null);
+  const [analysisNotice, setAnalysisNotice] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const updateMaterial = <K extends keyof typeof userInput>(key: K, value: typeof userInput[K]) => {
     setUserInput({ [key]: value } as Pick<typeof userInput, K>);
   };
@@ -73,6 +83,18 @@ export function InputStep() {
     return () => window.clearInterval(timer);
   }, [isAnalyzing]);
 
+  useEffect(() => () => abortControllerRef.current?.abort(), []);
+
+  useEffect(() => {
+    if (!isAnalyzing) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = true;
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [isAnalyzing]);
+
   const handleLoadExample = () => {
     const loaded = loadExampleData();
     setExampleLoaded(loaded);
@@ -88,16 +110,49 @@ export function InputStep() {
     setShowValidation(false);
     setAnalyzing(true);
     setAnalysisError(null);
+    setAnalysisNotice(null);
+    setAnalysisProgress(null);
     const requestedRevision = materialRevision;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     try {
-      const result = await runResumeAnalysis(userInput, jobTargetContext, buildCareerAnalysisClaims(careerDomain), optimizeStyle);
-      if (setAnalysisResult(result, requestedRevision)) setCurrentStep("jd-analysis");
+      const result = await runResumeAnalysisStreaming(
+        userInput,
+        jobTargetContext,
+        buildCareerAnalysisClaims(careerDomain),
+        optimizeStyle,
+        { signal: controller.signal, onProgress: setAnalysisProgress },
+      );
+      if (setAnalysisResult(result, requestedRevision)) {
+        abortControllerRef.current = null;
+        setAnalyzing(false);
+        setCurrentStep("jd-analysis");
+      }
     } catch (error) {
-      setAnalysisError(error instanceof Error ? error.message : "分析失败，请稍后重试");
+      if (error instanceof ResumeAnalysisCancelledError) {
+        setAnalysisNotice(error.message);
+      } else {
+        setAnalysisError(error instanceof Error ? error.message : "分析失败，请稍后重试");
+      }
     } finally {
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
       setAnalyzing(false);
     }
   };
+
+  const cancelAnalysis = () => {
+    abortControllerRef.current?.abort();
+  };
+
+  const currentStageIndex = analysisProgress && "stageIndex" in analysisProgress
+    ? analysisProgress.stageIndex
+    : 1;
+  const currentStage = analysisProgress && "stage" in analysisProgress
+    ? analysisProgress.stage
+    : "jd-analysis";
+  const completedStageIndex = analysisProgress?.type === "stage-completed"
+    ? analysisProgress.stageIndex
+    : Math.max(0, currentStageIndex - 1);
 
   return (
     <div>
@@ -128,6 +183,12 @@ export function InputStep() {
             </>
           )}
         </Button>
+        {isAnalyzing && (
+          <Button size="sm" variant="outline" onClick={cancelAnalysis}>
+            <CircleStop className="h-3.5 w-3.5" />
+            取消分析
+          </Button>
+        )}
       </div>
 
       {exampleLoaded && (
@@ -137,8 +198,39 @@ export function InputStep() {
       )}
 
       {isAnalyzing && (
-        <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800" role="status" aria-live="polite">
-          正在依次解析 JD、匹配经历并准备面试策略。深度分析可能需要数分钟，请勿关闭页面或修改材料。
+        <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900" role="status" aria-live="polite">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-medium">
+              {analysisProgress && "message" in analysisProgress ? analysisProgress.message : "正在启动深度分析"}
+            </p>
+            <span className="text-xs text-blue-700">
+              已用 {elapsedSeconds}s · 最多剩余 {Math.max(0, 360 - elapsedSeconds)}s
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {ANALYSIS_STAGES.map((stage, index) => {
+              const stageIndex = index + 1;
+              const completed = stageIndex <= completedStageIndex;
+              const active = stage.id === currentStage && !completed;
+              return (
+                <div key={stage.id} className={`flex items-center gap-2 rounded border px-3 py-2 text-xs ${completed ? "border-emerald-200 bg-emerald-50 text-emerald-800" : active ? "border-blue-300 bg-white text-blue-900" : "border-blue-100 text-blue-500"}`}>
+                  {completed ? <CheckCircle2 className="h-3.5 w-3.5" /> : active ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span className="h-3.5 w-3.5 rounded-full border" />}
+                  {stage.label}
+                </div>
+              );
+            })}
+          </div>
+          {elapsedSeconds >= 45 && (
+            <p className="mt-3 text-xs text-amber-700">
+              当前模型响应较慢。系统仍会继续执行，但整次分析达到 6 分钟后将自动停止，不会写入半成品。
+            </p>
+          )}
+        </div>
+      )}
+
+      {analysisNotice && !isAnalyzing && (
+        <div className="mb-4 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700" role="status" aria-live="polite">
+          {analysisNotice}
         </div>
       )}
 

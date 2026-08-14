@@ -61,8 +61,7 @@ export function OptimizeStep() {
 
   const evidencePrompt = careerClaimsPrompt(careerDomain, selectRelevantClaims(careerDomain, userInput.targetRole, userInput.jobDescription));
 
-  const handleStyleChange = async (style: OptimizeStyle) => {
-    setOptimizeStyle(style);
+  const generateOptimizedItems = async (style: OptimizeStyle) => {
     setRegenerating(true);
     setOptimizeError(null);
     try {
@@ -75,8 +74,18 @@ export function OptimizeStep() {
     }
   };
 
+  const handleStyleChange = async (style: OptimizeStyle) => {
+    setOptimizeStyle(style);
+    await generateOptimizedItems(style);
+  };
+
 
   const handleContinue = async () => {
+    const currentResult = useResumeStore.getState().analysisResult;
+    if (!currentResult?.optimizedItems.length) {
+      setOptimizeError("请先生成优化方案，再生成最终简历。");
+      return;
+    }
     if (finalResumeStatus === "confirmed") {
       setCurrentStep("final-resume");
       return;
@@ -134,6 +143,11 @@ export function OptimizeStep() {
           </Button>
         ))}
         {regenerating && <Loader2 className="h-4 w-4 animate-spin text-neutral-400" />}
+        {optimizedItems.length === 0 && (
+          <Button size="sm" disabled={regenerating || finalizing} onClick={() => generateOptimizedItems(optimizeStyle)}>
+            {regenerating ? "正在生成优化方案…" : "生成优化方案"}
+          </Button>
+        )}
       </div>
 
       {optimizeError && (
@@ -142,7 +156,7 @@ export function OptimizeStep() {
         </div>
       )}
 
-      <Card className="mb-6">
+      {optimizedItems.length > 0 ? <Card className="mb-6">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm">
             修改对照表
@@ -177,7 +191,12 @@ export function OptimizeStep() {
             </TableBody>
           </Table>
         </CardContent>
-      </Card>
+      </Card> : (
+        <div className="mb-6 rounded-lg border border-dashed bg-neutral-50 px-6 py-10 text-center">
+          <p className="text-sm font-medium text-neutral-800">岗位分析已完成，尚未生成简历优化方案</p>
+          <p className="mt-2 text-xs text-neutral-500">优化已移到制作阶段，点击“生成优化方案”后才会调用模型。</p>
+        </div>
+      )}
 
       <div className="flex flex-col items-end gap-2">
         {finalResumeStatus !== "confirmed" && (
@@ -187,7 +206,7 @@ export function OptimizeStep() {
               : "分析结果只是草稿，请生成最终简历后再进入交付。"}
           </p>
         )}
-        <Button size="sm" onClick={handleContinue} disabled={regenerating || finalizing}>
+        <Button size="sm" onClick={handleContinue} disabled={regenerating || finalizing || optimizedItems.length === 0}>
           {finalizing
             ? "正在生成最终简历..."
             : finalResumeStatus === "stale"

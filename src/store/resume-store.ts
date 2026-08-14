@@ -45,6 +45,9 @@ export {
 } from "@/store/resume-store-persistence";
 
 function confirmUnsavedChanges(state: ResumeStore): boolean {
+  if (state.isAnalyzing && typeof window !== "undefined") {
+    if (!window.confirm("深度分析仍在进行，离开会取消本次分析且不会写入半成品。是否继续？")) return false;
+  }
   if (!state.dirtyScope || typeof window === "undefined") return true;
   const label = state.dirtyScope === "resume" ? "简历内容" : state.dirtyScope === "layout" ? "排版设置" : "经历资料";
   return window.confirm(`${label}还有未保存修改，离开后将丢失。是否继续？`);

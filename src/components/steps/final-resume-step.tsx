@@ -108,6 +108,9 @@ export function FinalResumeStep() {
   if (!isAnalysisFresh({ analysisResult, materialRevision, analysisRevision })) {
     return <EmptyState message="材料已变化，旧最终简历仅供查看且不可编辑或交付。请返回材料页重新分析。" />;
   }
+  if (finalResumeStatus !== "confirmed") {
+    return <EmptyState message="请先在“简历优化”页面生成并确认最终简历。分析阶段的内部草稿不会作为成品展示或导出。" />;
+  }
 
   const beginEditing = () => {
     setDraft(cloneResume(finalResume));
@@ -148,19 +151,6 @@ export function FinalResumeStep() {
           </div>
         )}
       </div>
-
-      {finalResumeStatus === "stale" && (
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span>这份简历尚未应用最新的补充经历或优化风格。</span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentStep("optimize")}
-          >
-            返回更新
-          </Button>
-        </div>
-      )}
 
       {hasManualEdits && !editing && (
         <div className="mb-4">
