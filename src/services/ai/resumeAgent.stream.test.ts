@@ -22,7 +22,7 @@ describe("analysis stream client", () => {
       { type: "completed", requestId: "run-1", elapsedMs: 10, remainingMs: 359_990, result, mode: "mock" },
     ])));
 
-    await expect(runResumeAnalysisStreaming(EXAMPLE_USER_INPUT, context, [], "ai-product", { onProgress: progress })).resolves.toBe(result);
+    await expect(runResumeAnalysisStreaming(EXAMPLE_USER_INPUT, context, [], "ai-product", { onProgress: progress })).resolves.toStrictEqual(result);
     expect(progress).toHaveBeenCalledTimes(2);
   });
 

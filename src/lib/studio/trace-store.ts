@@ -65,6 +65,7 @@ export async function saveTraceSpan(span: WorkflowSpan, documentId?: string): Pr
 }
 
 export function reportTraceStorageError(error: unknown): void {
+  if (typeof window === "undefined") return;
   const message = error instanceof Error ? error.message : "运行快照保存失败，可能是浏览器空间不足";
   window.sessionStorage.setItem(TRACE_STORAGE_ERROR_KEY, message);
   window.dispatchEvent(new CustomEvent(TRACE_STORAGE_ERROR_EVENT, { detail: message }));
