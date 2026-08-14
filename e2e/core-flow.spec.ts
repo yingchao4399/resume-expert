@@ -66,6 +66,20 @@ async function waitForLibraryHydration(page: Page) {
   await expect(page.locator('select[aria-label]').first()).toBeEnabled();
 }
 
+function analysisStreamBody(analysis: NonNullable<ResumeLibraryState["documents"][number]["analysisResult"]>) {
+  const base = { requestId: "e2e-analysis", elapsedMs: 10, remainingMs: 359_990 };
+  return [
+    { ...base, type: "started" },
+    { ...base, type: "stage-started", stage: "jd-analysis", stageIndex: 1, stageCount: 3, message: "解析 JD 需求" },
+    { ...base, type: "stage-completed", stage: "jd-analysis", stageIndex: 1, stageCount: 3, message: "解析 JD 需求" },
+    { ...base, type: "stage-started", stage: "requirement-match", stageIndex: 2, stageCount: 3, message: "匹配经历事实" },
+    { ...base, type: "stage-completed", stage: "requirement-match", stageIndex: 2, stageCount: 3, message: "匹配经历事实" },
+    { ...base, type: "stage-started", stage: "interview-strategy", stageIndex: 3, stageCount: 3, message: "生成面试策略" },
+    { ...base, type: "stage-completed", stage: "interview-strategy", stageIndex: 3, stageCount: 3, message: "生成面试策略" },
+    { ...base, type: "completed", result: analysis, mode: "mock" },
+  ].map((event) => JSON.stringify(event)).join("\n") + "\n";
+}
+
 test("enables the developer studio and switches between product and workflow views", async ({ page }) => {
   await page.goto("/studio");
   await expect(page.getByText("开发者工作台尚未开启")).toBeVisible();
@@ -93,7 +107,7 @@ test("audits prompt definitions, source files and full local runtime snapshots",
     });
     const now = new Date().toISOString();
     const transaction = db.transaction("traces", "readwrite");
-    transaction.objectStore("traces").put({ schemaVersion: 2, id: "prompt-e2e-trace", status: "success", createdAt: now, updatedAt: now, spans: [{ id: "prompt-e2e-span", nodeId: "analyze", label: "岗位分析", status: "success", mode: "llm", provider: "deepseek", model: "deepseek-v4-flash", startedAt: now, finishedAt: now, latencyMs: 10, input: {}, output: {}, promptSnapshots: [{ schemaVersion: 1, id: "snapshot-e2e", invocationId: "invocation-e2e", traceId: "prompt-e2e-trace", promptId: "resume.deep-jd", promptVersion: "deep-jd-v1", attempt: 1, attemptKind: "primary", status: "success", createdAt: now, finishedAt: now, provider: "deepseek", model: "deepseek-v4-flash", structuredOutputStrategy: "json-object", responseFormat: '{"type":"json_object"}', schemaName: "deep_jd_requirement_map", schemaContract: "{}", schemaHash: "schema-hash", promptHash: "prompt-hash", baseSystemPrompt: "system", runtimeUserPrompt: "sensitive user prompt", sentSystemPrompt: "system with schema", sentUserPrompt: "sensitive user prompt", temperature: 0.2, maxTokens: 12000, timeoutMs: 120000, validationIssues: [] }] }] });
+    transaction.objectStore("traces").put({ schemaVersion: 2, id: "prompt-e2e-trace", status: "success", createdAt: now, updatedAt: now, spans: [{ id: "prompt-e2e-span", nodeId: "analyze", label: "岗位分析", status: "success", mode: "llm", provider: "deepseek", model: "deepseek-v4-flash", startedAt: now, finishedAt: now, latencyMs: 10, input: {}, output: {}, promptSnapshots: [{ schemaVersion: 1, id: "snapshot-e2e", invocationId: "invocation-e2e", traceId: "prompt-e2e-trace", promptId: "resume.deep-jd", promptVersion: "deep-jd-v2", attempt: 1, attemptKind: "primary", status: "success", createdAt: now, finishedAt: now, provider: "deepseek", model: "deepseek-v4-flash", structuredOutputStrategy: "json-object", responseFormat: '{"type":"json_object"}', schemaName: "deep_jd_requirement_map", schemaContract: "{}", schemaHash: "schema-hash", promptHash: "prompt-hash", baseSystemPrompt: "system", runtimeUserPrompt: "sensitive user prompt", sentSystemPrompt: "system with schema", sentUserPrompt: "sensitive user prompt", temperature: 0.2, maxTokens: 12000, timeoutMs: 90000, validationIssues: [] }] }] });
     await new Promise<void>((resolve, reject) => { transaction.oncomplete = () => resolve(); transaction.onerror = () => reject(transaction.error); });
     db.close();
   });
@@ -207,15 +221,47 @@ test("persists a job application linked to the selected resume", async ({ page }
 
 test("keeps creation pending until the final resume is generated", async ({ page }) => {
   const analysis = stateFor().state.documents[0].analysisResult;
-  await page.route("**/api/analyze", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ result: analysis, mode: "mock" }) }));
+  await page.route("**/api/analyze/stream", (route) => route.fulfill({ status: 200, contentType: "application/x-ndjson", body: analysisStreamBody(analysis!) }));
+  await page.route("**/api/optimize", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      mode: "mock",
+      optimizedItems: [{ id: "opt-e2e", section: "职业摘要", before: "原摘要", after: "优化摘要", reason: "对齐岗位", riskWarning: "核对事实" }],
+    }),
+  }));
   await page.route("**/api/finalize", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ finalResume: resume, mode: "mock" }) }));
   await page.goto("/");
   await page.getByRole("button", { name: "使用示例数据" }).click();
   await page.getByRole("button", { name: "开始分析", exact: true }).click();
   await expect(page.getByText("最终简历尚未生成确认")).toBeVisible();
   await page.getByRole("button", { name: /AI 优化 3\.1/ }).click();
+  await page.getByRole("button", { name: "生成优化方案" }).click();
   await page.getByRole("button", { name: "确认并生成最终简历" }).click();
   await expect(page.getByRole("heading", { name: "最终简历" })).toBeVisible();
+});
+
+test("streams analysis progress, cancels actively and recovers after refresh", async ({ page }) => {
+  await page.route("**/api/analyze/stream", (route) => route.continue({
+    headers: { ...route.request().headers(), "X-Workflow-Provider": "mock" },
+  }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "使用示例数据" }).click();
+
+  await page.getByRole("button", { name: "开始分析", exact: true }).click();
+  await expect(page.getByRole("button", { name: "取消分析" })).toBeVisible();
+  await expect(page.getByText("解析 JD 需求")).toBeVisible();
+  await page.getByRole("button", { name: "取消分析" }).click();
+  await expect(page.getByText(/分析已取消/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "开始分析", exact: true })).toBeEnabled();
+
+  await page.getByRole("button", { name: "开始分析", exact: true }).click();
+  await expect(page.getByRole("button", { name: "取消分析" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "开始分析", exact: true })).toBeEnabled();
+
+  await page.getByRole("button", { name: "开始分析", exact: true }).click();
+  await expect(page.getByText("原子岗位要求")).toBeVisible();
 });
 
 test("locks the old analysis after JD changes and unlocks after reanalysis", async ({ page }) => {

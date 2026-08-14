@@ -1,4 +1,5 @@
 export const RELEASE_RECORDS = [
+  { version: "1.9.3", goal: "深度分析超时、进度与取消修复", modules: ["有界分析执行器", "流式三阶段进度", "主动取消", "制作阶段优化"], tests: "128+ Vitest / 32+ Playwright / evals / CI", status: "released" },
   { version: "1.9.2", goal: "提示词透明工作台只读试用版", modules: ["提示词注册中心", "完整运行快照", "底层文件目录", "版本与测评关联"], tests: "119+ Vitest / 31+ Playwright / evals / CI", status: "released" },
   { version: "1.9.1", goal: "本地运行与全流程稳定性修复", modules: ["本地脚本来源", "示例数据", "AI 设置", "截断批处理降级"], tests: "108+ Vitest / 30 Playwright / CI success", commit: "0817dc6", status: "released" },
   { version: "1.9.0", goal: "岗位需求地图与深度 JD 分析", modules: ["原子岗位要求", "事实匹配", "逐条面试策略", "安全回答帮助"], tests: "validated and released", commit: "2ad1a9a", status: "released" },

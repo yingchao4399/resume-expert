@@ -3,6 +3,7 @@ import { z } from "zod";
 import { buildCompletionRequestBody, chatCompletionJSON, LLMStructureError, LLMTruncationError } from "@/lib/ai/client";
 import type { AIConfig } from "@/lib/ai/config";
 import type { PromptCaptureContext } from "@/lib/studio/prompt-types";
+import { AnalysisExecutionBudget } from "@/lib/ai/analysis-execution";
 
 const schema = z.object({ items: z.array(z.string()), ok: z.boolean() });
 const config = (provider: string, model: string): AIConfig => ({ mode: "llm", provider, model, baseUrl: "https://example.test/v1", apiKey: "sk-test-key", invalidApiKey: false });
@@ -70,5 +71,14 @@ describe("multi-provider structured output", () => {
     expect(capture.snapshots[0].status).toBe("validation-error");
     expect(capture.snapshots[0].validationIssues.length).toBeGreaterThan(0);
     expect(capture.snapshots[1].status).toBe("success");
+  });
+
+  it("counts schema repair against the shared analysis request budget", async () => {
+    const budget = new AnalysisExecutionBudget({ maxProviderRequests: 1 });
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), { status: 200 }));
+    await expect(chatCompletionJSON({ ...options, analysisBudget: budget, configOverride: config("deepseek", "deepseek-v4-flash") }))
+      .rejects.toThrow(/1 次调用上限/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
