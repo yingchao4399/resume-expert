@@ -1,12 +1,16 @@
+import { createHash, randomUUID } from "node:crypto";
 import { z, type ZodType } from "zod";
 import { getAIConfig, type AIConfig } from "@/lib/ai/config";
 import { classifyAIHTTPError, LLMError, LLMStructureError, LLMTruncationError, type AnalysisStage } from "@/lib/ai/errors";
 import { parseJSONFromMessage } from "@/lib/ai/parse-json";
 import { getProviderPreset, getStructuredOutputStrategy, type StructuredOutputStrategy } from "@/lib/ai/presets";
+import { getCallablePromptDefinition } from "@/lib/studio/prompt-registry";
+import type { PromptAttemptKind, PromptCaptureContext, PromptId, PromptRuntimeSnapshot } from "@/lib/studio/prompt-types";
 
 export { LLMError, LLMStructureError, LLMTruncationError } from "@/lib/ai/errors";
 
 export interface ChatCompletionOptions<T> {
+  promptId: PromptId;
   system: string;
   user: string;
   schema: ZodType<T>;
@@ -18,6 +22,8 @@ export interface ChatCompletionOptions<T> {
   timeoutMs?: number;
   configOverride?: AIConfig;
   analysisStage?: AnalysisStage;
+  capture?: PromptCaptureContext;
+  invocationId?: string;
 }
 
 interface ChatMessage { content?: string | null; reasoning_content?: string | null }
@@ -27,7 +33,8 @@ export const FORMAL_AI_TIMEOUT_MS = 120_000;
 
 export async function chatCompletionJSON<T>(options: ChatCompletionOptions<T>): Promise<T> {
   try {
-    return await requestChatCompletionJSON(options);
+    getCallablePromptDefinition(options.promptId);
+    return await requestChatCompletionJSON({ ...options, invocationId: options.invocationId ?? randomUUID() });
   } catch (error) {
     if (error instanceof LLMError) throw error;
     throw new LLMError(error instanceof Error ? error.message : "大模型请求异常");
@@ -38,15 +45,20 @@ async function requestChatCompletionJSON<T>(options: ChatCompletionOptions<T>): 
   const config = options.configOverride ?? getAIConfig();
   if (!config.apiKey) throw new LLMError("未配置 LLM_API_KEY");
   const model = options.model || config.model;
-  const data = await callChatCompletions(config, options);
+  const data = await callChatCompletions(config, options, "primary");
   const choice = data.choices?.[0];
   const contents = extractMessageContents(choice?.message);
   const raw = contents.join("\n\n");
-  if (choice?.finish_reason === "length") throw new LLMTruncationError(options.analysisStage ?? "简历优化");
+  if (choice?.finish_reason === "length") {
+    markLatestSnapshot(options, "validation-error", ["finish_reason=length：模型输出被截断"]);
+    throw new LLMTruncationError(options.analysisStage ?? "简历优化");
+  }
 
   try {
     return parseAndValidate(contents, options.schema);
   } catch (firstError) {
+    const validationIssues = formatValidationIssue(firstError);
+    markLatestSnapshot(options, "validation-error", validationIssues);
     if (!raw) throw new LLMError("大模型返回内容为空", 502);
 
     const schemaContract = buildSchemaContract(options.schema);
@@ -59,13 +71,17 @@ async function requestChatCompletionJSON<T>(options: ChatCompletionOptions<T>): 
         "缺失的集合必须使用空数组；缺失的可空值使用 null；所有必填字段都必须存在。",
         `完整 JSON Schema：${schemaContract}`,
       ].join("\n"),
-      user: `校验错误：${formatValidationIssue(firstError).join("；")}\n待修复内容：\n${raw.slice(0, 14000)}`,
-    });
+      user: `校验错误：${validationIssues.join("；")}\n待修复内容：\n${raw.slice(0, 14000)}`,
+    }, "schema-repair", validationIssues);
     const fixedContents = extractMessageContents(fixed.choices?.[0]?.message);
-    if (fixed.choices?.[0]?.finish_reason === "length") throw new LLMTruncationError(options.analysisStage ?? "简历优化");
+    if (fixed.choices?.[0]?.finish_reason === "length") {
+      markLatestSnapshot(options, "validation-error", ["finish_reason=length：结构修复输出被截断"]);
+      throw new LLMTruncationError(options.analysisStage ?? "简历优化");
+    }
     try {
       return parseAndValidate(fixedContents, options.schema);
     } catch (secondError) {
+      markLatestSnapshot(options, "validation-error", formatValidationIssue(secondError));
       throw new LLMStructureError(config.provider, model, formatValidationIssue(secondError));
     }
   }
@@ -121,30 +137,115 @@ export function buildCompletionRequestBody<T>(config: AIConfig, options: ChatCom
   return body;
 }
 
-async function callChatCompletions<T>(config: AIConfig, options: ChatCompletionOptions<T>): Promise<ChatCompletionData> {
+async function callChatCompletions<T>(
+  config: AIConfig,
+  options: ChatCompletionOptions<T>,
+  attemptKind: PromptAttemptKind,
+  validationIssues: string[] = [],
+): Promise<ChatCompletionData> {
   try {
-    return await performChatCompletion(config, options, false);
+    return await performChatCompletion(config, options, false, attemptKind, validationIssues);
   } catch (error) {
     if (config.provider === "custom" && error instanceof LLMError && /response[_ ]format|json[_ ]object|unsupported|not support/i.test(error.message)) {
-      return performChatCompletion(config, options, true);
+      return performChatCompletion(config, options, true, "response-format-fallback", validationIssues);
     }
     throw error;
   }
 }
 
-async function performChatCompletion<T>(config: AIConfig, options: ChatCompletionOptions<T>, omitResponseFormat: boolean): Promise<ChatCompletionData> {
-  const response = await fetchAIResponse(`${config.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
-    body: JSON.stringify(buildCompletionRequestBody(config, options, omitResponseFormat)),
-  }, options.timeoutMs ?? FORMAL_AI_TIMEOUT_MS);
+async function performChatCompletion<T>(
+  config: AIConfig,
+  options: ChatCompletionOptions<T>,
+  omitResponseFormat: boolean,
+  attemptKind: PromptAttemptKind,
+  validationIssues: string[],
+): Promise<ChatCompletionData> {
+  const requestBody = buildCompletionRequestBody(config, options, omitResponseFormat);
+  const snapshot = capturePromptSnapshot(config, options, requestBody, attemptKind, validationIssues);
+  let response: Response;
+  try {
+    response = await fetchAIResponse(`${config.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+      body: JSON.stringify(requestBody),
+    }, options.timeoutMs ?? FORMAL_AI_TIMEOUT_MS);
+  } catch (error) {
+    finishSnapshot(snapshot, "http-error");
+    throw error;
+  }
 
   if (!response.ok) {
+    finishSnapshot(snapshot, "http-error");
     const detail = await response.text().catch(() => "");
     const classified = classifyAIHTTPError(response.status, detail);
     throw new LLMError(`${classified.message} (${response.status})${detail ? `：${detail.slice(0, 180)}` : ""}`, response.status, classified.category);
   }
+  finishSnapshot(snapshot, "success");
   return (await response.json()) as ChatCompletionData;
+}
+
+function capturePromptSnapshot<T>(
+  config: AIConfig,
+  options: ChatCompletionOptions<T>,
+  body: Record<string, unknown>,
+  attemptKind: PromptAttemptKind,
+  validationIssues: string[],
+): PromptRuntimeSnapshot | undefined {
+  if (!options.capture) return undefined;
+  const definition = getCallablePromptDefinition(options.promptId);
+  const messages = Array.isArray(body.messages) ? body.messages as Array<{ role?: string; content?: string }> : [];
+  const sentSystemPrompt = messages.find((message) => message.role === "system")?.content ?? options.system;
+  const sentUserPrompt = messages.find((message) => message.role === "user")?.content ?? options.user;
+  const schemaContract = buildSchemaContract(options.schema);
+  const invocationId = options.invocationId ?? randomUUID();
+  const snapshot: PromptRuntimeSnapshot = {
+    schemaVersion: 1,
+    id: randomUUID(),
+    invocationId,
+    traceId: options.capture.traceId,
+    promptId: options.promptId,
+    promptVersion: definition.version,
+    attempt: options.capture.snapshots.filter((item) => item.invocationId === invocationId).length + 1,
+    attemptKind,
+    status: "prepared",
+    createdAt: new Date().toISOString(),
+    provider: config.provider,
+    model: options.model || config.model,
+    structuredOutputStrategy: getStructuredOutputStrategy(config.provider),
+    responseFormat: body.response_format ? JSON.stringify(body.response_format) : "none",
+    schemaName: options.schemaName,
+    schemaContract,
+    schemaHash: sha256(schemaContract),
+    promptHash: sha256(`${sentSystemPrompt}\n\n${sentUserPrompt}\n\n${schemaContract}`),
+    baseSystemPrompt: options.system,
+    runtimeUserPrompt: options.user,
+    sentSystemPrompt,
+    sentUserPrompt,
+    temperature: typeof body.temperature === "number" ? body.temperature : undefined,
+    maxTokens: Number(body.max_tokens ?? body.max_completion_tokens ?? options.maxTokens ?? 8192),
+    timeoutMs: options.timeoutMs ?? FORMAL_AI_TIMEOUT_MS,
+    validationIssues: [...validationIssues],
+  };
+  options.capture.snapshots.push(snapshot);
+  return snapshot;
+}
+
+function finishSnapshot(snapshot: PromptRuntimeSnapshot | undefined, status: PromptRuntimeSnapshot["status"]): void {
+  if (!snapshot) return;
+  snapshot.status = status;
+  snapshot.finishedAt = new Date().toISOString();
+}
+
+function markLatestSnapshot<T>(options: ChatCompletionOptions<T>, status: PromptRuntimeSnapshot["status"], validationIssues: string[]): void {
+  const snapshot = [...(options.capture?.snapshots ?? [])].reverse().find((item) => item.invocationId === options.invocationId);
+  if (!snapshot) return;
+  snapshot.status = status;
+  snapshot.finishedAt = new Date().toISOString();
+  snapshot.validationIssues = [...validationIssues];
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 export async function fetchAIResponse(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {

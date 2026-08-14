@@ -3,9 +3,11 @@ import { getAIConfig } from "@/lib/ai/config";
 import { structureResumeResultSchema } from "@/lib/ai/schemas";
 import type { AIMode } from "@/lib/ai/types";
 import type { FinalResume } from "@/types/resume";
+import type { WorkflowExecutionOptions } from "@/lib/studio/execution";
 
 export async function structureImportedResumeServer(
-  text: string
+  text: string,
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture"> = {},
 ): Promise<{ finalResume: FinalResume; mode: AIMode }> {
   const mode = getAIConfig().mode;
   if (mode === "mock") {
@@ -13,6 +15,7 @@ export async function structureImportedResumeServer(
   }
 
   const result = await chatCompletionJSON({
+    promptId: "resume.import-structure",
     schema: structureResumeResultSchema,
     schemaName: "structured_imported_resume",
     temperature: 0,
@@ -24,6 +27,7 @@ export async function structureImportedResumeServer(
       "Resume text:",
       text,
     ].join("\n\n"),
+    ...execution,
   });
   return { finalResume: result.finalResume, mode };
 }

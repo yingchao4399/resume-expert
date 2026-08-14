@@ -118,7 +118,7 @@ export async function runLLMResumeAnalysis(
   jobTargetContext: JobTargetContext,
   careerClaims: CareerAnalysisClaim[],
   optimizeStyle: OptimizeStyle = "ai-product",
-  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs"> = {}
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture"> = {}
 ): Promise<AnalysisResult> {
   const sourceItems = splitJDSourceItems(input.jobDescription);
   if (!sourceItems.length) throw new Error("JD 中没有可分析的文本条目。");
@@ -126,6 +126,7 @@ export async function runLLMResumeAnalysis(
     stage: "JD 需求解析",
     items: sourceItems,
     run: (items) => chatCompletionJSON({
+      promptId: "resume.deep-jd",
       system: RESUME_AGENT_SYSTEM_PROMPT,
       user: buildDeepJDPrompt(input, jobTargetContext, items),
       schema: createDeepJDModelResultSchema(items.map((item) => item.id)),
@@ -148,6 +149,7 @@ export async function runLLMResumeAnalysis(
     stage: "要求—事实匹配",
     items: validatedRequirements,
     run: (requirements) => chatCompletionJSON({
+      promptId: "resume.requirement-match",
       system: RESUME_AGENT_SYSTEM_PROMPT,
       user: buildRequirementMatchPrompt(input, jobTargetContext, requirements, selectedClaims),
       schema: createDiagnosisMatchResultSchema(requirements.map((item) => item.id), selectedClaims.map((item) => item.id)),
@@ -185,6 +187,7 @@ export async function runLLMResumeAnalysis(
     run: (requirements) => {
       const ids = new Set(requirements.map((item) => item.id));
       return chatCompletionJSON({
+        promptId: "resume.interview-strategy",
         system: RESUME_AGENT_SYSTEM_PROMPT,
         user: buildRequirementInterviewPrompt(input, jobTargetContext, requirements, validatedMatches.filter((item) => Boolean(item.requirementId && ids.has(item.requirementId))), jdModel.clarificationNeeds),
         schema: createInterviewPrepResultSchema(requirements.map((item) => item.id), jdModel.clarificationNeeds.map((item) => item.id)),
@@ -198,6 +201,7 @@ export async function runLLMResumeAnalysis(
   });
 
   const optimizeResume = await chatCompletionJSON({
+      promptId: "resume.analysis-output",
       system: RESUME_AGENT_SYSTEM_PROMPT,
       user: buildAnalyzeOutputPrompt(input, optimizeStyle, coreSummary),
       schema: optimizeResumeResultSchema,
@@ -227,9 +231,10 @@ export async function runLLMResumeAnalysis(
 
 export async function runLLMFollowUpGuidance(
   input: Parameters<typeof buildFollowUpGuidancePrompt>[0],
-  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs"> = {},
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture"> = {},
 ): Promise<string> {
   const result = await chatCompletionJSON({
+    promptId: "resume.follow-up-guidance",
     system: RESUME_AGENT_SYSTEM_PROMPT,
     user: buildFollowUpGuidancePrompt(input),
     schema: followUpGuidanceResultSchema,
@@ -244,9 +249,10 @@ export async function runLLMFollowUpGuidance(
 export async function runLLMRegenerateOptimizedItems(
   input: UserInput,
   style: OptimizeStyle,
-  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs"> = {}
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture"> = {}
 ): Promise<AnalysisResult["optimizedItems"]> {
   const raw = await chatCompletionJSON({
+    promptId: "resume.optimize-items",
     system: RESUME_AGENT_SYSTEM_PROMPT,
     user: buildOptimizeUserPrompt(input, style),
     schema: optimizedItemsResultSchema,
@@ -264,9 +270,10 @@ export async function runLLMFollowUpBullet(
   question: string,
   purpose: string,
   userAnswer: string,
-  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs"> = {}
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture"> = {}
 ): Promise<string> {
   const raw = await chatCompletionJSON({
+    promptId: "resume.follow-up-bullet",
     system: RESUME_AGENT_SYSTEM_PROMPT,
     user: buildFollowUpBulletPrompt(input, question, purpose, userAnswer),
     schema: followUpBulletResultSchema,
@@ -284,9 +291,10 @@ export async function runLLMFinalizeResume(
   style: OptimizeStyle,
   optimizedItems: AnalysisResult["optimizedItems"],
   followUpQuestions: AnalysisResult["followUpQuestions"],
-  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs"> = {}
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture"> = {}
 ): Promise<AnalysisResult["finalResume"]> {
   const raw = await chatCompletionJSON({
+    promptId: "resume.finalize",
     system: RESUME_AGENT_SYSTEM_PROMPT,
     user: buildFinalizeResumePrompt(
       input,

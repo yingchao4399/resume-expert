@@ -2,10 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { buildCompletionRequestBody, chatCompletionJSON, LLMStructureError, LLMTruncationError } from "@/lib/ai/client";
 import type { AIConfig } from "@/lib/ai/config";
+import type { PromptCaptureContext } from "@/lib/studio/prompt-types";
 
 const schema = z.object({ items: z.array(z.string()), ok: z.boolean() });
 const config = (provider: string, model: string): AIConfig => ({ mode: "llm", provider, model, baseUrl: "https://example.test/v1", apiKey: "sk-test-key", invalidApiKey: false });
-const options = { schema, schemaName: "test_output", system: "system", user: "user", maxTokens: 200 };
+const options = { promptId: "resume.optimize-items" as const, schema, schemaName: "test_output", system: "system", user: "user", maxTokens: 200 };
 
 describe("multi-provider structured output", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -47,5 +48,27 @@ describe("multi-provider structured output", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: '{"items":[],"ok":true}' } }] }), { status: 200 }));
     await expect(chatCompletionJSON({ ...options, analysisStage: "JD 需求解析", configOverride: config("deepseek", "deepseek-v4-flash") }))
       .rejects.toEqual(expect.objectContaining<Partial<LLMTruncationError>>({ name: "LLMTruncationError", stage: "JD 需求解析" }));
+  });
+
+  it("captures the provider-adapted prompt without credentials", async () => {
+    const capture: PromptCaptureContext = { traceId: "trace-1", snapshots: [] };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: '{"items":[],"ok":true}' } }] }), { status: 200 }));
+    await chatCompletionJSON({ ...options, capture, configOverride: config("deepseek", "deepseek-v4-flash") });
+    expect(capture.snapshots).toHaveLength(1);
+    expect(capture.snapshots[0]).toMatchObject({ promptId: "resume.optimize-items", attemptKind: "primary", status: "success", traceId: "trace-1", provider: "deepseek" });
+    expect(capture.snapshots[0].sentSystemPrompt).toContain("JSON Schema");
+    expect(JSON.stringify(capture.snapshots[0])).not.toContain("sk-test-key");
+  });
+
+  it("records the primary validation failure and the single repair attempt", async () => {
+    const capture: PromptCaptureContext = { snapshots: [] };
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: '{"items":[],"ok":true}' } }] }), { status: 200 }));
+    await chatCompletionJSON({ ...options, capture, configOverride: config("qwen", "qwen3.7-plus") });
+    expect(capture.snapshots.map((snapshot) => snapshot.attemptKind)).toEqual(["primary", "schema-repair"]);
+    expect(capture.snapshots[0].status).toBe("validation-error");
+    expect(capture.snapshots[0].validationIssues.length).toBeGreaterThan(0);
+    expect(capture.snapshots[1].status).toBe("success");
   });
 });

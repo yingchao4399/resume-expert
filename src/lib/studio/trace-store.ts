@@ -7,6 +7,8 @@ const MAX_TRACES = 50;
 const MAX_TOTAL_BYTES = 50_000_000;
 const MAX_AGE = 30 * 24 * 60 * 60 * 1000;
 const MAX_SPAN_BYTES = 900_000;
+export const TRACE_STORAGE_ERROR_EVENT = "resume-expert-trace-storage-error";
+const TRACE_STORAGE_ERROR_KEY = "resume-expert-trace-storage-error";
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -48,7 +50,7 @@ export async function saveTraceSpan(span: WorkflowSpan, documentId?: string): Pr
   const transaction = db.transaction(STORE_NAME, "readwrite");
   const store = transaction.objectStore(STORE_NAME);
   const trace: WorkflowTrace = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: span.id,
     documentId,
     status: span.status,
@@ -60,6 +62,20 @@ export async function saveTraceSpan(span: WorkflowSpan, documentId?: string): Pr
   await new Promise<void>((resolve, reject) => { transaction.oncomplete = () => resolve(); transaction.onerror = () => reject(transaction.error); });
   db.close();
   await pruneTraces();
+}
+
+export function reportTraceStorageError(error: unknown): void {
+  const message = error instanceof Error ? error.message : "运行快照保存失败，可能是浏览器空间不足";
+  window.sessionStorage.setItem(TRACE_STORAGE_ERROR_KEY, message);
+  window.dispatchEvent(new CustomEvent(TRACE_STORAGE_ERROR_EVENT, { detail: message }));
+}
+
+export function readTraceStorageError(): string | null {
+  return typeof window === "undefined" ? null : window.sessionStorage.getItem(TRACE_STORAGE_ERROR_KEY);
+}
+
+export function clearTraceStorageError(): void {
+  if (typeof window !== "undefined") window.sessionStorage.removeItem(TRACE_STORAGE_ERROR_KEY);
 }
 
 export async function listTraces(): Promise<WorkflowTrace[]> {

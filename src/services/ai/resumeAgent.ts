@@ -17,9 +17,11 @@ import type {
 import type { CareerAnalysisClaim } from "@/lib/career/career-context";
 import type { AnalysisResult, JobTargetContext, OptimizeStyle, UserInput } from "@/types/resume";
 import type { InterviewAnalysisResult } from "@/types/interview";
-import { saveTraceSpan } from "@/lib/studio/trace-store";
+import { reportTraceStorageError, saveTraceSpan } from "@/lib/studio/trace-store";
 import type { WorkflowNodeId } from "@/lib/studio/trace-types";
 import { getPublishedWorkflowNode } from "@/lib/studio/workflow-store";
+import { isStudioEnabled } from "@/lib/studio/settings";
+import type { PromptRuntimeSnapshot } from "@/lib/studio/prompt-types";
 
 export { STYLE_LABELS } from "@/lib/ai/types";
 
@@ -35,6 +37,7 @@ export async function postWorkflowJSON<T>(url: string, body: unknown): Promise<T
   const traceId = crypto.randomUUID();
   const publishedNode = await getPublishedWorkflowNode(workflowDefinitionNodeId(nodeIdForURL(url))).catch(() => null);
   const headers: Record<string, string> = { "Content-Type": "application/json", "X-Workflow-Trace-Id": traceId };
+  if (isStudioEnabled()) headers["X-Studio-Capture"] = "full";
   if (publishedNode?.provider === "mock") headers["X-Workflow-Provider"] = "mock";
   if (publishedNode?.provider === "direct" && publishedNode.model && publishedNode.model !== "configured-model") headers["X-Workflow-Model"] = publishedNode.model;
   if (publishedNode?.provider === "direct" && publishedNode.timeoutMs) headers["X-Workflow-Timeout"] = String(publishedNode.timeoutMs);
@@ -44,12 +47,15 @@ export async function postWorkflowJSON<T>(url: string, body: unknown): Promise<T
     body: JSON.stringify(body),
   });
 
-  const data = (await response.json().catch(() => ({}))) as T & { error?: string };
+  const rawData = (await response.json().catch(() => ({}))) as T & { error?: string; __studio?: { promptSnapshots?: PromptRuntimeSnapshot[] } };
+  const promptSnapshots = rawData.__studio?.promptSnapshots ?? [];
+  if (rawData && typeof rawData === "object") delete rawData.__studio;
+  const data = rawData as T & { error?: string };
 
   const finishedAt = new Date();
   const nodeId = nodeIdForURL(url);
   const status = response.ok ? "success" : "error";
-  void saveTraceSpan({ id: traceId, nodeId, label: labelForNode(nodeId), status, mode: (response.headers.get("X-AI-Mode") as "mock" | "llm" | "flowise" | null) ?? undefined, provider: response.headers.get("X-AI-Provider") ?? undefined, model: response.headers.get("X-AI-Model") ?? undefined, startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), latencyMs: finishedAt.getTime() - startedAt.getTime(), input: body, output: response.ok ? data : undefined, error: response.ok ? undefined : data.error || `HTTP ${response.status}` }).catch(() => undefined);
+  void saveTraceSpan({ id: traceId, nodeId, label: labelForNode(nodeId), status, mode: (response.headers.get("X-AI-Mode") as "mock" | "llm" | "flowise" | null) ?? undefined, provider: response.headers.get("X-AI-Provider") ?? undefined, model: response.headers.get("X-AI-Model") ?? undefined, startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), latencyMs: finishedAt.getTime() - startedAt.getTime(), input: body, output: response.ok ? data : undefined, error: response.ok ? undefined : data.error || `HTTP ${response.status}`, promptSnapshots }).catch(reportTraceStorageError);
   if (!response.ok) throw new ResumeAgentClientError(data.error || `请求失败 (${response.status})`);
 
   return data;

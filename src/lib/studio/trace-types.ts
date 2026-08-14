@@ -1,3 +1,5 @@
+import type { PromptRuntimeSnapshot } from "@/lib/studio/prompt-types";
+
 export type WorkflowRunStatus = "running" | "success" | "error";
 export type WorkflowNodeId = "analyze" | "optimize" | "follow-up" | "finalize" | "import-structure" | "interview-review" | "project-evidence" | "career-interview";
 
@@ -16,10 +18,11 @@ export interface WorkflowSpan {
   output?: unknown;
   error?: string;
   truncated?: boolean;
+  promptSnapshots?: PromptRuntimeSnapshot[];
 }
 
 export interface WorkflowTrace {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   id: string;
   documentId?: string;
   status: WorkflowRunStatus;

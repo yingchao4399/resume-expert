@@ -8,6 +8,7 @@ import { tracedAIResponse } from "@/lib/studio/response";
 import { readWorkflowExecution } from "@/lib/studio/execution";
 
 export async function POST(request: Request) {
+  const execution = readWorkflowExecution(request);
   try {
     const { input, question, purpose, userAnswer } = await parseAPIRequest(
       request,
@@ -18,14 +19,15 @@ export async function POST(request: Request) {
       question,
       purpose,
       userAnswer,
-      readWorkflowExecution(request)
+      execution
     );
-    return tracedAIResponse({ bullet, mode }, mode);
+    return tracedAIResponse({ bullet, mode }, mode, execution.capture?.snapshots);
   } catch (error) {
     return toAPIErrorResponse(
       error,
       "Bullet 生成失败，请稍后重试",
-      "follow-up/bullet"
+      "follow-up/bullet",
+      execution.capture?.snapshots,
     );
   }
 }

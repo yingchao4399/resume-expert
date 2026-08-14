@@ -2,15 +2,20 @@ import { getAIConfig } from "@/lib/ai/config";
 import { chatCompletionJSON } from "@/lib/ai/client";
 import { careerInterviewModelOutputSchema, careerInterviewTurnSchema } from "@/lib/career/schemas";
 import type { CareerInterviewAnswer, CareerInterviewModelOutput, CareerInterviewTurn } from "@/types/career-domain";
+import type { WorkflowExecutionOptions } from "@/lib/studio/execution";
 
 export interface CareerInterviewInput {
   sessionId: string; targetRole: string; experienceTitle: string; background: string;
   round: number; answers: CareerInterviewAnswer[]; endRequested: boolean;
 }
 
-export async function runCareerInterview(input: CareerInterviewInput): Promise<{ turn: CareerInterviewTurn; mode: "mock" | "llm" }> {
+export async function runCareerInterview(
+  input: CareerInterviewInput,
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture"> = {},
+): Promise<{ turn: CareerInterviewTurn; mode: "mock" | "llm" }> {
   if (getAIConfig().mode === "mock") return { turn: buildMockInterviewTurn(input), mode: "mock" };
   const output = await chatCompletionJSON({
+    promptId: "career.interview",
     schema: careerInterviewModelOutputSchema, schemaName: "career_interview_model_output", strictOutput: true, temperature: 0.2,
     system: [
       "你是项目经历结构化访谈助手。只允许整理用户原文和回答中的事实，不得新增人名、公司、日期、技术、数字或结果。",
@@ -18,6 +23,7 @@ export async function runCareerInterview(input: CareerInterviewInput): Promise<{
       "每轮只提出 1-3 个信息增益最高的问题。你只负责语义内容，不要输出 runId、round、coverage 或 finishReason，这些由服务端生成。",
     ].join("\n"),
     user: JSON.stringify(input),
+    ...execution,
   });
   return { turn: assembleCareerInterviewTurn(output, input), mode: "llm" };
 }

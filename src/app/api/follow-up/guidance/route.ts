@@ -5,11 +5,12 @@ import { tracedAIResponse } from "@/lib/studio/response";
 import { generateFollowUpGuidanceServer } from "@/services/ai/resumeAgent.server";
 
 export async function POST(request: Request) {
+  const execution = readWorkflowExecution(request);
   try {
     const input = await parseAPIRequest(request, followUpGuidanceRequestSchema);
-    const { example, mode } = await generateFollowUpGuidanceServer(input, readWorkflowExecution(request));
-    return tracedAIResponse({ example, mode }, mode);
+    const { example, mode } = await generateFollowUpGuidanceServer(input, execution);
+    return tracedAIResponse({ example, mode }, mode, execution.capture?.snapshots);
   } catch (error) {
-    return toAPIErrorResponse(error, "生成回答结构示范失败，请稍后重试", "follow-up-guidance");
+    return toAPIErrorResponse(error, "生成回答结构示范失败，请稍后重试", "follow-up-guidance", execution.capture?.snapshots);
   }
 }

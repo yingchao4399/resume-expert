@@ -11,9 +11,10 @@ export async function runLLMInterviewAnalysis(
   transcriptText: string,
   resumeText: string,
   targetRole: string,
-  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs"> = {}
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture"> = {}
 ): Promise<InterviewAnalysisResult> {
   const result = await chatCompletionJSON({
+    promptId: "interview.review",
     system: INTERVIEW_AGENT_SYSTEM_PROMPT,
     user: buildInterviewAnalysisUserPrompt(
       transcriptText,

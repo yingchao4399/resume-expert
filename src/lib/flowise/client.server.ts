@@ -11,6 +11,7 @@ import {
   type ProjectEvidenceProvider,
   type ProjectEvidenceResult,
 } from "@/lib/flowise/schemas";
+import type { WorkflowExecutionOptions } from "@/lib/studio/execution";
 
 export class FlowiseError extends Error {
   constructor(message: string, readonly category: FlowiseFailureCategory) {
@@ -34,11 +35,12 @@ export async function probeFlowise() {
 export async function runProjectEvidence(
   provider: ProjectEvidenceProvider,
   input: ProjectEvidenceInput,
-  allowFallback = true
+  allowFallback = true,
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture"> = {},
 ): Promise<ProjectEvidenceResult> {
   const outcome = await withMockFallback(provider, allowFallback, () => provider === "mock"
     ? Promise.resolve(buildMockDraft(input))
-    : provider === "direct" ? runDirect(input) : runFlowise(input), () => buildMockDraft(input));
+    : provider === "direct" ? runDirect(input, execution) : runFlowise(input), () => buildMockDraft(input));
   return {
     runId: crypto.randomUUID(),
     draft: outcome.value,
@@ -49,14 +51,16 @@ export async function runProjectEvidence(
   };
 }
 
-async function runDirect(input: ProjectEvidenceInput): Promise<ProjectEvidenceDraft> {
+async function runDirect(input: ProjectEvidenceInput, execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture">): Promise<ProjectEvidenceDraft> {
   return chatCompletionJSON({
+    promptId: "project-evidence.direct",
     schema: projectEvidenceDraftSchema,
     schemaName: "project_evidence_draft",
     strictOutput: true,
     temperature: 0.2,
     system: "你是项目证据梳理助手。只整理用户明确提供的事实，不创造数据、用户、收益或技术结论。证据不足时写入 missingEvidence 和 questions。",
     user: JSON.stringify(input),
+    ...execution,
   });
 }
 

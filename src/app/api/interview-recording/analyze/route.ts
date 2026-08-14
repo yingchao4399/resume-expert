@@ -8,6 +8,7 @@ import { tracedAIResponse } from "@/lib/studio/response";
 import { readWorkflowExecution } from "@/lib/studio/execution";
 
 export async function POST(request: Request) {
+  const execution = readWorkflowExecution(request);
   try {
     const { transcriptText, resumeText, targetRole } = await parseAPIRequest(
       request,
@@ -17,14 +18,15 @@ export async function POST(request: Request) {
       transcriptText,
       resumeText,
       targetRole,
-      readWorkflowExecution(request)
+      execution
     );
-    return tracedAIResponse({ result, mode }, mode);
+    return tracedAIResponse({ result, mode }, mode, execution.capture?.snapshots);
   } catch (error) {
     return toAPIErrorResponse(
       error,
       "面试分析失败，请稍后重试",
-      "interview-recording/analyze"
+      "interview-recording/analyze",
+      execution.capture?.snapshots,
     );
   }
 }

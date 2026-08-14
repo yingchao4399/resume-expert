@@ -8,6 +8,7 @@ import { tracedAIResponse } from "@/lib/studio/response";
 import { readWorkflowExecution } from "@/lib/studio/execution";
 
 export async function POST(request: Request) {
+  const execution = readWorkflowExecution(request);
   try {
     const { input, style, optimizedItems, followUpQuestions } =
       await parseAPIRequest(request, finalizeResumeRequestSchema);
@@ -16,14 +17,15 @@ export async function POST(request: Request) {
       style,
       optimizedItems,
       followUpQuestions,
-      readWorkflowExecution(request)
+      execution
     );
-    return tracedAIResponse({ finalResume, mode }, mode);
+    return tracedAIResponse({ finalResume, mode }, mode, execution.capture?.snapshots);
   } catch (error) {
     return toAPIErrorResponse(
       error,
       "最终简历生成失败，请稍后重试",
-      "finalize"
+      "finalize",
+      execution.capture?.snapshots,
     );
   }
 }
