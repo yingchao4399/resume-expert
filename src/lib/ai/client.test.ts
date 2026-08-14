@@ -18,6 +18,13 @@ describe("multi-provider structured output", () => {
     expect(JSON.stringify(body.messages)).toContain("完整 JSON Schema");
   });
 
+  it("disables thinking for DeepSeek V4 structured tasks only", () => {
+    expect(buildCompletionRequestBody(config("deepseek", "deepseek-v4-pro"), options)).toMatchObject({ thinking: { type: "disabled" } });
+    expect(buildCompletionRequestBody(config("deepseek", "deepseek-v4-flash"), options)).toMatchObject({ thinking: { type: "disabled" } });
+    expect(buildCompletionRequestBody(config("deepseek", "deepseek-chat"), options)).not.toHaveProperty("thinking");
+    expect(buildCompletionRequestBody(config("qwen", "qwen3.7-plus"), options)).not.toHaveProperty("thinking");
+  });
+
   it("uses strict JSON Schema and OpenAI completion-token parameters", () => {
     const body = buildCompletionRequestBody(config("openai", "gpt-5.6-luna"), options);
     expect(body.response_format).toMatchObject({ type: "json_schema" });
@@ -53,11 +60,13 @@ describe("multi-provider structured output", () => {
 
   it("captures the provider-adapted prompt without credentials", async () => {
     const capture: PromptCaptureContext = { traceId: "trace-1", snapshots: [] };
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: '{"items":[],"ok":true}' } }] }), { status: 200 }));
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: '{"items":[],"ok":true}' } }], usage: { prompt_tokens: 11, completion_tokens: 7, completion_tokens_details: { reasoning_tokens: 0 } } }), { status: 200 }));
     await chatCompletionJSON({ ...options, capture, configOverride: config("deepseek", "deepseek-v4-flash") });
     expect(capture.snapshots).toHaveLength(1);
     expect(capture.snapshots[0]).toMatchObject({ promptId: "resume.optimize-items", attemptKind: "primary", status: "success", traceId: "trace-1", provider: "deepseek" });
     expect(capture.snapshots[0].sentSystemPrompt).toContain("JSON Schema");
+    expect(capture.snapshots[0]).toMatchObject({ reasoningMode: "disabled", finishReason: "stop", promptTokens: 11, completionTokens: 7, reasoningTokens: 0 });
+    expect(capture.snapshots[0].requestParameters).toMatchObject({ thinking: { type: "disabled" } });
     expect(JSON.stringify(capture.snapshots[0])).not.toContain("sk-test-key");
   });
 

@@ -13,6 +13,12 @@ function splitBalanced<T>(items: T[]): T[][] {
   return [items.slice(0, middle), items.slice(middle)];
 }
 
+function chunkBySize<T>(items: T[], size: number): T[][] {
+  const batches: T[][] = [];
+  for (let index = 0; index < items.length; index += size) batches.push(items.slice(index, index + size));
+  return batches;
+}
+
 function createLimiter(maxConcurrency: number) {
   let active = 0;
   const queue: Array<() => void> = [];
@@ -37,18 +43,19 @@ export async function runWithTruncationFallback<TItem, TResult>(options: {
   run: (items: TItem[], signal: AbortSignal) => Promise<TResult>;
   merge: (results: TResult[]) => TResult;
   splitThreshold?: number;
+  batchSize?: number;
   maxConcurrency?: number;
   signal?: AbortSignal;
   onProgress?: (progress: TruncationBatchProgress) => void;
 }): Promise<TResult> {
-  const splitThreshold = options.splitThreshold ?? 20;
+  const splitThreshold = options.batchSize ?? options.splitThreshold ?? 20;
   const limit = createLimiter(options.maxConcurrency ?? 2);
   const controller = new AbortController();
   const abortFromCaller = () => controller.abort();
   options.signal?.addEventListener("abort", abortFromCaller, { once: true });
   if (options.signal?.aborted) controller.abort();
   const initialBatches = options.items.length > splitThreshold
-    ? splitBalanced(options.items)
+    ? options.batchSize ? chunkBySize(options.items, options.batchSize) : splitBalanced(options.items)
     : [options.items];
 
   const executeBatch = async (

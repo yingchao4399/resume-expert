@@ -1,5 +1,6 @@
 import type { CareerAnalysisClaim } from "@/lib/career/career-context";
 import type {
+  CoreCompetency,
   JDSourceClassification,
   JDSourceItem,
   JobRequirement,
@@ -127,6 +128,28 @@ export function assembleRequirements(sourceItems: JDSourceItem[], drafts: JDRequ
       anchorStatus: anchorValid ? "validated" : "needs-review",
     };
   });
+}
+
+export function summarizeRequirementMap(requirements: JobRequirement[]): {
+  responsibilities: string[];
+  hardRequirements: string[];
+  implicitRequirements: string[];
+  keywords: string[];
+  coreCompetencies: CoreCompetency[];
+} {
+  const unique = (values: string[], limit: number) => [...new Set(values.map((value) => value.trim()).filter(Boolean))].slice(0, limit);
+  const keywords = unique(requirements.flatMap((item) => item.keywords), 30);
+  return {
+    responsibilities: unique(requirements.filter((item) => item.category === "responsibility").map((item) => item.requirement), 12),
+    hardRequirements: unique(requirements.filter((item) => item.priority === "must").map((item) => item.requirement), 12),
+    implicitRequirements: unique(requirements.filter((item) => item.priority !== "must").map((item) => item.requirement), 12),
+    keywords,
+    coreCompetencies: keywords.slice(0, 12).map((name, index) => ({
+      name,
+      importance: index < 4 ? "high" as const : index < 8 ? "medium" as const : "low" as const,
+      description: "由已校验岗位要求中的关键词确定性汇总",
+    })),
+  };
 }
 
 export function validateMatchReferences<T extends {

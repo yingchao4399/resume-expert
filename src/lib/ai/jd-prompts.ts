@@ -24,11 +24,8 @@ ${JSON.stringify(sourceItems.map(({ id, text }) => ({ id, text })), null, 2)}
 2. 一条原文包含多个能力或条件时拆成多个原子要求，但它们保留同一个 sourceItemId；最多 40 条。
 3. sourceQuote 必须逐字截取对应原始条目的连续片段。
 4. 每条要求提供类别、must/preferred/context 优先级、关键词及面试验证重点。
-5. roleInference.items 覆盖 work-content、work-focus、business-line、team-state、business-scenario、team-pain、implicit-expectation、reporting-line、industry-experience。
-6. level=explicit 仅用于原文明示；level=inferred 必须有可引用依据；level=unknown 时 conclusion 写“信息不足”，并给出验证问题，不得下确定结论。
-7. clarificationNeeds 说明未知信息会带来的影响、建议补充内容和验证问题。
-8. responsibilities、hardRequirements、implicitRequirements、keywords、idealCandidate、coreCompetencies 同时给出供概览使用。
-9. 所有描述保持简洁：单条尽量不超过 80 个汉字，概览列表各不超过 12 条，避免重复原文。
+5. 本次只返回 sourceClassifications 和 requirements，不生成岗位画像、概览、补证问题或面试策略。
+6. 所有描述保持简洁，单条尽量不超过 80 个汉字，避免重复原文。
 
 只返回 JSON。`;
 }
@@ -39,7 +36,7 @@ export function buildRequirementMatchPrompt(
   requirements: JobRequirement[],
   claims: CareerAnalysisClaim[],
 ): string {
-  return `请基于已校验的岗位要求完成简历诊断、逐条事实匹配和定向补证。不得重新解释或创建岗位要求 ID、事实 ID。
+  return `请基于已校验的岗位要求完成简历诊断和逐条事实匹配。不得重新解释或创建岗位要求 ID、事实 ID。
 
 ${targetContext(input, context)}
 
@@ -56,10 +53,27 @@ ${input.originalResume}
 1. matchItems 必须每个 requirementId 恰好一条。evidenceClaimIds 只能引用上方事实 ID；resumeQuotes 只能逐字引用原简历连续片段。
 2. 无可核验证据时 evidenceClaimIds/resumeQuotes 为空，evidenceStrength=none，needsSupplement=true。
 3. matchRationale 解释匹配逻辑；missingEvidenceTypes 写明缺少职责、行动、决策、结果、指标或方法中的哪些类型。
-4. followUpQuestions 最多 10 条，只针对最重要缺口。每条关联 requirementId，并给出 thinkingPrompts、answerFramework、honestNoExperience；placeholderExample 必须为空字符串。
+4. 本次只返回 diagnosis 和 matchItems；补证问题由系统根据缺口生成。
 5. 不得把示例、建议或岗位要求本身当作用户事实。
 6. 诊断分是 AI 诊断分，不是 ATS 分。
 7. 单条说明尽量不超过 100 个汉字，避免重复粘贴完整 JD 或简历。
+
+只返回 JSON。`;
+}
+
+export function buildJobOverviewPrompt(input: UserInput, context: JobTargetContext, requirements: JobRequirement[]): string {
+  return `请基于已校验的岗位要求生成紧凑岗位画像。不得联网，不得把推断写成公司事实。
+
+${targetContext(input, context)}
+
+【已校验岗位要求】
+${JSON.stringify(requirements.map(({ id, requirement, sourceQuote, category, priority }) => ({ id, requirement, sourceQuote, category, priority })), null, 2)}
+
+要求：
+1. roleInference.items 覆盖 work-content、work-focus、business-line、team-state、business-scenario、team-pain、implicit-expectation、reporting-line、industry-experience。
+2. level=explicit 仅用于原文明示；level=inferred 必须给出原文依据；level=unknown 时 conclusion 写“信息不足”。
+3. clarificationNeeds 只列真正影响判断的未知项；idealCandidate 不超过 200 字。
+4. 只返回 idealCandidate、roleInference 和 clarificationNeeds，不重复输出岗位要求。
 
 只返回 JSON。`;
 }

@@ -2,6 +2,7 @@ import type { WorkflowNodeId } from "@/lib/studio/trace-types";
 
 export const CALLABLE_PROMPT_IDS = [
   "resume.deep-jd",
+  "resume.job-overview",
   "resume.requirement-match",
   "resume.interview-strategy",
   "resume.follow-up-guidance",
@@ -91,6 +92,15 @@ export interface PromptRuntimeSnapshot {
   temperature?: number;
   maxTokens: number;
   timeoutMs: number;
+  reasoningMode?: "disabled" | "provider-default";
+  requestParameters?: Record<string, unknown>;
+  latencyMs?: number;
+  finishReason?: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  reasoningTokens?: number;
+  batchSize?: number;
+  repairCount?: number;
   validationIssues: string[];
 }
 

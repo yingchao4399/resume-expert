@@ -1,10 +1,12 @@
 export type StructuredOutputStrategy = "json-schema" | "json-object" | "prompt-json";
+export type StructuredTaskReasoningMode = "disabled" | "provider-default";
 
 export interface ProviderCapabilityPolicy {
   structuredOutput: StructuredOutputStrategy;
   supportsModelCatalog: boolean;
   maxTokenParameter: "max_tokens" | "max_completion_tokens" | "model-dependent";
   samplingParameters: "standard" | "model-dependent";
+  structuredTaskReasoning: StructuredTaskReasoningMode;
 }
 
 export interface ProviderPreset {
@@ -30,6 +32,7 @@ const jsonObjectPolicy: ProviderCapabilityPolicy = {
   supportsModelCatalog: true,
   maxTokenParameter: "max_tokens",
   samplingParameters: "standard",
+  structuredTaskReasoning: "provider-default",
 };
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
@@ -46,7 +49,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     docsUrl: "https://platform.deepseek.com/api_keys",
     modelDocsUrl: "https://api-docs.deepseek.com/quick_start/pricing/",
     catalogUpdatedAt: updatedAt,
-    capability: jsonObjectPolicy,
+    capability: { ...jsonObjectPolicy, structuredTaskReasoning: "disabled" },
   },
   {
     id: "moonshot",
@@ -111,6 +114,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
       supportsModelCatalog: true,
       maxTokenParameter: "model-dependent",
       samplingParameters: "model-dependent",
+      structuredTaskReasoning: "provider-default",
     },
   },
   {
@@ -151,4 +155,10 @@ export function getProviderPreset(id: string): ProviderPreset | undefined {
 
 export function getStructuredOutputStrategy(provider: string): StructuredOutputStrategy {
   return getProviderPreset(provider)?.capability.structuredOutput ?? "json-object";
+}
+
+export function getStructuredTaskReasoningMode(provider: string, model: string): StructuredTaskReasoningMode {
+  if (provider === "deepseek" && /^deepseek-v4(?:-|$)/i.test(model)) return "disabled";
+  if (provider === "deepseek") return "provider-default";
+  return getProviderPreset(provider)?.capability.structuredTaskReasoning ?? "provider-default";
 }

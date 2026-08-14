@@ -97,6 +97,33 @@ export function createDeepJDModelResultSchema(sourceItemIds: string[]) {
   });
 }
 
+export function createCompactJDModelResultSchema(sourceItemIds: string[]) {
+  const allowed = new Set(sourceItemIds);
+  return z.object({
+    sourceClassifications: z.array(sourceClassificationSchema).max(40),
+    requirements: z.array(jdRequirementDraftSchema).max(40),
+  }).superRefine((value, context) => {
+    const returned = value.sourceClassifications.map((item) => item.sourceItemId);
+    if (new Set(returned).size !== returned.length) context.addIssue({ code: "custom", path: ["sourceClassifications"], message: "原始条目分类不得重复" });
+    for (const id of sourceItemIds) if (!returned.includes(id)) context.addIssue({ code: "custom", path: ["sourceClassifications"], message: `缺少原始条目 ${id} 的分类` });
+    for (const id of returned) if (!allowed.has(id)) context.addIssue({ code: "custom", path: ["sourceClassifications"], message: `不存在的原始条目 ${id}` });
+    for (const requirement of value.requirements) if (!allowed.has(requirement.sourceItemId)) context.addIssue({ code: "custom", path: ["requirements"], message: `要求引用了不存在的原始条目 ${requirement.sourceItemId}` });
+  });
+}
+
+export const jobOverviewModelResultSchema = z.object({
+  idealCandidate: z.string().max(600),
+  roleInference: z.object({ items: z.array(roleInferenceItemSchema).max(12) }),
+  clarificationNeeds: z.array(clarificationNeedSchema).max(12),
+}).superRefine((value, context) => {
+  const requiredTopics = ["work-content", "work-focus", "business-line", "team-state", "business-scenario", "team-pain", "implicit-expectation", "reporting-line", "industry-experience"];
+  for (const topic of requiredTopics) if (!value.roleInference.items.some((item) => item.topic === topic)) context.addIssue({ code: "custom", path: ["roleInference", "items"], message: `缺少 ${topic} 推断边界` });
+  for (const inference of value.roleInference.items) {
+    if (inference.level === "unknown" && inference.conclusion.trim() && !/信息不足|未知|无法判断/.test(inference.conclusion)) context.addIssue({ code: "custom", path: ["roleInference"], message: "信息不足项不得输出确定结论" });
+    if (inference.level !== "unknown" && inference.evidence.length === 0) context.addIssue({ code: "custom", path: ["roleInference"], message: "明示或推断结论必须提供依据" });
+  }
+});
+
 const dimensionScoreSchema = z.object({
   dimension: z.string(),
   score: z.number().min(0).max(100),
@@ -287,6 +314,22 @@ export function createDiagnosisMatchResultSchema(requirementIds: string[], allow
   });
 }
 
+export function createDiagnosisMatchCoreResultSchema(requirementIds: string[], allowedClaimIds: string[]) {
+  const requirementSet = new Set(requirementIds);
+  const claimSet = new Set(allowedClaimIds);
+  return z.object({
+    diagnosis: resumeDiagnosisSchema,
+    matchItems: z.array(matchItemSchema).max(40),
+  }).superRefine((result, context) => {
+    const returned = result.matchItems.map((item) => item.requirementId);
+    for (const id of requirementIds) if (!returned.includes(id)) context.addIssue({ code: "custom", path: ["matchItems"], message: `缺少岗位要求 ${id} 的匹配结果` });
+    for (const item of result.matchItems) {
+      if (!requirementSet.has(item.requirementId)) context.addIssue({ code: "custom", path: ["matchItems"], message: `不存在的岗位要求 ${item.requirementId}` });
+      for (const claimId of item.evidenceClaimIds) if (!claimSet.has(claimId)) context.addIssue({ code: "custom", path: ["matchItems"], message: `不存在或未提供的事实 ${claimId}` });
+    }
+  });
+}
+
 export const optimizeResumeResultSchema = z.object({
   optimizedItems: z.array(optimizedItemSchema).max(12),
   finalResume: finalResumeSchema,
@@ -348,6 +391,13 @@ export const analyzeRequestSchema = z.object({
     capabilities: z.array(z.object({ id: z.string(), name: z.string(), aliases: z.array(z.string()) })),
     metrics: z.array(z.object({ id: z.string(), value: z.string(), unit: z.string(), baseline: z.string(), method: z.string(), period: z.string(), sourceNote: z.string() })),
   })).optional().default([]),
+});
+
+export const interviewPrepareRequestSchema = z.object({
+  input: userInputSchema,
+  jobTargetContext: jobTargetContextSchema,
+  analysisResult: persistedAnalysisResultSchema,
+  materialRevision: z.number().int().min(0),
 });
 
 export const followUpGuidanceRequestSchema = z.object({

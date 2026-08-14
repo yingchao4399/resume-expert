@@ -5,7 +5,7 @@ import { classifyAIHTTPError, LLMError, LLMStructureError, LLMTruncationError, t
 import { AnalysisCancelledError, AnalysisDeadlineError } from "@/lib/ai/errors";
 import type { AnalysisExecutionBudget } from "@/lib/ai/analysis-execution";
 import { parseJSONFromMessage } from "@/lib/ai/parse-json";
-import { getProviderPreset, getStructuredOutputStrategy, type StructuredOutputStrategy } from "@/lib/ai/presets";
+import { getProviderPreset, getStructuredOutputStrategy, getStructuredTaskReasoningMode, type StructuredOutputStrategy } from "@/lib/ai/presets";
 import { getCallablePromptDefinition } from "@/lib/studio/prompt-registry";
 import type { PromptAttemptKind, PromptCaptureContext, PromptId, PromptRuntimeSnapshot } from "@/lib/studio/prompt-types";
 
@@ -28,10 +28,18 @@ export interface ChatCompletionOptions<T> {
   invocationId?: string;
   signal?: AbortSignal;
   analysisBudget?: AnalysisExecutionBudget;
+  batchSize?: number;
 }
 
 interface ChatMessage { content?: string | null; reasoning_content?: string | null }
-interface ChatCompletionData { choices?: Array<{ finish_reason?: string; message?: ChatMessage }> }
+interface ChatCompletionData {
+  choices?: Array<{ finish_reason?: string; message?: ChatMessage }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    completion_tokens_details?: { reasoning_tokens?: number };
+  };
+}
 
 export const FORMAL_AI_TIMEOUT_MS = 120_000;
 
@@ -135,6 +143,8 @@ export function buildCompletionRequestBody<T>(config: AIConfig, options: ChatCom
     model,
     messages: [{ role: "system", content: adapted.system }, { role: "user", content: adapted.user }],
   };
+  const reasoningMode = getStructuredTaskReasoningMode(config.provider, model);
+  if (reasoningMode === "disabled") body.thinking = { type: "disabled" };
   if (!omitSampling) body.temperature = options.temperature ?? 0.3;
   body[useCompletionTokens ? "max_completion_tokens" : "max_tokens"] = options.maxTokens ?? 8192;
   if (!omitResponseFormat) body.response_format = buildResponseFormat(strategy, options);
@@ -193,8 +203,9 @@ async function performChatCompletion<T>(
     const classified = classifyAIHTTPError(response.status, detail);
     throw new LLMError(`${classified.message} (${response.status})${detail ? `：${detail.slice(0, 180)}` : ""}`, response.status, classified.category);
   }
-  finishSnapshot(snapshot, "success");
-  return (await response.json()) as ChatCompletionData;
+  const data = (await response.json()) as ChatCompletionData;
+  finishSnapshot(snapshot, "success", data);
+  return data;
 }
 
 function capturePromptSnapshot<T>(
@@ -237,16 +248,25 @@ function capturePromptSnapshot<T>(
     temperature: typeof body.temperature === "number" ? body.temperature : undefined,
     maxTokens: Number(body.max_tokens ?? body.max_completion_tokens ?? options.maxTokens ?? 8192),
     timeoutMs: options.timeoutMs ?? FORMAL_AI_TIMEOUT_MS,
+    reasoningMode: getStructuredTaskReasoningMode(config.provider, options.model || config.model),
+    requestParameters: Object.fromEntries(Object.entries(body).filter(([key]) => key !== "messages")),
+    batchSize: options.batchSize,
+    repairCount: attemptKind === "schema-repair" ? 1 : 0,
     validationIssues: [...validationIssues],
   };
   options.capture.snapshots.push(snapshot);
   return snapshot;
 }
 
-function finishSnapshot(snapshot: PromptRuntimeSnapshot | undefined, status: PromptRuntimeSnapshot["status"]): void {
+function finishSnapshot(snapshot: PromptRuntimeSnapshot | undefined, status: PromptRuntimeSnapshot["status"], data?: ChatCompletionData): void {
   if (!snapshot) return;
   snapshot.status = status;
   snapshot.finishedAt = new Date().toISOString();
+  snapshot.latencyMs = Math.max(0, new Date(snapshot.finishedAt).getTime() - new Date(snapshot.createdAt).getTime());
+  snapshot.finishReason = data?.choices?.[0]?.finish_reason;
+  snapshot.promptTokens = data?.usage?.prompt_tokens;
+  snapshot.completionTokens = data?.usage?.completion_tokens;
+  snapshot.reasoningTokens = data?.usage?.completion_tokens_details?.reasoning_tokens;
 }
 
 function markLatestSnapshot<T>(options: ChatCompletionOptions<T>, status: PromptRuntimeSnapshot["status"], validationIssues: string[]): void {
