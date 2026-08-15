@@ -6,8 +6,9 @@ import { StepSidebar } from "@/components/layout/step-sidebar";
 import { TopNav } from "@/components/layout/top-nav";
 import { StepContent } from "@/components/steps/step-content";
 import { Button } from "@/components/ui/button";
-import { migrateCareerEvidenceOnce } from "@/lib/career/career-db";
+import { migrateCareerEvidenceOnce, replaceCareerDomain } from "@/lib/career/career-db";
 import { projectClaimsToLegacyEvidence } from "@/lib/career/career-context";
+import { mergeCareerSnapshots, migrateLegacyEvidence } from "@/lib/career/migration";
 import {
   RESUME_STORAGE_ERROR_EVENT,
   downloadRecoveryData,
@@ -22,7 +23,12 @@ export function AppShell() {
     void Promise.resolve(useResumeStore.persist.rehydrate())
       .then(async () => {
         const legacyEvidence = useResumeStore.getState().careerEvidence;
-        const { snapshot } = await migrateCareerEvidenceOnce(legacyEvidence);
+        let { snapshot } = await migrateCareerEvidenceOnce(legacyEvidence);
+        const claimIds = new Set(snapshot.claims.map((claim) => claim.id));
+        if (legacyEvidence.some((item) => !claimIds.has(item.id))) {
+          snapshot = mergeCareerSnapshots(snapshot, migrateLegacyEvidence(legacyEvidence));
+          await replaceCareerDomain(snapshot);
+        }
         useResumeStore.setState({ careerEvidence: projectClaimsToLegacyEvidence(snapshot) });
       })
       .finally(() => {
