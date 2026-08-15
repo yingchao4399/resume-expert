@@ -29,7 +29,7 @@ export function ResumeSourceTrace({ resume, evidence }: { resume: FinalResume; e
 function TraceItem({ section, bullet, evidenceMap }: { section: string; bullet: ResumeBulletValue; evidenceMap: Map<string, CareerEvidence> }) {
   const item = normalizeResumeBullet(bullet);
   const setLinkStatus = useResumeStore((state) => state.setResumeEvidenceLinkStatus);
-  const links = item.evidenceLinks.map((link) => ({ link, evidence: evidenceMap.get(link.evidenceId) })).filter((value): value is { link: typeof item.evidenceLinks[number]; evidence: CareerEvidence } => Boolean(value.evidence));
+  const links = item.evidenceLinks.map((link) => ({ link, evidence: evidenceMap.get(link.evidenceId) }));
   return (
     <div className="rounded-md border border-neutral-200 p-3 text-xs">
       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -50,7 +50,7 @@ function TraceItem({ section, bullet, evidenceMap }: { section: string; bullet: 
       {links.length ? <div className="mt-2 space-y-2">
         <p className="text-neutral-500">证据关联（系统推荐不会自动视为可信）：</p>
         {links.map(({ link, evidence }) => <div key={link.evidenceId} className="flex flex-wrap items-center gap-2 rounded border px-2 py-1.5">
-          <span className="flex-1">{evidence.title}</span>
+          <span className="flex-1">{evidence?.title ?? `待迁移证据 ${link.evidenceId}`}</span>
           <Badge variant={link.status === "confirmed" ? "success" : link.status === "needs-review" ? "warning" : "outline"}>
             {link.status === "confirmed" ? "已确认" : link.status === "needs-review" ? "待复核" : "候选"}
           </Badge>

@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SectionTitle } from "@/components/shared/ui-helpers";
 import { useCareerDomain } from "@/hooks/use-career-domain";
 import { calculateVerifiedCapabilityLevel, isMetricComplete } from "@/lib/career/capability-level";
+import { migrateLegacyEvidence } from "@/lib/career/migration";
 import { postWorkflowJSON } from "@/services/ai/resumeAgent";
 import { useResumeStore } from "@/store/resume-store";
 import type { CapabilityCategory, CareerDomainSnapshot, CareerExperience, CareerInterviewAnswer, CareerInterviewSession, EvidenceClaim } from "@/types/career-domain";
@@ -22,7 +23,10 @@ const uid = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 
 export function CareerWorkspace() {
   const { snapshot, loading, error, save } = useCareerDomain();
-  const { dirtyScope, setDirtyScope } = useResumeStore();
+  const { dirtyScope, setDirtyScope, careerEvidence } = useResumeStore();
+  const displaySnapshot = snapshot.experiences.length || snapshot.claims.length || !careerEvidence.length
+    ? snapshot
+    : migrateLegacyEvidence(careerEvidence);
   const [view, setView] = useState<View>("experiences");
   const [message, setMessage] = useState("");
   const persist = async (next: CareerDomainSnapshot) => { await save(next); setDirtyScope(null); setMessage("已保存到本机经历事实库"); };
@@ -37,10 +41,10 @@ export function CareerWorkspace() {
       {(["experiences", "claims", "capabilities", "interview"] as View[]).map((item) => <Button key={item} role="tab" aria-selected={view === item} variant={view === item ? "default" : "outline"} size="sm" onClick={() => changeView(item)}>{({ experiences: "经历", claims: "事实", capabilities: "能力", interview: "项目梳理" } as const)[item]}</Button>)}
     </div>
     {(error || message) && <p className={`mb-4 rounded border px-3 py-2 text-sm ${error ? "border-red-200 bg-red-50 text-red-700" : "bg-neutral-50"}`} aria-live="polite">{error || message}</p>}
-    {view === "experiences" && <Experiences snapshot={snapshot} persist={persist} />}
-    {view === "claims" && <Claims snapshot={snapshot} persist={persist} />}
-    {view === "capabilities" && <Capabilities snapshot={snapshot} persist={persist} />}
-    {view === "interview" && <Interview snapshot={snapshot} persist={persist} />}
+    {view === "experiences" && <Experiences snapshot={displaySnapshot} persist={persist} />}
+    {view === "claims" && <Claims snapshot={displaySnapshot} persist={persist} />}
+    {view === "capabilities" && <Capabilities snapshot={displaySnapshot} persist={persist} />}
+    {view === "interview" && <Interview snapshot={displaySnapshot} persist={persist} />}
   </div>;
 }
 
