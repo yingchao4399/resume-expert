@@ -92,12 +92,25 @@ export function rankCareerClaimsForRequirements(
       const capabilityBonus = claim.capabilities.filter((capability) => requirements.some((requirement) =>
         [capability.name, ...capability.aliases].some((name) => `${requirement.requirement} ${requirement.keywords.join(" ")}`.toLocaleLowerCase().includes(name.toLocaleLowerCase())),
       )).length * 4;
-      return { claim, score: overlap.length + capabilityBonus + (claim.metrics.length ? 1 : 0) };
+      const relevance = overlap.length + capabilityBonus;
+      return { claim, score: relevance > 0 ? relevance + (claim.metrics.length ? 1 : 0) : 0 };
     })
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || a.claim.id.localeCompare(b.claim.id))
     .slice(0, limit)
     .map((item) => item.claim);
+}
+
+export function rankCareerClaimsByRequirement(
+  claims: CareerAnalysisClaim[],
+  requirements: JobRequirement[],
+  _input: Pick<UserInput, "targetRole">,
+  limitPerRequirement = 3,
+): Map<string, CareerAnalysisClaim[]> {
+  return new Map(requirements.map((requirement) => [
+    requirement.id,
+    rankCareerClaimsForRequirements(claims, [requirement], { targetRole: "" }, limitPerRequirement),
+  ]));
 }
 
 export interface JDRequirementDraft {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assembleRequirements, rankCareerClaimsForRequirements, splitJDSourceItems, validateMatchReferences } from "@/lib/jd/deep-analysis";
+import { assembleRequirements, rankCareerClaimsByRequirement, rankCareerClaimsForRequirements, splitJDSourceItems, validateMatchReferences } from "@/lib/jd/deep-analysis";
 import type { CareerAnalysisClaim } from "@/lib/career/career-context";
 
 describe("deep JD analysis primitives", () => {
@@ -39,6 +39,22 @@ describe("deep JD analysis primitives", () => {
     const selected = rankCareerClaimsForRequirements(claims, requirements, { targetRole: "前端工程师" });
     expect(selected).toHaveLength(12);
     expect(selected.some((item) => item.id === "unrelated")).toBe(false);
+  });
+
+  it("recalls up to three facts independently for every requirement", () => {
+    const source = splitJDSourceItems("需要 React\n需要 SQL");
+    const requirements = assembleRequirements(source, [
+      { sourceItemId: source[0].id, sourceQuote: "React", requirement: "React 开发", category: "skill", priority: "must", keywords: ["React"], interviewFocus: "项目" },
+      { sourceItemId: source[1].id, sourceQuote: "SQL", requirement: "SQL 分析", category: "skill", priority: "must", keywords: ["SQL"], interviewFocus: "项目" },
+    ]);
+    const base = { experienceId: "exp", experienceTitle: "项目", organization: "", role: "工程师", kind: "action" as const, contribution: "independent" as const, complexity: "routine" as const, hasTradeoff: false, hasMethodReuse: false, capabilities: [], metrics: [] };
+    const claims: CareerAnalysisClaim[] = [
+      { ...base, id: "react", text: "使用 React 开发后台" },
+      { ...base, id: "sql", text: "使用 SQL 分析转化漏斗" },
+    ];
+    const selected = rankCareerClaimsByRequirement(claims, requirements, { targetRole: "产品工程师" }, 3);
+    expect(selected.get(requirements[0].id)?.map((item) => item.id)).toEqual(["react"]);
+    expect(selected.get(requirements[1].id)?.map((item) => item.id)).toEqual(["sql"]);
   });
 
   it("drops model-created fact IDs and resume quotes", () => {
