@@ -891,7 +891,16 @@ export const useResumeStore = create<ResumeStore>()(
         return {
           ...currentState,
           documents,
-          careerEvidence: Array.isArray(persisted.careerEvidence) ? persisted.careerEvidence.map(migrateEvidence) : [],
+          careerEvidence: (() => {
+            const projected = Array.isArray(persisted.careerEvidence) ? persisted.careerEvidence.map(migrateEvidence) : [];
+            // React Strict Mode may invoke rehydrate twice. A second pass can
+            // observe the compatibility field after it was cleared for the
+            // IndexedDB migration; never let that empty projection erase
+            // records already restored in memory.
+            return projected.length > 0 || currentState.careerEvidence.length === 0
+              ? projected
+              : currentState.careerEvidence;
+          })(),
           jobApplications: Array.isArray(persisted.jobApplications) ? persisted.jobApplications : [],
           interviewReviews: Array.isArray(persisted.interviewReviews) ? persisted.interviewReviews : [],
           activeDocumentId: active.id,

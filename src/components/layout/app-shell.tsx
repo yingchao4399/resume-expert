@@ -29,7 +29,14 @@ export function AppShell() {
           snapshot = mergeCareerSnapshots(snapshot, migrateLegacyEvidence(legacyEvidence));
           await replaceCareerDomain(snapshot);
         }
-        useResumeStore.setState({ careerEvidence: projectClaimsToLegacyEvidence(snapshot) });
+        // An archived migration marker can legitimately return an empty domain
+        // while the persisted legacy store still contains recoverable records.
+        // Never replace those records with an empty projection during startup.
+        const projectedEvidence = projectClaimsToLegacyEvidence(snapshot);
+        const currentEvidence = useResumeStore.getState().careerEvidence;
+        if (projectedEvidence.length > 0 || currentEvidence.length === 0) {
+          useResumeStore.setState({ careerEvidence: projectedEvidence });
+        }
       })
       .finally(() => {
         useResumeStore.getState().markHydrated();
