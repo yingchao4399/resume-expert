@@ -1,4 +1,5 @@
 export const RELEASE_RECORDS = [
+  { version: "1.9.5", goal: "JD 决策地图与可信匹配升级", modules: ["JD 草稿确认", "逐要求事实召回", "确定性岗位准备度", "四视图原文审计", "48 条 Gold 评测"], tests: "151 Vitest / 35 Playwright / evals / audit / build", status: "released" },
   { version: "1.9.4", goal: "分析性能与任务拆分修复", modules: ["非思考结构抽取", "预测拆批", "两阶段快速分析", "按需面试策略", "性能追踪"], tests: "142 Vitest / 35 Playwright / evals / audit / build", status: "released" },
   { version: "1.9.3", goal: "深度分析超时、进度与取消修复", modules: ["有界分析执行器", "流式三阶段进度", "主动取消", "制作阶段优化"], tests: "128+ Vitest / 32+ Playwright / evals / CI", status: "released" },
   { version: "1.9.2", goal: "提示词透明工作台只读试用版", modules: ["提示词注册中心", "完整运行快照", "底层文件目录", "版本与测评关联"], tests: "119+ Vitest / 31+ Playwright / evals / CI", status: "released" },

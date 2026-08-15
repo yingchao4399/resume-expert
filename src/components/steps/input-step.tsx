@@ -17,18 +17,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { SectionTitle } from "@/components/shared/ui-helpers";
 import { ResumeImportDialog } from "@/components/import/resume-import-dialog";
 import { useResumeStore } from "@/store/resume-store";
-import { ResumeAnalysisCancelledError, runResumeAnalysisStreaming } from "@/services/ai/resumeAgent";
+import { ResumeAnalysisCancelledError, runResumeAnalysisStreaming, type DecisionStreamEvent } from "@/services/ai/resumeAgent";
 import type { CompanyType, JobStage } from "@/types/resume";
 import { buildCareerAnalysisClaims } from "@/lib/career/career-context";
 import { useCareerDomain } from "@/hooks/use-career-domain";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 import { COMPANY_TYPES, isCompanyType, isJobStage, JOB_STAGES } from "@/config/job-options";
-import type { AnalysisProgressEvent, AnalysisStageId } from "@/lib/ai/analysis-execution";
-
-const ANALYSIS_STAGES: Array<{ id: AnalysisStageId; label: string }> = [
-  { id: "jd-requirements", label: "JD 需求地图" },
-  { id: "match-and-insights", label: "事实匹配与岗位概览" },
-];
+const ANALYSIS_STAGES = [{ id: "jd-draft", label: "JD 需求地图草稿" }] as const;
 
 
 export function InputStep() {
@@ -45,7 +40,7 @@ export function InputStep() {
     isAnalyzing,
     analysisError,
     setAnalyzing,
-    setAnalysisResult,
+    setJDAnalysisDocument,
     setAnalysisError,
     setCurrentStep,
     materialRevision,
@@ -56,7 +51,7 @@ export function InputStep() {
   const [showValidation, setShowValidation] = useState(false);
   const [exampleLoaded, setExampleLoaded] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgressEvent | null>(null);
+  const [analysisProgress, setAnalysisProgress] = useState<DecisionStreamEvent | null>(null);
   const [analysisNotice, setAnalysisNotice] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const updateMaterial = <K extends keyof typeof userInput>(key: K, value: typeof userInput[K]) => {
@@ -115,14 +110,14 @@ export function InputStep() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
     try {
-      const result = await runResumeAnalysisStreaming(
+      const document = await runResumeAnalysisStreaming(
         userInput,
         jobTargetContext,
         buildCareerAnalysisClaims(careerDomain),
         optimizeStyle,
-        { signal: controller.signal, onProgress: setAnalysisProgress },
+        { signal: controller.signal, onProgress: setAnalysisProgress, materialRevision: requestedRevision },
       );
-      if (setAnalysisResult(result, requestedRevision)) {
+      if (setJDAnalysisDocument(document, requestedRevision)) {
         abortControllerRef.current = null;
         setAnalyzing(false);
         setCurrentStep("jd-analysis");
@@ -143,15 +138,10 @@ export function InputStep() {
     abortControllerRef.current?.abort();
   };
 
-  const currentStageIndex = analysisProgress && "stageIndex" in analysisProgress
-    ? analysisProgress.stageIndex ?? 1
-    : 1;
   const currentStage = analysisProgress && "stage" in analysisProgress
     ? analysisProgress.stage
-    : "jd-requirements";
-  const completedStageIndex = analysisProgress?.type === "stage-completed"
-    ? analysisProgress.stageIndex
-    : Math.max(0, currentStageIndex - 1);
+    : "jd-draft";
+  const completedStageIndex = analysisProgress?.type === "stage-completed" ? 1 : 0;
 
   return (
     <div>
@@ -178,7 +168,7 @@ export function InputStep() {
           ) : (
             <>
               <Sparkles className="h-3.5 w-3.5" />
-              开始分析
+              解析 JD
             </>
           )}
         </Button>
@@ -192,7 +182,7 @@ export function InputStep() {
 
       {exampleLoaded && (
         <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status" aria-live="polite">
-          示例材料已载入，下一步点击“开始分析”。
+          示例材料已载入，下一步点击“解析 JD”。
         </div>
       )}
 
@@ -203,7 +193,7 @@ export function InputStep() {
               {analysisProgress && "message" in analysisProgress ? analysisProgress.message : "正在启动深度分析"}
             </p>
             <span className="text-xs text-blue-700">
-              已用 {elapsedSeconds}s · 最多剩余 {Math.max(0, 180 - elapsedSeconds)}s
+              已用 {elapsedSeconds}s · 最多剩余 {Math.max(0, 120 - elapsedSeconds)}s
             </span>
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">

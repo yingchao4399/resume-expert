@@ -27,9 +27,22 @@ const layoutDefaults = {
   hiddenSections: [],
 };
 
+function decisionDocument(materialRevision = 0, status: "draft" | "confirmed" = "confirmed") {
+  const sourceText = "任职要求\n- 必须负责企业服务产品规划";
+  return {
+    schemaVersion: 1 as const, sourceText, materialRevision, revision: 1, status, confirmedRevision: status === "confirmed" ? 1 : null,
+    sourceSpans: [
+      { id: "jd-span-heading", sectionId: null, text: "任职要求", startOffset: 0, endOffset: 4, listLevel: 0, role: "heading" as const },
+      { id: "jd-span-requirement", sectionId: "jd-span-heading", text: "- 必须负责企业服务产品规划", startOffset: 5, endOffset: sourceText.length, listLevel: 1, role: "requirement" as const },
+    ],
+    requirements: [{ id: "req-e2e", sourceSpanId: "jd-span-requirement", sourceSpanIds: ["jd-span-requirement"], sourceQuote: "负责企业服务产品规划", normalizedText: "负责企业服务产品规划", kind: "task" as const, modality: "required" as const, priority: "high" as const, priorityBasis: ["原文包含明确必选词"], expectedBehavior: "说明真实项目", expectedOutcome: null, proficiencySignal: "unknown" as const, keywords: ["产品规划"], anchorStatus: "validated" as const, reviewStatus: status === "confirmed" ? "confirmed" as const : "auto-validated" as const, isHardGate: false, userEdited: false }],
+    hypotheses: [], qualityFindings: [], createdAt: "2026-08-15T00:00:00.000Z", updatedAt: "2026-08-15T00:00:00.000Z",
+  };
+}
+
 function stateFor(templateId = "ats-classic", finalResumeStatus: "draft" | "confirmed" | "stale" = "confirmed") {
   const document = {
-    schemaVersion: 8,
+    schemaVersion: 9,
     id: "e2e-document",
     title: "产品经理版本",
     createdAt: "2026-08-03T00:00:00.000Z",
@@ -48,6 +61,8 @@ function stateFor(templateId = "ats-classic", finalResumeStatus: "draft" | "conf
     },
     materialRevision: 0,
     analysisRevision: 0,
+    jdAnalysisDocument: decisionDocument(0, "confirmed"),
+    analysisBasis: { materialRevision: 0, jdAnalysisRevision: 1 },
     sourceResume: structuredClone(resume),
     importMetadata: null,
     layoutConfig: { ...layoutDefaults, templateId },
@@ -55,7 +70,7 @@ function stateFor(templateId = "ats-classic", finalResumeStatus: "draft" | "conf
     finalResumeStatus,
     hasManualEdits: false,
   } as ResumeLibraryState["documents"][number];
-  return { state: { schemaVersion: 9, documents: [document], activeDocumentId: document.id, careerEvidence: [] as CareerEvidence[], jobApplications: [], interviewReviews: [] } satisfies ResumeLibraryState, version: 9 };
+  return { state: { schemaVersion: 10, documents: [document], activeDocumentId: document.id, careerEvidence: [] as CareerEvidence[], jobApplications: [], interviewReviews: [] } satisfies ResumeLibraryState, version: 10 };
 }
 
 async function seed(page: Page, templateId = "ats-classic") {
@@ -66,15 +81,22 @@ async function waitForLibraryHydration(page: Page) {
   await expect(page.locator('select[aria-label]').first()).toBeEnabled();
 }
 
-function analysisStreamBody(analysis: NonNullable<ResumeLibraryState["documents"][number]["analysisResult"]>) {
-  const base = { requestId: "e2e-analysis", elapsedMs: 10, remainingMs: 179_990 };
+function jdStreamBody(materialRevision = 1) {
+  const document = decisionDocument(materialRevision, "draft");
   return [
-    { ...base, type: "started" },
-    { ...base, type: "stage-started", stage: "jd-requirements", stageIndex: 1, stageCount: 2, message: "生成 JD 需求地图" },
-    { ...base, type: "stage-completed", stage: "jd-requirements", stageIndex: 1, stageCount: 2, message: "生成 JD 需求地图" },
-    { ...base, type: "stage-started", stage: "match-and-insights", stageIndex: 2, stageCount: 2, message: "匹配事实并生成岗位概览" },
-    { ...base, type: "stage-completed", stage: "match-and-insights", stageIndex: 2, stageCount: 2, message: "匹配事实并生成岗位概览" },
-    { ...base, type: "completed", result: analysis, mode: "mock" },
+    { type: "started", elapsedMs: 0 },
+    { type: "stage-started", stage: "jd-draft", elapsedMs: 5, message: "生成 JD 需求地图草稿" },
+    { type: "stage-completed", stage: "jd-draft", elapsedMs: 10, message: "等待人工确认" },
+    { type: "completed", elapsedMs: 10, document, mode: "mock" },
+  ].map((event) => JSON.stringify(event)).join("\n") + "\n";
+}
+
+function matchStreamBody(analysis: NonNullable<ResumeLibraryState["documents"][number]["analysisResult"]>) {
+  return [
+    { type: "started", elapsedMs: 0 },
+    { type: "stage-started", stage: "fact-match", elapsedMs: 5, message: "匹配真实经历" },
+    { type: "stage-completed", stage: "fact-match", elapsedMs: 10, message: "岗位准备度已完成" },
+    { type: "completed", elapsedMs: 10, result: analysis, mode: "mock" },
   ].map((event) => JSON.stringify(event)).join("\n") + "\n";
 }
 
@@ -169,7 +191,7 @@ test("loads example data and keeps an evidence item after reload", async ({ page
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "使用示例数据" }).click();
   await expect(page.getByLabel("目标岗位")).toHaveValue("AI 产品经理");
-  await expect(page.getByText("示例材料已载入，下一步点击“开始分析”。")).toBeVisible();
+  await expect(page.getByText("示例材料已载入，下一步点击“解析 JD”。")).toBeVisible();
 
   await page.getByRole("button", { name: /经历证据库/ }).click();
   await page.getByRole("button", { name: "新增经历" }).click();
@@ -222,7 +244,8 @@ test("persists a job application linked to the selected resume", async ({ page }
 
 test("keeps creation pending until the final resume is generated", async ({ page }) => {
   const analysis = stateFor().state.documents[0].analysisResult;
-  await page.route("**/api/analyze/stream", (route) => route.fulfill({ status: 200, contentType: "application/x-ndjson", body: analysisStreamBody(analysis!) }));
+  await page.route("**/api/analyze/stream", (route) => route.fulfill({ status: 200, contentType: "application/x-ndjson", body: jdStreamBody() }));
+  await page.route("**/api/analyze/match/stream", (route) => route.fulfill({ status: 200, contentType: "application/x-ndjson", body: matchStreamBody(analysis!) }));
   await page.route("**/api/optimize", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -234,7 +257,10 @@ test("keeps creation pending until the final resume is generated", async ({ page
   await page.route("**/api/finalize", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ finalResume: resume, mode: "mock" }) }));
   await page.goto("/");
   await page.getByRole("button", { name: "使用示例数据" }).click();
-  await page.getByRole("button", { name: "开始分析", exact: true }).click();
+  await page.getByRole("button", { name: "解析 JD", exact: true }).click();
+  await page.getByRole("button", { name: "批量确认安全项" }).click();
+  await page.getByRole("button", { name: "确认需求地图" }).click();
+  await page.getByRole("button", { name: "匹配真实经历", exact: true }).click();
   await expect(page.getByText("最终简历尚未生成确认")).toBeVisible();
   await page.getByRole("button", { name: /AI 优化 3\.1/ }).click();
   await page.getByRole("button", { name: "生成优化方案" }).click();
@@ -243,26 +269,33 @@ test("keeps creation pending until the final resume is generated", async ({ page
 });
 
 test("streams analysis progress, cancels actively and recovers after refresh", async ({ page }) => {
-  await page.route("**/api/analyze/stream", (route) => route.continue({
-    headers: { ...route.request().headers(), "X-Workflow-Provider": "mock" },
-  }));
+  let analysisCalls = 0;
+  await page.route("**/api/analyze/stream", async (route) => {
+    analysisCalls += 1;
+    if (analysisCalls <= 2) {
+      await new Promise((resolve) => setTimeout(resolve, 5_000));
+      await route.fulfill({ status: 200, contentType: "application/x-ndjson", body: jdStreamBody() }).catch(() => undefined);
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/x-ndjson", body: jdStreamBody() });
+  });
   await page.goto("/");
   await page.getByRole("button", { name: "使用示例数据" }).click();
 
-  await page.getByRole("button", { name: "开始分析", exact: true }).click();
+  await page.getByRole("button", { name: "解析 JD", exact: true }).click();
   await expect(page.getByRole("button", { name: "取消分析" })).toBeVisible();
-  await expect(page.getByText("生成 JD 需求地图")).toBeVisible();
+  await expect(page.getByText("正在启动深度分析", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "取消分析" }).click();
   await expect(page.getByText(/分析已取消/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "开始分析", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "解析 JD", exact: true })).toBeEnabled();
 
-  await page.getByRole("button", { name: "开始分析", exact: true }).click();
+  await page.getByRole("button", { name: "解析 JD", exact: true }).click();
   await expect(page.getByRole("button", { name: "取消分析" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("button", { name: "开始分析", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "解析 JD", exact: true })).toBeEnabled();
 
-  await page.getByRole("button", { name: "开始分析", exact: true }).click();
-  await expect(page.getByText("原子岗位要求")).toBeVisible();
+  await page.getByRole("button", { name: "解析 JD", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "JD 决策地图" })).toBeVisible();
 });
 
 test("locks the old analysis after JD changes and unlocks after reanalysis", async ({ page }) => {
@@ -284,8 +317,9 @@ test("stores target company context and shows the requirement map", async ({ pag
   await page.getByLabel("岗位背景补充（可选）").fill("已知该岗位负责企业服务业务线，团队配置仍待确认");
   await expect(page.getByText(/旧分析仍可查看/)).toBeVisible();
   await page.getByRole("button", { name: /JD 解析 2\.1/ }).click();
-  await expect(page.getByText(/原子岗位要求/)).toBeVisible();
-  await expect(page.getByText("req-1", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "JD 决策地图" })).toBeVisible();
+  await expect(page.getByText(/材料已变化，这张需求地图只能查看/)).toBeVisible();
+  await expect(page.getByText("负责企业服务产品规划", { exact: true }).first()).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: /岗位与简历材料 1\.1/ }).click();
   await expect(page.getByLabel("目标公司名称（可选）")).toHaveValue("示例目标公司");

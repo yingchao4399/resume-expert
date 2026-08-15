@@ -59,11 +59,13 @@ export function StepSidebar() {
     finalResumeStatus,
     materialRevision,
     analysisRevision,
+    jdAnalysisDocument,
+    analysisBasis,
   } = useResumeStore();
-  const progress = getWorkflowProgress({ currentStep, userInput, analysisResult, finalResumeStatus, materialRevision, analysisRevision });
+  const progress = getWorkflowProgress({ currentStep, userInput, analysisResult, finalResumeStatus, materialRevision, analysisRevision, jdAnalysisDocument, analysisBasis });
   const atsAssessment = useMemo(
-    () => (isAnalysisFresh({ analysisResult, materialRevision, analysisRevision }) ? calculateATSAssessment(userInput, analysisResult!) : null),
-    [analysisResult, userInput, materialRevision, analysisRevision]
+    () => (isAnalysisFresh({ analysisResult, materialRevision, analysisRevision, jdAnalysisDocument, analysisBasis }) ? calculateATSAssessment(userInput, analysisResult!) : null),
+    [analysisResult, userInput, materialRevision, analysisRevision, jdAnalysisDocument, analysisBasis]
   );
   const progressById = new Map(progress.map((item) => [item.id, item]));
 

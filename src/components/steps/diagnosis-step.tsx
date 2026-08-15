@@ -19,26 +19,32 @@ export function DiagnosisStep() {
     return <EmptyState message="请先完成输入材料并开始分析" />;
   }
 
-  const { diagnosis } = analysisResult;
+  const { diagnosis, jobReadiness } = analysisResult;
+  const recommendationLabel = jobReadiness?.recommendation === "priority-apply"
+    ? "优先投"
+    : jobReadiness?.recommendation === "cautious-apply"
+      ? "谨慎投"
+      : "补证后再投";
 
   return (
     <div>
       <SectionTitle
-        title="简历诊断"
-        description="基于 JD 要求评估当前简历的匹配度与主要问题"
+        title="岗位准备度"
+        description="按已确认岗位要求的优先级和可核验证据确定性计算，不代表录用概率"
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-[160px_1fr]">
         <Card className="flex items-center justify-center py-6">
           <div className="text-center">
             <ScoreRing score={diagnosis.overallScore} />
-            <p className="mt-2 text-xs text-neutral-500">AI 简历诊断分</p>
+            <p className="mt-2 text-xs text-neutral-500">岗位准备度估算</p>
+            {jobReadiness && <p className="mt-1 text-sm font-medium text-blue-700">{recommendationLabel}</p>}
           </div>
         </Card>
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">维度评分</CardTitle>
+            <CardTitle className="text-sm">确定性分项</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {diagnosis.dimensionScores.map((d) => (
@@ -58,7 +64,7 @@ export function DiagnosisStep() {
       <div className="mb-6 grid gap-4 sm:grid-cols-2">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">主要问题</CardTitle>
+            <CardTitle className="text-sm">高价值缺口</CardTitle>
           </CardHeader>
           <CardContent>
             <ListSection title="" items={diagnosis.mainIssues} />
@@ -67,7 +73,7 @@ export function DiagnosisStep() {
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">优先修改建议</CardTitle>
+            <CardTitle className="text-sm">准备建议</CardTitle>
           </CardHeader>
           <CardContent>
             <ListSection title="" items={diagnosis.prioritySuggestions} />
