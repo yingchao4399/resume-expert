@@ -65,7 +65,19 @@ export function formatResumeAsText(resume: import("@/types/resume").FinalResume)
   lines.push(resume.skillsAndTools.join(" · "));
   lines.push("");
   lines.push("教育背景");
-  lines.push(`${resume.education.school} | ${resume.education.degree} | ${resume.education.period}`);
-
+  const education = resume.educationHistory?.length ? resume.educationHistory : [resume.education];
+  education.forEach((item) => lines.push(`${item.school} | ${item.degree} | ${item.period}`));
+  for (const [label, values] of [["证书", resume.certifications], ["语言", resume.languages], ["奖项", resume.awards], ["链接", resume.links]] as const) {
+    if (values?.length) {
+      lines.push("");
+      lines.push(label);
+      values.forEach((item) => lines.push(item.text));
+    }
+  }
+  if (resume.otherSections?.length) {
+    lines.push("");
+    lines.push("其他信息");
+    resume.otherSections.forEach((item) => lines.push(item.text));
+  }
   return lines.join("\n");
 }

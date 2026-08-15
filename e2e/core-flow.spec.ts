@@ -42,7 +42,7 @@ function decisionDocument(materialRevision = 0, status: "draft" | "confirmed" = 
 
 function stateFor(templateId = "ats-classic", finalResumeStatus: "draft" | "confirmed" | "stale" = "confirmed") {
   const document = {
-    schemaVersion: 9,
+    schemaVersion: 10,
     id: "e2e-document",
     title: "产品经理版本",
     createdAt: "2026-08-03T00:00:00.000Z",
@@ -264,7 +264,7 @@ test("keeps creation pending until the final resume is generated", async ({ page
   await expect(page.getByText("最终简历尚未生成确认")).toBeVisible();
   await page.getByRole("button", { name: /AI 优化 3\.1/ }).click();
   await page.getByRole("button", { name: "生成优化方案" }).click();
-  await page.getByRole("button", { name: /生成最终简历/ }).click();
+  await page.getByRole("button", { name: "应用补充并重新生成最终简历", exact: true }).click();
   await expect(page.getByRole("heading", { name: "最终简历" })).toBeVisible();
 });
 

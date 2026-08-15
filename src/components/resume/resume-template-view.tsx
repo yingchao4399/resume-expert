@@ -59,7 +59,7 @@ export function ResumeTemplateView({ resume, layoutConfig, className }: ResumeTe
 
       <div className="resume-sections mt-4">
         {layout.sectionOrder.map((sectionId) =>
-          layout.hiddenSections.includes(sectionId) ? null : (
+          layout.hiddenSections.includes(sectionId) || !hasSectionContent(sectionId, resume) ? null : (
             <ResumeSection key={sectionId} id={sectionId} layout={layout}>
               <SectionContent id={sectionId} resume={resume} layout={layout} />
             </ResumeSection>
@@ -128,15 +128,39 @@ function SectionContent({ id, resume, layout }: { id: ResumeSectionId; resume: F
       );
     case "skillsAndTools":
       return <p className="text-neutral-700">{resume.skillsAndTools.join(" · ")}</p>;
+    case "certifications":
+      return <TextList values={resume.certifications ?? []} />;
+    case "languages":
+      return <TextList values={resume.languages ?? []} />;
+    case "awards":
+      return <TextList values={resume.awards ?? []} />;
+    case "links":
+      return <TextList values={resume.links ?? []} />;
+    case "otherSections":
+      return <TextList values={resume.otherSections ?? []} />;
     case "education":
-      return (
-        <p>
-          {[resume.education.school, resume.education.degree, resume.education.period]
-            .filter(Boolean)
-            .join(" · ")}
-        </p>
-      );
+      return <div className="space-y-1">{(resume.educationHistory?.length ? resume.educationHistory : [resume.education]).map((education, index) => <p key={`${education.school}-${index}`}>{[education.school, education.degree, education.period].filter(Boolean).join(" · ")}</p>)}</div>;
   }
+}
+
+function TextList({ values }: { values: Array<{ text: string }> }) {
+  return <ul className="space-y-1 text-neutral-700">{values.map((value, index) => <li key={`${value.text}-${index}`}>{value.text}</li>)}</ul>;
+}
+
+function hasSectionContent(id: ResumeSectionId, resume: FinalResume): boolean {
+  if (id === "education") return Boolean(resume.educationHistory?.length || resume.education.school || resume.education.degree || resume.education.period);
+  if (id === "certifications") return Boolean(resume.certifications?.some((item) => item.text.trim()));
+  if (id === "languages") return Boolean(resume.languages?.some((item) => item.text.trim()));
+  if (id === "awards") return Boolean(resume.awards?.some((item) => item.text.trim()));
+  if (id === "links") return Boolean(resume.links?.some((item) => item.text.trim()));
+  if (id === "otherSections") return Boolean(resume.otherSections?.some((item) => item.text.trim()));
+  if (id === "workExperience") return resume.workExperience.length > 0;
+  if (id === "projectExperience") return resume.projectExperience.length > 0;
+  if (id === "skillsAndTools") return resume.skillsAndTools.length > 0;
+  if (id === "coreSkills") return resume.coreSkills.length > 0;
+  if (id === "jobIntent") return Boolean(resume.jobIntent.trim());
+  if (id === "summary") return Boolean(resume.summary.trim());
+  return true;
 }
 
 function ExperienceList({

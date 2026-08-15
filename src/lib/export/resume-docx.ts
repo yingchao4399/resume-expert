@@ -118,14 +118,18 @@ export function buildResumeDocument(
         );
       case "skillsAndTools":
         return [bodyParagraph(resume.skillsAndTools.join(" · "))];
+      case "certifications":
+        return (resume.certifications ?? []).filter((item) => item.text.trim()).map((item) => bodyParagraph(item.text));
+      case "languages":
+        return (resume.languages ?? []).filter((item) => item.text.trim()).map((item) => bodyParagraph(item.text));
+      case "awards":
+        return (resume.awards ?? []).filter((item) => item.text.trim()).map((item) => bodyParagraph(item.text));
+      case "links":
+        return (resume.links ?? []).filter((item) => item.text.trim()).map((item) => bodyParagraph(item.text));
+      case "otherSections":
+        return (resume.otherSections ?? []).filter((item) => item.text.trim()).map((item) => bodyParagraph(item.text));
       case "education":
-        return [
-          bodyParagraph(
-            [resume.education.school, resume.education.degree, resume.education.period]
-              .filter(Boolean)
-              .join(" · ")
-          ),
-        ];
+        return (resume.educationHistory?.length ? resume.educationHistory : [resume.education]).map((education) => bodyParagraph([education.school, education.degree, education.period].filter(Boolean).join(" · ")));
     }
   };
 
@@ -150,7 +154,7 @@ export function buildResumeDocument(
       ],
     }),
     ...layout.sectionOrder.flatMap((id) =>
-      layout.hiddenSections.includes(id) ? [] : [heading(id), ...sectionContent(id)]
+      layout.hiddenSections.includes(id) || !hasDocxSectionContent(id, resume) ? [] : [heading(id), ...sectionContent(id)]
     ),
   ];
 
@@ -176,6 +180,22 @@ export function buildResumeDocument(
       },
     ],
   });
+}
+
+function hasDocxSectionContent(id: ResumeSectionId, resume: FinalResume): boolean {
+  if (id === "education") return Boolean(resume.education.school || resume.education.degree || resume.education.period || resume.educationHistory?.length);
+  if (id === "certifications") return Boolean(resume.certifications?.some((item) => item.text.trim()));
+  if (id === "languages") return Boolean(resume.languages?.some((item) => item.text.trim()));
+  if (id === "awards") return Boolean(resume.awards?.some((item) => item.text.trim()));
+  if (id === "links") return Boolean(resume.links?.some((item) => item.text.trim()));
+  if (id === "otherSections") return Boolean(resume.otherSections?.some((item) => item.text.trim()));
+  if (id === "workExperience") return resume.workExperience.length > 0;
+  if (id === "projectExperience") return resume.projectExperience.length > 0;
+  if (id === "skillsAndTools") return resume.skillsAndTools.length > 0;
+  if (id === "coreSkills") return resume.coreSkills.length > 0;
+  if (id === "jobIntent") return Boolean(resume.jobIntent.trim());
+  if (id === "summary") return Boolean(resume.summary.trim());
+  return true;
 }
 
 export function buildResumeFileName(

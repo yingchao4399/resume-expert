@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  downloadResumeBackupV4,
+  downloadResumeBackupV7,
   readResumeBackup,
   type ResumeBackup,
 } from "@/lib/backup/resume-backup";
@@ -65,10 +65,10 @@ export function ResumeBackupDialog({ open, onOpenChange }: ResumeBackupDialogPro
         </DialogHeader>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <Button variant="outline" disabled={!active} onClick={() => active && void downloadResumeBackupV4([active], careerEvidence.filter((item) => item.sourceDocumentId === null || item.sourceDocumentId === active.id), jobApplications.filter((item) => item.resumeDocumentId === active.id), interviewReviews.filter((item) => item.resumeDocumentId === active.id), "resume-expert-current.json", "current")}>
+          <Button variant="outline" disabled={!active} onClick={() => active && void downloadResumeBackupV7([active], careerEvidence.filter((item) => item.sourceDocumentId === null || item.sourceDocumentId === active.id), jobApplications.filter((item) => item.resumeDocumentId === active.id), interviewReviews.filter((item) => item.resumeDocumentId === active.id), "resume-expert-current.json", "current")}>
             <Download className="h-4 w-4" /> 导出当前版本
           </Button>
-          <Button variant="outline" onClick={() => void downloadResumeBackupV4(documents, careerEvidence, jobApplications, interviewReviews)}>
+          <Button variant="outline" onClick={() => void downloadResumeBackupV7(documents, careerEvidence, jobApplications, interviewReviews)}>
             <FileJson className="h-4 w-4" /> 导出全部版本
           </Button>
         </div>

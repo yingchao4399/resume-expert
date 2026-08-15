@@ -12,6 +12,11 @@ export const RESUME_SECTION_ORDER: ResumeSectionId[] = [
   "projectExperience",
   "skillsAndTools",
   "education",
+  "certifications",
+  "languages",
+  "awards",
+  "links",
+  "otherSections",
 ];
 
 export const RESUME_SECTION_LABELS: Record<ResumeSectionId, string> = {
@@ -22,6 +27,11 @@ export const RESUME_SECTION_LABELS: Record<ResumeSectionId, string> = {
   projectExperience: "项目经历",
   skillsAndTools: "技能工具",
   education: "教育背景",
+  certifications: "证书",
+  languages: "语言",
+  awards: "奖项与荣誉",
+  links: "链接",
+  otherSections: "其他信息",
 };
 
 export interface ResumeTemplateDefinition {

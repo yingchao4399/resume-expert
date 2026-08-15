@@ -71,6 +71,12 @@ function cleanResume(resume: FinalResume): FinalResume {
       degree: resume.education.degree.trim(),
       period: resume.education.period.trim(),
     },
+    educationHistory: (resume.educationHistory ?? []).map((item) => ({ ...item, school: item.school.trim(), degree: item.degree.trim(), period: item.period.trim() })).filter((item) => item.school || item.degree || item.period),
+    certifications: (resume.certifications ?? []).map((item) => ({ ...item, text: item.text.trim() })).filter((item) => item.text),
+    languages: (resume.languages ?? []).map((item) => ({ ...item, text: item.text.trim() })).filter((item) => item.text),
+    awards: (resume.awards ?? []).map((item) => ({ ...item, text: item.text.trim() })).filter((item) => item.text),
+    links: (resume.links ?? []).map((item) => ({ ...item, text: item.text.trim() })).filter((item) => item.text),
+    otherSections: (resume.otherSections ?? []).map((item) => ({ ...item, text: item.text.trim() })).filter((item) => item.text),
   };
 }
 
