@@ -1,5 +1,5 @@
 import type { StateStorage } from "zustand/middleware";
-import type { FinalResumeStatus, ResumeDocument, ResumeLibraryState } from "@/types/resume";
+import type { FinalResumeStatus, ImportedResumeProfile, ResumeDocument, ResumeLibraryState } from "@/types/resume";
 import { parseResumeBackup } from "@/lib/backup/resume-backup";
 import { normalizeFinalResumeBullets } from "@/lib/evidence/resume-evidence";
 import { sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
@@ -161,6 +161,7 @@ export function migrateDocument(document: LegacyResumeDocument): ResumeDocument 
   const sourceResume = document.sourceResume
     ? normalizeFinalResumeBullets(document.sourceResume, "imported")
     : null;
+  const importedResume = document.importedResume ?? (sourceResume ? migrateSourceResume(sourceResume) : null);
   const analysisResult = document.analysisResult
     ? {
         ...document.analysisResult,
@@ -185,15 +186,37 @@ export function migrateDocument(document: LegacyResumeDocument): ResumeDocument 
   return {
     ...base,
     ...documentWithoutLegacyStatus,
-    schemaVersion: 9,
+    schemaVersion: 10,
     jobTargetContext: document.jobTargetContext ?? { companyName: "", notes: "", companySnapshotId: null },
     materialRevision: typeof document.materialRevision === "number" ? document.materialRevision : 0,
     analysisRevision: analysisResult && hasCurrentRequirementMap && typeof document.analysisRevision === "number" ? document.analysisRevision : null,
     jdAnalysisDocument: hasCurrentRequirementMap ? document.jdAnalysisDocument ?? null : null,
     analysisBasis: hasCurrentRequirementMap && document.analysisBasis ? document.analysisBasis : null,
     sourceResume,
+    importedResume,
     analysisResult,
     finalResumeStatus,
     layoutConfig: sanitizeLayoutConfig(document.layoutConfig),
   } as ResumeDocument;
+}
+
+function migrateSourceResume(sourceResume: NonNullable<ResumeDocument["sourceResume"]>): ImportedResumeProfile {
+  const item = (text: string) => ({ id: `legacy-import-${stableLegacyHash(text)}`, text, sourceQuote: text, status: "needs-review" as const, confidence: "low" as const });
+  return {
+    schemaVersion: 1,
+    personalInfo: sourceResume.personalInfo,
+    jobIntent: sourceResume.jobIntent,
+    summary: sourceResume.summary,
+    workExperience: sourceResume.workExperience.map((entry) => ({ id: `legacy-work-${stableLegacyHash(entry.company + entry.role)}`, organization: entry.company, name: "", role: entry.role, period: entry.period, summary: "", bullets: entry.bullets.map((bullet) => item(typeof bullet === "string" ? bullet : bullet.text)), sourceQuote: entry.company, status: "needs-review", confidence: "low" })),
+    internshipExperience: [],
+    projectExperience: sourceResume.projectExperience.map((entry) => ({ id: `legacy-project-${stableLegacyHash(entry.name + entry.role)}`, organization: "", name: entry.name, role: entry.role, period: entry.period, summary: "", bullets: entry.bullets.map((bullet) => item(typeof bullet === "string" ? bullet : bullet.text)), sourceQuote: entry.name, status: "needs-review", confidence: "low" })),
+    educationHistory: sourceResume.education.school ? [{ id: `legacy-education-${stableLegacyHash(sourceResume.education.school)}`, school: sourceResume.education.school, degree: sourceResume.education.degree, period: sourceResume.education.period, details: [], sourceQuote: sourceResume.education.school, status: "needs-review", confidence: "low" }] : [],
+    skillsAndTools: sourceResume.skillsAndTools.map(item), certifications: sourceResume.certifications ?? [], languages: sourceResume.languages ?? [], awards: sourceResume.awards ?? [], links: sourceResume.links ?? [], otherSections: sourceResume.otherSections ?? [], unmappedSegments: [],
+  };
+}
+
+function stableLegacyHash(value: string): string {
+  let hash = 2166136261;
+  for (const char of value) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+  return (hash >>> 0).toString(16);
 }

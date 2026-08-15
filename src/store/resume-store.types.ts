@@ -52,6 +52,7 @@ export interface ResumeStore {
   jdAnalysisDocument: JDAnalysisDocument | null;
   analysisBasis: { materialRevision: number; jdAnalysisRevision: number } | null;
   sourceResume: FinalResume | null;
+  importedResume?: import("@/types/resume").ImportedResumeProfile | null;
   importMetadata: ResumeImportMetadata | null;
   layoutConfig: ResumeLayoutConfig;
   analysisError: string | null;
@@ -90,7 +91,7 @@ export interface ResumeStore {
   setFollowUpGuidance: (id: string, example: string) => void;
   openFollowUpForRequirement: (requirementId: string) => void;
   focusedRequirementId: string | null;
-  setImportedResume: (text: string, sourceResume: FinalResume | null, metadata: ResumeImportMetadata) => void;
+  setImportedResume: (text: string, sourceResume: FinalResume | null, metadata: ResumeImportMetadata, importedResume?: import("@/types/resume").ImportedResumeProfile | null) => void;
   setLayoutConfig: (config: ResumeLayoutConfig) => void;
   loadExampleData: () => boolean;
   setCurrentStep: (step: StepId) => void;

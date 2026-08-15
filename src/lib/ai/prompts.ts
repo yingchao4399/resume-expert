@@ -343,5 +343,11 @@ export function normalizeFinalResume(
     projectExperience: resume?.projectExperience ?? [],
     skillsAndTools: resume?.skillsAndTools ?? [],
     education: resume?.education ?? { school: "", degree: "", period: "" },
+    educationHistory: resume?.educationHistory ?? [],
+    certifications: resume?.certifications ?? [],
+    languages: resume?.languages ?? [],
+    awards: resume?.awards ?? [],
+    links: resume?.links ?? [],
+    otherSections: resume?.otherSections ?? [],
   };
 }

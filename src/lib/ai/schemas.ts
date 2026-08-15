@@ -225,6 +225,56 @@ const projectExperienceSchema = z.object({
   bullets: z.array(resumeBulletSchema),
 });
 
+const importedResumeItemSchema = z.object({
+  id: z.string().min(1),
+  text: z.string(),
+  sourceQuote: z.string(),
+  status: z.enum(["candidate", "confirmed", "needs-review"]).default("candidate"),
+  confidence: z.enum(["high", "medium", "low"]).default("medium"),
+});
+
+const importedExperienceSchema = z.object({
+  id: z.string().min(1),
+  organization: z.string(),
+  name: z.string(),
+  role: z.string(),
+  period: z.string(),
+  summary: z.string(),
+  bullets: z.array(importedResumeItemSchema),
+  sourceQuote: z.string(),
+  status: z.enum(["candidate", "confirmed", "needs-review"]).default("candidate"),
+  confidence: z.enum(["high", "medium", "low"]).default("medium"),
+});
+
+const importedEducationSchema = z.object({
+  id: z.string().min(1),
+  school: z.string(),
+  degree: z.string(),
+  period: z.string(),
+  details: z.array(importedResumeItemSchema),
+  sourceQuote: z.string(),
+  status: z.enum(["candidate", "confirmed", "needs-review"]).default("candidate"),
+  confidence: z.enum(["high", "medium", "low"]).default("medium"),
+});
+
+export const importedResumeProfileSchema = z.object({
+  schemaVersion: z.literal(1).default(1),
+  personalInfo: z.object({ name: z.string(), email: z.string(), phone: z.string(), location: z.string() }),
+  jobIntent: z.string(),
+  summary: z.string(),
+  workExperience: z.array(importedExperienceSchema),
+  internshipExperience: z.array(importedExperienceSchema),
+  projectExperience: z.array(importedExperienceSchema),
+  educationHistory: z.array(importedEducationSchema),
+  skillsAndTools: z.array(importedResumeItemSchema),
+  certifications: z.array(importedResumeItemSchema),
+  languages: z.array(importedResumeItemSchema),
+  awards: z.array(importedResumeItemSchema),
+  links: z.array(importedResumeItemSchema),
+  otherSections: z.array(importedResumeItemSchema),
+  unmappedSegments: z.array(importedResumeItemSchema),
+});
+
 export const finalResumeSchema = z.object({
   personalInfo: z.object({
     name: z.string(),
@@ -243,6 +293,12 @@ export const finalResumeSchema = z.object({
     degree: z.string(),
     period: z.string(),
   }),
+  educationHistory: z.array(importedEducationSchema).optional().default([]),
+  certifications: z.array(importedResumeItemSchema).optional().default([]),
+  languages: z.array(importedResumeItemSchema).optional().default([]),
+  awards: z.array(importedResumeItemSchema).optional().default([]),
+  links: z.array(importedResumeItemSchema).optional().default([]),
+  otherSections: z.array(importedResumeItemSchema).optional().default([]),
 });
 
 const interviewQuestionSchema = z.object({
@@ -388,7 +444,10 @@ export const structureResumeRequestSchema = z.object({
   text: z.string().trim().min(20, "??????").max(100000, "???????? 100000 ?"),
 });
 
-export const structureResumeResultSchema = finalResumeResultSchema;
+export const structureResumeResultSchema = finalResumeResultSchema.extend({
+  importedResume: importedResumeProfileSchema.optional(),
+  unmappedSegments: z.array(importedResumeItemSchema).optional().default([]),
+});
 
 export const analyzeRequestSchema = z.object({
   input: userInputSchema.refine(

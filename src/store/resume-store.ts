@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import type { CareerEvidence, FinalResume, ResumeDocument, ResumeLibraryState } from "@/types/resume";
+import type { CareerEvidence, FinalResume, ImportedResumeProfile, ResumeDocument, ResumeLibraryState } from "@/types/resume";
 import { WORKFLOW_STAGES } from "@/config/workflow";
 import { sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
 import { buildEvidenceCandidates, evidenceSourceReference, mapResumeBullets, normalizeFinalResumeBullets } from "@/lib/evidence/resume-evidence";
@@ -65,6 +65,35 @@ const ANALYSIS_STEPS = new Set(WORKFLOW_STAGES.slice(1).flatMap((stage) => stage
 function mapDocumentResume(document: ResumeDocument, mapper: (resume: FinalResume) => FinalResume): ResumeDocument {
   if (!document.analysisResult) return document;
   return { ...document, analysisResult: { ...document.analysisResult, finalResume: mapper(document.analysisResult.finalResume) } };
+}
+
+function preserveImportedSections(resume: FinalResume, sourceResume: FinalResume | null): FinalResume {
+  if (!sourceResume) return resume;
+  const fallback = <T,>(current: T[] | undefined, source: T[] | undefined): T[] | undefined =>
+    current?.length ? current : source;
+  return {
+    ...resume,
+    educationHistory: fallback(resume.educationHistory, sourceResume.educationHistory),
+    certifications: fallback(resume.certifications, sourceResume.certifications),
+    languages: fallback(resume.languages, sourceResume.languages),
+    awards: fallback(resume.awards, sourceResume.awards),
+    links: fallback(resume.links, sourceResume.links),
+    otherSections: fallback(resume.otherSections, sourceResume.otherSections),
+  };
+}
+
+function confirmedImportedContent(profile: ImportedResumeProfile): Set<string> {
+  const values = new Set<string>();
+  const add = (value: string) => {
+    const normalized = value.trim();
+    if (normalized) values.add(normalized);
+  };
+  for (const experience of [...profile.workExperience, ...profile.internshipExperience, ...profile.projectExperience]) {
+    if (experience.status !== "confirmed") continue;
+    experience.bullets.filter((item) => item.status === "confirmed").forEach((item) => add(item.text));
+  }
+  profile.skillsAndTools.filter((item) => item.status === "confirmed").forEach((item) => add(item.text));
+  return values;
 }
 
 function updateEvidenceLinks(document: ResumeDocument, evidenceId: string, mode: "review" | "remove"): ResumeDocument {
@@ -260,7 +289,7 @@ export const useResumeStore = create<ResumeStore>()(
             ? parsed.state?.activeDocumentId as string
             : recoveredDocuments[0].id;
           const recoveredValue = JSON.stringify({
-            state: { schemaVersion: 10, documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
+            state: { schemaVersion: 11, documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
             version: 9,
           });
           validatePersistedLibrary(recoveredValue);
@@ -497,7 +526,7 @@ export const useResumeStore = create<ResumeStore>()(
           });
         }),
 
-      setImportedResume: (text, sourceResume, metadata) =>
+      setImportedResume: (text, sourceResume, metadata, importedResume?: ImportedResumeProfile | null) =>
         set((state) => {
           const normalizedSource = sourceResume
             ? normalizeFinalResumeBullets(sourceResume, "imported")
@@ -506,6 +535,10 @@ export const useResumeStore = create<ResumeStore>()(
           const candidates = normalizedSource
             ? buildEvidenceCandidates(normalizedSource, active.id)
             : [];
+          const trustedContent = importedResume ? confirmedImportedContent(importedResume) : null;
+          const confirmedCandidates = trustedContent
+            ? candidates.filter((item) => trustedContent.has(item.description.trim()))
+            : candidates;
           const retained = state.careerEvidence.filter(
             (item) => !(item.sourceDocumentId === active.id && item.status === "candidate")
           );
@@ -513,6 +546,7 @@ export const useResumeStore = create<ResumeStore>()(
             ...updateActiveDocument(state, {
               userInput: { ...state.userInput, originalResume: text },
               sourceResume: normalizedSource,
+              importedResume: importedResume ?? null,
               importMetadata: metadata,
               materialRevision: state.materialRevision + 1,
               analysisRevision: null,
@@ -521,7 +555,7 @@ export const useResumeStore = create<ResumeStore>()(
               currentStep: "input",
               finalResumeStatus: state.analysisResult ? "stale" : "draft",
             }),
-            careerEvidence: [...retained, ...candidates],
+            careerEvidence: [...retained, ...confirmedCandidates],
           };
         }),
 
@@ -551,6 +585,7 @@ export const useResumeStore = create<ResumeStore>()(
             jdAnalysisDocument: null,
             analysisBasis: null,
             sourceResume: null,
+            importedResume: null,
             importMetadata: null,
             currentStep: "input",
             finalResumeStatus: "draft",
@@ -651,7 +686,7 @@ export const useResumeStore = create<ResumeStore>()(
                 active.title === "未命名简历"
                   ? suggestedTitle(state.userInput)
                   : active.title,
-              analysisResult: { ...result, finalResume: normalizeFinalResumeBullets(result.finalResume, "ai-generated", state.careerEvidence) },
+              analysisResult: { ...result, finalResume: normalizeFinalResumeBullets(preserveImportedSections(result.finalResume, state.sourceResume), "ai-generated", state.careerEvidence) },
               analysisRevision: expectedMaterialRevision,
               analysisBasis: expectedJDRevision === undefined ? null : { materialRevision: expectedMaterialRevision, jdAnalysisRevision: expectedJDRevision },
               finalResumeStatus: "draft",
@@ -686,7 +721,7 @@ export const useResumeStore = create<ResumeStore>()(
         set((state) => {
           if (!state.analysisResult) return state;
           return updateActiveDocument(state, {
-            analysisResult: { ...state.analysisResult, finalResume: normalizeFinalResumeBullets(resume, options?.manual ? "manual" : "ai-generated", state.careerEvidence) },
+            analysisResult: { ...state.analysisResult, finalResume: normalizeFinalResumeBullets(preserveImportedSections(resume, state.sourceResume), options?.manual ? "manual" : "ai-generated", state.careerEvidence) },
             finalResumeStatus: "confirmed",
             hasManualEdits: options?.manual === true,
           });
@@ -810,11 +845,11 @@ export const useResumeStore = create<ResumeStore>()(
     }),
     {
       name: RESUME_STORAGE_KEY,
-      version: 10,
+       version: 11,
       skipHydration: true,
       storage: createJSONStorage<ResumeLibraryState>(() => safeLocalStorage),
       partialize: (state) => ({
-        schemaVersion: 10,
+        schemaVersion: 11,
         documents: state.documents,
         activeDocumentId: state.activeDocumentId,
         // Schema 8 将事实主数据迁入 IndexedDB；此字段仅用于首次迁移和旧组件兼容。
@@ -830,7 +865,7 @@ export const useResumeStore = create<ResumeStore>()(
           ? persisted.documents.map((document) => migrateDocument(document))
           : [];
         return {
-          schemaVersion: 10,
+           schemaVersion: 11,
           documents,
           activeDocumentId: persisted.activeDocumentId ?? documents[0]?.id ?? "",
           careerEvidence: Array.isArray(persisted.careerEvidence)

@@ -12,7 +12,7 @@ describe("resume document helpers", () => {
     const document = createEmptyDocument("document-1");
 
     expect(document).toMatchObject({
-      schemaVersion: 9,
+      schemaVersion: 10,
       jobTargetContext: { companyName: "", notes: "", companySnapshotId: null },
       id: "document-1",
       title: "未命名简历",

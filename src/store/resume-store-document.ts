@@ -31,7 +31,7 @@ export function suggestedTitle(input: UserInput): string {
 export function createEmptyDocument(id = createId()): ResumeDocument {
   const timestamp = nowISO();
   return {
-    schemaVersion: 9,
+    schemaVersion: 10,
     id,
     title: "未命名简历",
     createdAt: timestamp,
@@ -45,6 +45,7 @@ export function createEmptyDocument(id = createId()): ResumeDocument {
     jdAnalysisDocument: null,
     analysisBasis: null,
     sourceResume: null,
+    importedResume: null,
     importMetadata: null,
     layoutConfig: getDefaultLayoutConfig(),
     optimizeStyle: "ai-product",
@@ -64,6 +65,7 @@ export function workingStateFromDocument(document: ResumeDocument) {
     jdAnalysisDocument: document.jdAnalysisDocument,
     analysisBasis: document.analysisBasis,
     sourceResume: document.sourceResume,
+    importedResume: document.importedResume,
     importMetadata: document.importMetadata,
     layoutConfig: document.layoutConfig,
     optimizeStyle: document.optimizeStyle,

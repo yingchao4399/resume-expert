@@ -14,7 +14,7 @@ import type {
   SaveAIConfigBody,
 } from "@/lib/ai/types";
 import type { CareerAnalysisClaim } from "@/lib/career/career-context";
-import type { AnalysisResult, InterviewPrep, JobTargetContext, OptimizeStyle, UserInput } from "@/types/resume";
+import type { AnalysisResult, ImportedResumeProfile, ImportedResumeItem, InterviewPrep, JobTargetContext, OptimizeStyle, UserInput } from "@/types/resume";
 import type { InterviewAnalysisResult } from "@/types/interview";
 import { reportTraceStorageError, saveTraceSpan } from "@/lib/studio/trace-store";
 import type { WorkflowNodeId } from "@/lib/studio/trace-types";
@@ -362,6 +362,8 @@ export async function generateFollowUpGuidance(input: FollowUpGuidanceRequestBod
 
 export async function structureImportedResume(text: string): Promise<{
   finalResume: AnalysisResult["finalResume"];
+  importedResume: ImportedResumeProfile;
+  unmappedSegments: ImportedResumeItem[];
   mode: "mock" | "llm";
 }> {
   return postWorkflowJSON("/api/import/structure", { text });

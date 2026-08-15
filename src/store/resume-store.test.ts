@@ -5,7 +5,7 @@ import {
   RESUME_RECOVERY_KEY,
   useResumeStore,
 } from "@/store/resume-store";
-import type { AnalysisResult, CareerEvidence } from "@/types/resume";
+import type { AnalysisResult, CareerEvidence, FinalResume, ImportedResumeProfile } from "@/types/resume";
 
 function analysisWithLinkedEvidence(evidenceId: string): AnalysisResult {
   return {
@@ -56,6 +56,9 @@ describe("resume document library", () => {
       userInput: document.userInput,
       currentStep: document.currentStep,
       analysisResult: document.analysisResult,
+      sourceResume: null,
+      importedResume: null,
+      importMetadata: null,
       materialRevision: document.materialRevision,
       analysisRevision: document.analysisRevision,
       optimizeStyle: document.optimizeStyle,
@@ -206,6 +209,44 @@ describe("resume document library", () => {
     useResumeStore.getState().setUserInput({ targetRole: "变化后的岗位" });
     expect(useResumeStore.getState().setInterviewPrep({ ...prep, selfIntroduction: "迟到结果" }, revision)).toBe(false);
     expect(useResumeStore.getState().analysisResult?.interviewPrep.selfIntroduction).toBe("当前版本面试策略");
+  });
+
+  it("creates evidence candidates only from user-confirmed imported records", () => {
+    const source: FinalResume = {
+      personalInfo: { name: "李明", email: "", phone: "", location: "" },
+      jobIntent: "产品经理", summary: "", coreSkills: [],
+      workExperience: [{ company: "示例公司", role: "产品经理", period: "2024", bullets: ["负责需求分析"] }],
+      projectExperience: [], skillsAndTools: [], education: { school: "", degree: "", period: "" },
+    };
+    const profile: ImportedResumeProfile = {
+      schemaVersion: 1, personalInfo: source.personalInfo, jobIntent: source.jobIntent, summary: "",
+      workExperience: [{ id: "work-1", organization: "示例公司", name: "", role: "产品经理", period: "2024", summary: "", sourceQuote: "示例公司 产品经理 2024\n负责需求分析", status: "candidate", confidence: "high", bullets: [{ id: "item-1", text: "负责需求分析", sourceQuote: "负责需求分析", status: "candidate", confidence: "high" }] }],
+      internshipExperience: [], projectExperience: [], educationHistory: [], skillsAndTools: [], certifications: [], languages: [], awards: [], links: [], otherSections: [], unmappedSegments: [],
+    };
+    const metadata = { sourceType: "text" as const, fileName: "resume.txt", importedAt: "2026-08-16T00:00:00.000Z", warnings: [] };
+
+    useResumeStore.getState().setImportedResume("示例公司 产品经理 2024\n负责需求分析", source, metadata, profile);
+    expect(useResumeStore.getState().careerEvidence).toHaveLength(0);
+
+    const confirmed = { ...profile, workExperience: profile.workExperience.map((item) => ({ ...item, status: "confirmed" as const, bullets: item.bullets.map((bullet) => ({ ...bullet, status: "confirmed" as const })) })) };
+    useResumeStore.getState().setImportedResume("示例公司 产品经理 2024\n负责需求分析", source, metadata, confirmed);
+    expect(useResumeStore.getState().careerEvidence).toHaveLength(1);
+    expect(useResumeStore.getState().careerEvidence[0].description).toBe("负责需求分析");
+  });
+
+  it("preserves imported extended sections when an AI result omits them", () => {
+    const source: FinalResume = {
+      personalInfo: { name: "李明", email: "", phone: "", location: "" }, jobIntent: "产品经理", summary: "", coreSkills: [],
+      workExperience: [], projectExperience: [], skillsAndTools: [], education: { school: "A大学", degree: "本科", period: "2020" },
+      educationHistory: [{ id: "edu-1", school: "A大学", degree: "本科", period: "2020", details: [], sourceQuote: "A大学 本科 2020", status: "confirmed", confidence: "high" }],
+      certifications: [{ id: "cert-1", text: "PMP", sourceQuote: "PMP", status: "confirmed", confidence: "high" }],
+      languages: [], awards: [], links: [], otherSections: [],
+    };
+    useResumeStore.getState().setImportedResume("A大学 本科 2020\nPMP", source, { sourceType: "text", fileName: "resume.txt", importedAt: "2026-08-16T00:00:00.000Z", warnings: [] });
+    const revision = useResumeStore.getState().materialRevision;
+    useResumeStore.getState().setAnalysisResult(analysisWithLinkedEvidence("evidence-1"), revision);
+    expect(useResumeStore.getState().analysisResult?.finalResume.certifications?.[0].text).toBe("PMP");
+    expect(useResumeStore.getState().analysisResult?.finalResume.educationHistory).toHaveLength(1);
   });
 
   it("updates repeated follow-up candidates instead of duplicating them", () => {

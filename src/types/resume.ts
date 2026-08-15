@@ -244,6 +244,65 @@ export interface FinalResume {
     degree: string;
     period: string;
   };
+  educationHistory?: ImportedEducation[];
+  certifications?: ImportedResumeItem[];
+  languages?: ImportedResumeItem[];
+  awards?: ImportedResumeItem[];
+  links?: ImportedResumeItem[];
+  otherSections?: ImportedResumeItem[];
+}
+
+export type ImportedResumeItemStatus = "candidate" | "confirmed" | "needs-review";
+export type ImportedResumeConfidence = "high" | "medium" | "low";
+
+export interface ImportedResumeItem {
+  id: string;
+  text: string;
+  sourceQuote: string;
+  status: ImportedResumeItemStatus;
+  confidence: ImportedResumeConfidence;
+}
+
+export interface ImportedExperience {
+  id: string;
+  organization: string;
+  name: string;
+  role: string;
+  period: string;
+  summary: string;
+  bullets: ImportedResumeItem[];
+  sourceQuote: string;
+  status: ImportedResumeItemStatus;
+  confidence: ImportedResumeConfidence;
+}
+
+export interface ImportedEducation {
+  id: string;
+  school: string;
+  degree: string;
+  period: string;
+  details: ImportedResumeItem[];
+  sourceQuote: string;
+  status: ImportedResumeItemStatus;
+  confidence: ImportedResumeConfidence;
+}
+
+export interface ImportedResumeProfile {
+  schemaVersion: 1;
+  personalInfo: FinalResume["personalInfo"];
+  jobIntent: string;
+  summary: string;
+  workExperience: ImportedExperience[];
+  internshipExperience: ImportedExperience[];
+  projectExperience: ImportedExperience[];
+  educationHistory: ImportedEducation[];
+  skillsAndTools: ImportedResumeItem[];
+  certifications: ImportedResumeItem[];
+  languages: ImportedResumeItem[];
+  awards: ImportedResumeItem[];
+  links: ImportedResumeItem[];
+  otherSections: ImportedResumeItem[];
+  unmappedSegments: ImportedResumeItem[];
 }
 
 export interface ResumeImportMetadata {
@@ -261,7 +320,12 @@ export type ResumeSectionId =
   | "workExperience"
   | "projectExperience"
   | "skillsAndTools"
-  | "education";
+  | "education"
+  | "certifications"
+  | "languages"
+  | "awards"
+  | "links"
+  | "otherSections";
 
 export interface ResumeLayoutConfig {
   templateId: ResumeTemplateId;
@@ -331,7 +395,7 @@ export interface StepConfig {
 export type FinalResumeStatus = "draft" | "confirmed" | "stale";
 
 export interface ResumeDocument {
-  schemaVersion: 9;
+  schemaVersion: 9 | 10;
   id: string;
   title: string;
   createdAt: string;
@@ -345,6 +409,7 @@ export interface ResumeDocument {
   jdAnalysisDocument: JDAnalysisDocument | null;
   analysisBasis: { materialRevision: number; jdAnalysisRevision: number } | null;
   sourceResume: FinalResume | null;
+  importedResume?: ImportedResumeProfile | null;
   importMetadata: ResumeImportMetadata | null;
   layoutConfig: ResumeLayoutConfig;
   optimizeStyle: OptimizeStyle;
@@ -370,7 +435,7 @@ export interface JobApplication {
 }
 
 export interface ResumeLibraryState {
-  schemaVersion: 10;
+  schemaVersion: 10 | 11;
   documents: ResumeDocument[];
   activeDocumentId: string;
   careerEvidence: CareerEvidence[];
