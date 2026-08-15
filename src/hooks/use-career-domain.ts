@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CareerDomainSnapshot } from "@/types/career-domain";
 import { readCareerDomain, replaceCareerDomain } from "@/lib/career/career-db";
 import { projectClaimsToLegacyEvidence } from "@/lib/career/career-context";
+import { mergeCareerSnapshots, migrateLegacyEvidence } from "@/lib/career/migration";
 import { useResumeStore } from "@/store/resume-store";
 
 const EMPTY: CareerDomainSnapshot = { schemaVersion: 1, experiences: [], claims: [], metrics: [], capabilities: [], capabilityLinks: [], interviewSessions: [], quarantined: [] };
@@ -16,7 +17,19 @@ export function useCareerDomain() {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    try { setSnapshot(await readCareerDomain()); setError(null); }
+    try {
+      let next = await readCareerDomain();
+      // A slow first IndexedDB open can race the legacy localStorage migration.
+      // If the new database is still empty while legacy evidence is present, repair
+      // it from the same deterministic migration path before rendering an empty UI.
+      const legacyEvidence = useResumeStore.getState().careerEvidence;
+      if (!next.experiences.length && !next.claims.length && legacyEvidence.length) {
+        next = mergeCareerSnapshots(next, migrateLegacyEvidence(legacyEvidence));
+        await replaceCareerDomain(next);
+        useResumeStore.setState({ careerEvidence: projectClaimsToLegacyEvidence(next) });
+      }
+      setSnapshot(next); setError(null);
+    }
     catch (next) { setError(next instanceof Error ? next.message : "经历事实库读取失败"); }
     finally { setLoading(false); }
   }, []);
