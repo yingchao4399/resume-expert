@@ -167,7 +167,7 @@ export function migrateDocument(document: LegacyResumeDocument): ResumeDocument 
         finalResume: normalizeFinalResumeBullets(document.analysisResult.finalResume, "ai-generated", [], "needs-review"),
       }
     : null;
-  const hasCurrentRequirementMap = Boolean(document.schemaVersion && document.schemaVersion >= 8 && (analysisResult?.jdAnalysis.requirements?.length ?? 0) > 0);
+  const hasCurrentRequirementMap = Boolean(document.schemaVersion && document.schemaVersion >= 9 && document.jdAnalysisDocument);
   const finalResumeStatus: FinalResumeStatus = analysisResult && !hasCurrentRequirementMap
     ? "stale"
     :
@@ -185,12 +185,12 @@ export function migrateDocument(document: LegacyResumeDocument): ResumeDocument 
   return {
     ...base,
     ...documentWithoutLegacyStatus,
-    schemaVersion: 8,
+    schemaVersion: 9,
     jobTargetContext: document.jobTargetContext ?? { companyName: "", notes: "", companySnapshotId: null },
     materialRevision: typeof document.materialRevision === "number" ? document.materialRevision : 0,
-    analysisRevision: analysisResult
-      ? document.schemaVersion && document.schemaVersion >= 8 && (analysisResult.jdAnalysis.requirements?.length ?? 0) > 0 && typeof document.analysisRevision === "number" ? document.analysisRevision : null
-      : null,
+    analysisRevision: analysisResult && hasCurrentRequirementMap && typeof document.analysisRevision === "number" ? document.analysisRevision : null,
+    jdAnalysisDocument: hasCurrentRequirementMap ? document.jdAnalysisDocument ?? null : null,
+    analysisBasis: hasCurrentRequirementMap && document.analysisBasis ? document.analysisBasis : null,
     sourceResume,
     analysisResult,
     finalResumeStatus,

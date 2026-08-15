@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { POST as analyze } from "@/app/api/analyze/stream/route";
 import { POST as prepare } from "@/app/api/interview/prepare/stream/route";
 import { EXAMPLE_USER_INPUT } from "@/store/resume-store-example";
+import { runMockResumeAnalysis } from "@/services/ai/resumeAgent.mock";
 
 const context = { companyName: "", notes: "", companySnapshotId: null } as const;
 
@@ -10,8 +10,7 @@ async function events(response: Response) {
 }
 
 async function mockAnalysisResult() {
-  const response = await analyze(new Request("http://localhost/api/analyze/stream", { method: "POST", headers: { "Content-Type": "application/json", "X-Workflow-Provider": "mock" }, body: JSON.stringify({ input: EXAMPLE_USER_INPUT, jobTargetContext: context, careerClaims: [], optimizeStyle: "ai-product" }) }));
-  return (await events(response)).find((event) => event.type === "completed").result;
+  return runMockResumeAnalysis(EXAMPLE_USER_INPUT, "ai-product", context, []);
 }
 
 describe("on-demand interview preparation stream", () => {

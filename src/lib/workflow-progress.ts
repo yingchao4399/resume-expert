@@ -1,4 +1,5 @@
 import type { AnalysisResult, FinalResumeStatus, StepId, UserInput } from "@/types/resume";
+import type { JDAnalysisDocument } from "@/types/jd-analysis";
 
 export type WorkflowStageId = "materials" | "analysis" | "creation" | "delivery";
 export type WorkflowStageStatus = "pending" | "active" | "completed" | "blocked";
@@ -18,6 +19,8 @@ interface ProgressInput {
   finalResumeStatus: FinalResumeStatus;
   materialRevision?: number;
   analysisRevision?: number | null;
+  jdAnalysisDocument?: JDAnalysisDocument | null;
+  analysisBasis?: { materialRevision: number; jdAnalysisRevision: number } | null;
 }
 
 const STAGE_STEPS: Record<WorkflowStageId, StepId[]> = {
@@ -34,8 +37,10 @@ export function getWorkflowProgress(input: ProgressInput): WorkflowStageProgress
     !input.userInput.originalResume.trim() && "原始简历",
   ].filter(Boolean) as string[];
   const materialsReady = missingMaterials.length === 0;
-  const analysisReady = Boolean(input.analysisResult) &&
-    (input.materialRevision === undefined || input.analysisRevision === input.materialRevision);
+  const jdReady = Boolean(input.jdAnalysisDocument && input.jdAnalysisDocument.materialRevision === input.materialRevision && input.jdAnalysisDocument.status !== "stale");
+  const analysisReady = Boolean(input.analysisResult) && (input.analysisBasis
+    ? input.analysisBasis.materialRevision === input.materialRevision && input.analysisBasis.jdAnalysisRevision === input.jdAnalysisDocument?.revision
+    : input.materialRevision === undefined || input.analysisRevision === input.materialRevision);
   const finalReady = Boolean(input.analysisResult?.finalResume) && input.finalResumeStatus === "confirmed";
 
   const active = (id: WorkflowStageId) => STAGE_STEPS[id].includes(input.currentStep);
@@ -53,12 +58,18 @@ export function getWorkflowProgress(input: ProgressInput): WorkflowStageProgress
       blocker: materialsReady
         ? analysisReady
           ? null
-          : input.analysisResult
-            ? "材料已变化，旧分析已锁定，请重新分析"
-            : "需要先运行岗位分析"
+          : !jdReady
+            ? input.jdAnalysisDocument
+              ? "材料已变化，旧需求地图已锁定，请重新解析 JD"
+              : input.analysisResult
+                ? "旧分析已锁定，请重新解析 JD 并确认需求地图"
+                : "需要先解析 JD"
+            : input.jdAnalysisDocument?.status !== "confirmed"
+              ? "需求地图尚未确认"
+              : "需求地图已确认，等待匹配真实经历"
         : "材料未齐，暂不能分析",
-      nextStep: analysisReady ? "jd-analysis" : "input",
-      actionLabel: analysisReady ? "查看分析" : input.analysisResult ? "重新分析" : "开始分析",
+      nextStep: materialsReady && jdReady ? "jd-analysis" : "input",
+      actionLabel: analysisReady ? "查看分析" : !jdReady ? "解析 JD" : input.jdAnalysisDocument?.status !== "confirmed" ? "审核需求地图" : "匹配真实经历",
     },
     {
       id: "creation",

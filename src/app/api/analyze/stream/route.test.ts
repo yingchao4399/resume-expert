@@ -20,11 +20,11 @@ async function eventsFrom(response: Response) {
   return (await response.text())
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as { type: string; result?: { optimizedItems: unknown[] } });
+    .map((line) => JSON.parse(line) as { type: string; document?: { status: string; requirements: unknown[] } });
 }
 
 describe("streaming analysis route", () => {
-  it("streams two bounded quick-analysis stages and leaves interview preparation empty", async () => {
+  it("streams a reviewable JD draft without running fact matching", async () => {
     const response = await POST(request());
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/x-ndjson");
@@ -33,11 +33,10 @@ describe("streaming analysis route", () => {
     expect(events.map((event) => event.type)).toEqual([
       "started",
       "stage-started", "stage-completed",
-      "stage-started", "stage-completed",
       "completed",
     ]);
-    expect(events.at(-1)?.result?.optimizedItems).toEqual([]);
-    expect((events.at(-1)?.result as { interviewPrep?: { likelyQuestions?: unknown[] } })?.interviewPrep?.likelyQuestions).toEqual([]);
+    expect(events.at(-1)?.document?.status).toBe("draft");
+    expect(events.at(-1)?.document?.requirements.length).toBeGreaterThan(0);
   });
 
   it("emits cancellation instead of a completed result", async () => {

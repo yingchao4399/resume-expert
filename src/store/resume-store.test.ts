@@ -269,7 +269,7 @@ describe("resume document library", () => {
     const document = createEmptyDocument("recover-document");
     const raw = JSON.stringify({
       state: {
-        schemaVersion: 8, documents: [document], activeDocumentId: document.id,
+        schemaVersion: 10, documents: [document], activeDocumentId: document.id,
         careerEvidence: [evidence("recover-evidence"), { id: "broken" }], jobApplications: [], interviewReviews: [],
       }, version: 8,
     });

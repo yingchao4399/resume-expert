@@ -1,5 +1,4 @@
 import type {
-  AnalyzeResponseBody,
   AIConnectionTestRequest,
   AIConnectionTestResult,
   AIModelCatalogRequest,
@@ -22,8 +21,8 @@ import type { WorkflowNodeId } from "@/lib/studio/trace-types";
 import { getPublishedWorkflowNode } from "@/lib/studio/workflow-store";
 import { isStudioEnabled } from "@/lib/studio/settings";
 import type { PromptRuntimeSnapshot } from "@/lib/studio/prompt-types";
-import type { AnalysisProgressEvent } from "@/lib/ai/analysis-execution";
 import type { InterviewPreparationProgressEvent } from "@/lib/ai/interview-preparation";
+import type { JDAnalysisDocument } from "@/types/jd-analysis";
 
 export { STYLE_LABELS } from "@/lib/ai/types";
 
@@ -115,10 +114,17 @@ export async function runResumeAnalysis(
   jobTargetContext: JobTargetContext,
   careerClaims: CareerAnalysisClaim[],
   optimizeStyle: OptimizeStyle = "ai-product"
-): Promise<AnalysisResult> {
-  const data = await postWorkflowJSON<AnalyzeResponseBody>("/api/analyze", { input, jobTargetContext, careerClaims, optimizeStyle });
-  return data.result;
+): Promise<JDAnalysisDocument> {
+  const data = await postWorkflowJSON<{ document: JDAnalysisDocument }>("/api/analyze", { input, jobTargetContext, careerClaims, optimizeStyle, materialRevision: 0 });
+  return data.document;
 }
+
+export type DecisionStreamEvent =
+  | { type: "started" | "heartbeat"; elapsedMs: number; message?: string }
+  | { type: "stage-started" | "stage-completed" | "batch-progress"; stage: "jd-draft" | "fact-match"; message: string; elapsedMs: number; batchIndex?: number; batchCount?: number; promptSnapshots?: PromptRuntimeSnapshot[] }
+  | { type: "completed"; elapsedMs: number; document?: JDAnalysisDocument; result?: AnalysisResult; mode: "mock" | "llm"; promptSnapshots?: PromptRuntimeSnapshot[] }
+  | { type: "failed"; elapsedMs: number; error: string; promptSnapshots?: PromptRuntimeSnapshot[] }
+  | { type: "cancelled"; elapsedMs: number; message: string };
 
 export async function runResumeAnalysisStreaming(
   input: UserInput,
@@ -127,12 +133,13 @@ export async function runResumeAnalysisStreaming(
   optimizeStyle: OptimizeStyle = "ai-product",
   options: {
     signal?: AbortSignal;
-    onProgress?: (event: AnalysisProgressEvent) => void;
+    onProgress?: (event: DecisionStreamEvent) => void;
     watchdogMs?: number;
+    materialRevision?: number;
   } = {},
-): Promise<AnalysisResult> {
+): Promise<JDAnalysisDocument> {
   const url = "/api/analyze/stream";
-  const body = { input, jobTargetContext, careerClaims, optimizeStyle };
+  const body = { input, jobTargetContext, careerClaims, optimizeStyle, materialRevision: options.materialRevision ?? 0 };
   const startedAt = new Date();
   const traceId = crypto.randomUUID();
   const headers = await buildWorkflowHeaders(url, traceId);
@@ -144,7 +151,7 @@ export async function runResumeAnalysisStreaming(
     watchdogExpired = true;
     controller.abort();
   }, options.watchdogMs ?? 185_000);
-  let result: AnalysisResult | undefined;
+  let result: JDAnalysisDocument | undefined;
   let mode: "mock" | "llm" | undefined;
   let promptSnapshots: PromptRuntimeSnapshot[] = [];
   const traceProgress: Array<Record<string, unknown>> = [];
@@ -169,28 +176,25 @@ export async function runResumeAnalysisStreaming(
       buffer = lines.pop() ?? "";
       for (const line of lines) {
         if (!line.trim()) continue;
-        const event = JSON.parse(line) as AnalysisProgressEvent;
+        const event = JSON.parse(line) as DecisionStreamEvent;
         traceProgress.push({
           type: event.type,
-          requestId: event.requestId,
           elapsedMs: event.elapsedMs,
-          remainingMs: event.remainingMs,
           ...("stage" in event ? { stage: event.stage } : {}),
-          ...(event.type === "batch-progress" ? { batchIndex: event.batchIndex, batchCount: event.batchCount, batchStatus: event.batchStatus } : {}),
+          ...(event.type === "batch-progress" ? { batchIndex: event.batchIndex, batchCount: event.batchCount } : {}),
         });
         if ("promptSnapshots" in event && event.promptSnapshots?.length) {
           promptSnapshots = event.promptSnapshots;
         }
         options.onProgress?.(event);
         if (event.type === "completed") {
-          result = event.result;
+          result = event.document;
           mode = event.mode;
-          promptSnapshots = event.promptSnapshots ?? [];
+          promptSnapshots = "promptSnapshots" in event ? event.promptSnapshots ?? [] : [];
         } else if (event.type === "failed") {
           promptSnapshots = event.promptSnapshots ?? [];
           throw new ResumeAgentClientError(event.error);
         } else if (event.type === "cancelled") {
-          promptSnapshots = event.promptSnapshots ?? [];
           throw new ResumeAnalysisCancelledError(event.message);
         }
       }
@@ -235,6 +239,63 @@ export async function runResumeAnalysisStreaming(
       error: result ? undefined : terminalError,
       promptSnapshots,
     }).catch(reportTraceStorageError);
+  }
+}
+
+export async function runRequirementMatchStreaming(
+  input: UserInput,
+  jobTargetContext: JobTargetContext,
+  careerClaims: CareerAnalysisClaim[],
+  jdAnalysisDocument: JDAnalysisDocument,
+  optimizeStyle: OptimizeStyle = "ai-product",
+  options: { signal?: AbortSignal; onProgress?: (event: DecisionStreamEvent) => void; watchdogMs?: number } = {},
+): Promise<AnalysisResult> {
+  const url = "/api/analyze/match/stream";
+  const body = { input, jobTargetContext, careerClaims, jdAnalysisDocument, optimizeStyle, materialRevision: jdAnalysisDocument.materialRevision };
+  const traceId = crypto.randomUUID();
+  const headers = await buildWorkflowHeaders(url, traceId);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  options.signal?.addEventListener("abort", abort, { once: true });
+  const watchdog = globalThis.setTimeout(() => controller.abort(), options.watchdogMs ?? 125_000);
+  let result: AnalysisResult | undefined;
+  let terminalError: string | undefined;
+  let snapshots: PromptRuntimeSnapshot[] = [];
+  const startedAt = new Date();
+  try {
+    const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal });
+    if (!response.ok || !response.body) throw new ResumeAgentClientError(`事实匹配请求失败 (${response.status})`);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line) as DecisionStreamEvent;
+        options.onProgress?.(event);
+        if ("promptSnapshots" in event && event.promptSnapshots?.length) snapshots = event.promptSnapshots;
+        if (event.type === "completed") result = event.result;
+        if (event.type === "failed") throw new ResumeAgentClientError(event.error);
+        if (event.type === "cancelled") throw new ResumeAnalysisCancelledError(event.message);
+      }
+      if (done) break;
+    }
+    if (!result) throw new ResumeAgentClientError("事实匹配连接意外结束，未收到完整结果；已有数据未改变。");
+    return result;
+  } catch (error) {
+    terminalError = error instanceof Error ? error.message : "事实匹配失败";
+    if (options.signal?.aborted) throw new ResumeAnalysisCancelledError("事实匹配已取消，已有数据未改变。");
+    throw error;
+  } finally {
+    clearTimeout(watchdog);
+    options.signal?.removeEventListener("abort", abort);
+    const finishedAt = new Date();
+    const latest = snapshots.at(-1);
+    void saveTraceSpan({ id: traceId, nodeId: "analyze", label: "岗位事实匹配", status: result ? "success" : "error", provider: latest?.provider, model: latest?.model, startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), latencyMs: finishedAt.getTime() - startedAt.getTime(), input: body, output: result, error: result ? undefined : terminalError, promptSnapshots: snapshots }).catch(reportTraceStorageError);
   }
 }
 

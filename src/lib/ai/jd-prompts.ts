@@ -34,7 +34,7 @@ export function buildRequirementMatchPrompt(
   input: UserInput,
   context: JobTargetContext,
   requirements: JobRequirement[],
-  claims: CareerAnalysisClaim[],
+  claims: Array<CareerAnalysisClaim & { candidateRequirementIds?: string[] }>,
 ): string {
   return `请基于已校验的岗位要求完成简历诊断和逐条事实匹配。不得重新解释或创建岗位要求 ID、事实 ID。
 
@@ -50,12 +50,12 @@ ${claims.length ? JSON.stringify(claims, null, 2) : "[]（没有明确相关事�
 ${input.originalResume}
 
 要求：
-1. matchItems 必须每个 requirementId 恰好一条。evidenceClaimIds 只能引用上方事实 ID；resumeQuotes 只能逐字引用原简历连续片段。
+1. matchItems 必须每个 requirementId 恰好一条。evidenceClaimIds 只能引用上方事实 ID，且该事实的 candidateRequirementIds 必须包含当前 requirementId；resumeQuotes 只能逐字引用原简历连续片段。
 2. 无可核验证据时 evidenceClaimIds/resumeQuotes 为空，evidenceStrength=none，needsSupplement=true。
 3. matchRationale 解释匹配逻辑；missingEvidenceTypes 写明缺少职责、行动、决策、结果、指标或方法中的哪些类型。
 4. 本次只返回 diagnosis 和 matchItems；补证问题由系统根据缺口生成。
 5. 不得把示例、建议或岗位要求本身当作用户事实。
-6. 诊断分是 AI 诊断分，不是 ATS 分。
+6. diagnosis 只提供简短语义观察；服务端会忽略模型分数和 evidenceStrength，并根据已确认事实确定性重算岗位准备度。
 7. 单条说明尽量不超过 100 个汉字，避免重复粘贴完整 JD 或简历。
 
 只返回 JSON。`;

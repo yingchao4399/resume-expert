@@ -16,6 +16,7 @@ import type {
 } from "@/types/resume";
 import type { AIMode } from "@/lib/ai/types";
 import type { InterviewReviewRecord } from "@/types/interview";
+import type { JDAnalysisDocument } from "@/types/jd-analysis";
 
 export type UnsavedScope = "resume" | "layout" | "career";
 
@@ -48,6 +49,8 @@ export interface ResumeStore {
   analysisResult: AnalysisResult | null;
   materialRevision: number;
   analysisRevision: number | null;
+  jdAnalysisDocument: JDAnalysisDocument | null;
+  analysisBasis: { materialRevision: number; jdAnalysisRevision: number } | null;
   sourceResume: FinalResume | null;
   importMetadata: ResumeImportMetadata | null;
   layoutConfig: ResumeLayoutConfig;
@@ -92,7 +95,13 @@ export interface ResumeStore {
   loadExampleData: () => boolean;
   setCurrentStep: (step: StepId) => void;
   setAnalyzing: (analyzing: boolean) => void;
-  setAnalysisResult: (result: AnalysisResult, expectedMaterialRevision: number) => boolean;
+  setJDAnalysisDocument: (document: JDAnalysisDocument, expectedMaterialRevision: number) => boolean;
+  updateJDRequirement: (requirementId: string, patch: Parameters<typeof import("@/lib/jd/decision-map").updateRequirementAtom>[2]) => void;
+  confirmSafeJDRequirements: () => void;
+  confirmJDRequirement: (requirementId: string) => void;
+  rejectJDRequirement: (requirementId: string) => void;
+  confirmJDAnalysis: () => boolean;
+  setAnalysisResult: (result: AnalysisResult, expectedMaterialRevision: number, expectedJDRevision?: number) => boolean;
   setOptimizedItems: (items: AnalysisResult["optimizedItems"]) => void;
   setInterviewPrep: (prep: AnalysisResult["interviewPrep"], expectedMaterialRevision: number) => boolean;
   setFinalResume: (

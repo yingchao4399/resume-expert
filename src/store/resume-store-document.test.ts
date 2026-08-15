@@ -8,11 +8,11 @@ import {
 } from "@/store/resume-store-document";
 
 describe("resume document helpers", () => {
-  it("creates a schema 8 blank document with revision tracking", () => {
+  it("creates a schema 9 blank document with dual revision tracking", () => {
     const document = createEmptyDocument("document-1");
 
     expect(document).toMatchObject({
-      schemaVersion: 8,
+      schemaVersion: 9,
       jobTargetContext: { companyName: "", notes: "", companySnapshotId: null },
       id: "document-1",
       title: "未命名简历",
@@ -21,6 +21,8 @@ describe("resume document helpers", () => {
       hasManualEdits: false,
       materialRevision: 0,
       analysisRevision: null,
+      jdAnalysisDocument: null,
+      analysisBasis: null,
     });
     expect(document.layoutConfig.templateId).toBe("ats-classic");
   });

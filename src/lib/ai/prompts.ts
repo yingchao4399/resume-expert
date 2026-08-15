@@ -304,6 +304,7 @@ export function normalizeAnalysisResult(raw: AnalysisResult, input?: UserInput):
       requirementStrategies: raw.interviewPrep?.requirementStrategies ?? [],
       reverseQuestions: raw.interviewPrep?.reverseQuestions ?? [],
     },
+    jobReadiness: raw.jobReadiness,
   };
 }
 

@@ -16,6 +16,7 @@ import { careerDomainSnapshotSchema } from "@/lib/career/schemas";
 import { readCareerDomain } from "@/lib/career/career-db";
 import { mapResumeBullets } from "@/lib/evidence/resume-evidence";
 import { sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
+import { analysisBasisSchema, jdAnalysisDocumentSchema } from "@/lib/jd/schemas";
 
 const importMetadataSchema = z.object({
   sourceType: z.enum(["text", "pdf", "docx"]),
@@ -53,7 +54,7 @@ const layoutConfigSchema = z.object({
 });
 
 const documentSchema = z.object({
-  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8)]),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9)]),
   id: z.string().min(1),
   title: z.string().min(1),
   createdAt: z.string(),
@@ -64,6 +65,8 @@ const documentSchema = z.object({
   analysisResult: persistedAnalysisResultSchema.nullable(),
   materialRevision: z.number().int().nonnegative().optional(),
   analysisRevision: z.number().int().nonnegative().nullable().optional(),
+  jdAnalysisDocument: jdAnalysisDocumentSchema.nullable().optional(),
+  analysisBasis: analysisBasisSchema.nullable().optional(),
   sourceResume: finalResumeSchema.nullable().optional(),
   importMetadata: importMetadataSchema.nullable().optional(),
   layoutConfig: layoutConfigSchema.optional(),
@@ -109,7 +112,7 @@ const interviewReviewSchema = z.object({
 });
 
 const backupSchema = z.object({
-  backupVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
+  backupVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]),
   exportedAt: z.string(),
   documents: z.array(documentSchema).min(1),
   careerEvidence: z.array(careerEvidenceSchema).optional().default([]),
@@ -119,7 +122,7 @@ const backupSchema = z.object({
 });
 
 export interface ResumeBackup {
-  backupVersion: 5;
+  backupVersion: 6;
   exportedAt: string;
   documents: ResumeDocument[];
   careerEvidence: CareerEvidence[];
@@ -130,7 +133,7 @@ export interface ResumeBackup {
 
 export function createResumeBackup(documents: ResumeDocument[], careerEvidence: CareerEvidence[] = [], jobApplications: JobApplication[] = [], interviewReviews: InterviewReviewRecord[] = []): ResumeBackup {
   return {
-    backupVersion: 5,
+    backupVersion: 6,
     exportedAt: new Date().toISOString(),
     documents: structuredClone(documents),
     careerEvidence: structuredClone(careerEvidence),
@@ -148,10 +151,10 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
     throw new Error(`备份文件结构无效（${path}）：${issue?.message ?? "未知错误"}`);
   }
   return {
-    backupVersion: 5,
+    backupVersion: 6,
     exportedAt: parsed.data.exportedAt,
     documents: parsed.data.documents.map((document) => {
-      const hasCurrentRequirementMap = (document.analysisResult?.jdAnalysis.requirements?.length ?? 0) > 0;
+      const hasCurrentRequirementMap = document.schemaVersion >= 9 && Boolean(document.jdAnalysisDocument);
       const finalResumeStatus = document.analysisResult && !hasCurrentRequirementMap ? "stale" : document.finalResumeStatus ??
         (document.isFinalResumeStale
           ? "stale"
@@ -162,12 +165,12 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
       void _legacyStatus;
       return {
         ...currentDocument,
-        schemaVersion: 8,
+        schemaVersion: 9,
         jobTargetContext: document.jobTargetContext ?? { companyName: "", notes: "", companySnapshotId: null },
         materialRevision: document.materialRevision ?? 0,
-        analysisRevision: document.analysisResult && document.analysisResult.jdAnalysis.requirements.length > 0
-          ? document.analysisRevision ?? document.materialRevision ?? 0
-          : null,
+        analysisRevision: hasCurrentRequirementMap && document.analysisResult ? document.analysisRevision ?? null : null,
+        jdAnalysisDocument: hasCurrentRequirementMap ? document.jdAnalysisDocument ?? null : null,
+        analysisBasis: hasCurrentRequirementMap ? document.analysisBasis ?? null : null,
         sourceResume: document.sourceResume ?? null,
         importMetadata: document.importMetadata ?? null,
         layoutConfig: sanitizeLayoutConfig(document.layoutConfig),
@@ -221,6 +224,7 @@ export async function createResumeBackupV4(
 }
 
 export const createResumeBackupV5 = createResumeBackupV4;
+export const createResumeBackupV6 = createResumeBackupV4;
 
 export async function downloadResumeBackupV4(
   documents: ResumeDocument[], careerEvidence: CareerEvidence[] = [], jobApplications: JobApplication[] = [],
@@ -234,6 +238,7 @@ export async function downloadResumeBackupV4(
 }
 
 export const downloadResumeBackupV5 = downloadResumeBackupV4;
+export const downloadResumeBackupV6 = downloadResumeBackupV4;
 
 function selectCareerClosure(documents: ResumeDocument[], domain: CareerDomainSnapshot): CareerDomainSnapshot {
   const referencedClaims = new Set<string>();

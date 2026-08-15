@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jdAnalysisDocumentSchema, jobReadinessAssessmentSchema } from "@/lib/jd/schemas";
 import type { MindMapNode } from "@/types/interview";
 
 const nonEmptyText = z.string().min(1);
@@ -284,6 +285,7 @@ export const persistedAnalysisResultSchema = z.object({
   optimizedItems: z.array(optimizedItemSchema),
   finalResume: finalResumeSchema,
   interviewPrep: persistedInterviewPrepSchema,
+  jobReadiness: jobReadinessAssessmentSchema.optional(),
 });
 
 export const analysisResultSchema = persistedAnalysisResultSchema.extend({
@@ -407,6 +409,11 @@ export const analyzeRequestSchema = z.object({
     capabilities: z.array(z.object({ id: z.string(), name: z.string(), aliases: z.array(z.string()) })),
     metrics: z.array(z.object({ id: z.string(), value: z.string(), unit: z.string(), baseline: z.string(), method: z.string(), period: z.string(), sourceNote: z.string() })),
   })).optional().default([]),
+  materialRevision: z.number().int().nonnegative().optional().default(0),
+});
+
+export const matchAnalysisRequestSchema = analyzeRequestSchema.extend({
+  jdAnalysisDocument: jdAnalysisDocumentSchema,
 });
 
 export const interviewPrepareRequestSchema = z.object({

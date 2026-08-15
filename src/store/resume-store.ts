@@ -7,6 +7,13 @@ import { WORKFLOW_STAGES } from "@/config/workflow";
 import { sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
 import { buildEvidenceCandidates, evidenceSourceReference, mapResumeBullets, normalizeFinalResumeBullets } from "@/lib/evidence/resume-evidence";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
+import {
+  confirmJDAnalysisDocument as confirmDecisionMap,
+  confirmRequirement as confirmDecisionRequirement,
+  confirmSafeRequirements,
+  rejectRequirement as rejectDecisionRequirement,
+  updateRequirementAtom,
+} from "@/lib/jd/decision-map";
 import { parseResumeBackup } from "@/lib/backup/resume-backup";
 import { EXAMPLE_USER_INPUT } from "@/store/resume-store-example";
 import type { ResumeStore } from "@/store/resume-store.types";
@@ -253,7 +260,7 @@ export const useResumeStore = create<ResumeStore>()(
             ? parsed.state?.activeDocumentId as string
             : recoveredDocuments[0].id;
           const recoveredValue = JSON.stringify({
-            state: { schemaVersion: 9, documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
+            state: { schemaVersion: 10, documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
             version: 9,
           });
           validatePersistedLibrary(recoveredValue);
@@ -468,6 +475,9 @@ export const useResumeStore = create<ResumeStore>()(
             userInput,
             title,
             materialRevision: state.materialRevision + 1,
+            analysisRevision: null,
+            jdAnalysisDocument: state.jdAnalysisDocument ? { ...state.jdAnalysisDocument, status: "stale" } : null,
+            analysisBasis: null,
             finalResumeStatus: state.analysisResult ? "stale" : "draft",
           });
         }),
@@ -480,6 +490,9 @@ export const useResumeStore = create<ResumeStore>()(
           return updateActiveDocument(state, {
             jobTargetContext,
             materialRevision: state.materialRevision + 1,
+            analysisRevision: null,
+            jdAnalysisDocument: state.jdAnalysisDocument ? { ...state.jdAnalysisDocument, status: "stale" } : null,
+            analysisBasis: null,
             finalResumeStatus: state.analysisResult ? "stale" : "draft",
           });
         }),
@@ -502,6 +515,9 @@ export const useResumeStore = create<ResumeStore>()(
               sourceResume: normalizedSource,
               importMetadata: metadata,
               materialRevision: state.materialRevision + 1,
+              analysisRevision: null,
+              jdAnalysisDocument: state.jdAnalysisDocument ? { ...state.jdAnalysisDocument, status: "stale" } : null,
+              analysisBasis: null,
               currentStep: "input",
               finalResumeStatus: state.analysisResult ? "stale" : "draft",
             }),
@@ -532,6 +548,8 @@ export const useResumeStore = create<ResumeStore>()(
             analysisResult: null,
             materialRevision: current.materialRevision + 1,
             analysisRevision: null,
+            jdAnalysisDocument: null,
+            analysisBasis: null,
             sourceResume: null,
             importMetadata: null,
             currentStep: "input",
@@ -551,10 +569,80 @@ export const useResumeStore = create<ResumeStore>()(
 
       setAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
 
-      setAnalysisResult: (result, expectedMaterialRevision) => {
+      setJDAnalysisDocument: (document, expectedMaterialRevision) => {
+        let accepted = false;
+        set((state) => {
+          if (state.materialRevision !== expectedMaterialRevision || document.materialRevision !== expectedMaterialRevision) {
+            return { analysisError: "材料已在 JD 解析期间变化，本次草稿未写入。请重新解析。" };
+          }
+          accepted = true;
+          return {
+            ...updateActiveDocument(state, {
+              jdAnalysisDocument: document,
+              analysisRevision: null,
+              analysisBasis: null,
+              finalResumeStatus: state.analysisResult ? "stale" : "draft",
+            }),
+            analysisError: null,
+          };
+        });
+        return accepted;
+      },
+
+      updateJDRequirement: (requirementId, patch) =>
+        set((state) => state.jdAnalysisDocument ? updateActiveDocument(state, {
+          jdAnalysisDocument: updateRequirementAtom(state.jdAnalysisDocument, requirementId, patch),
+          analysisRevision: null,
+          analysisBasis: null,
+          finalResumeStatus: state.analysisResult ? "stale" : "draft",
+        }) : state),
+
+      confirmSafeJDRequirements: () =>
+        set((state) => state.jdAnalysisDocument ? updateActiveDocument(state, {
+          jdAnalysisDocument: confirmSafeRequirements(state.jdAnalysisDocument),
+          analysisRevision: null,
+          analysisBasis: null,
+          finalResumeStatus: state.analysisResult ? "stale" : "draft",
+        }) : state),
+
+      confirmJDRequirement: (requirementId) =>
+        set((state) => state.jdAnalysisDocument ? updateActiveDocument(state, {
+          jdAnalysisDocument: confirmDecisionRequirement(state.jdAnalysisDocument, requirementId),
+          analysisRevision: null,
+          analysisBasis: null,
+          finalResumeStatus: state.analysisResult ? "stale" : "draft",
+        }) : state),
+
+      rejectJDRequirement: (requirementId) =>
+        set((state) => state.jdAnalysisDocument ? updateActiveDocument(state, {
+          jdAnalysisDocument: rejectDecisionRequirement(state.jdAnalysisDocument, requirementId),
+          analysisRevision: null,
+          analysisBasis: null,
+          finalResumeStatus: state.analysisResult ? "stale" : "draft",
+        }) : state),
+
+      confirmJDAnalysis: () => {
+        let confirmed = false;
+        set((state) => {
+          if (!state.jdAnalysisDocument) return state;
+          try {
+            const jdAnalysisDocument = confirmDecisionMap(state.jdAnalysisDocument);
+            confirmed = true;
+            return updateActiveDocument(state, { jdAnalysisDocument });
+          } catch (error) {
+            return { analysisError: error instanceof Error ? error.message : "需求地图无法确认" };
+          }
+        });
+        return confirmed;
+      },
+
+      setAnalysisResult: (result, expectedMaterialRevision, expectedJDRevision) => {
         let accepted = false;
         set((state) => {
           if (state.materialRevision !== expectedMaterialRevision) return { analysisError: "材料已在分析期间发生变化，本次结果未写入。请重新分析。" };
+          if (expectedJDRevision !== undefined && (!state.jdAnalysisDocument || state.jdAnalysisDocument.status !== "confirmed" || state.jdAnalysisDocument.revision !== expectedJDRevision)) {
+            return { analysisError: "需求地图已在匹配期间发生变化，本次结果未写入。请重新匹配。" };
+          }
           accepted = true;
           const active = getActiveDocument(state);
           return {
@@ -565,6 +653,7 @@ export const useResumeStore = create<ResumeStore>()(
                   : active.title,
               analysisResult: { ...result, finalResume: normalizeFinalResumeBullets(result.finalResume, "ai-generated", state.careerEvidence) },
               analysisRevision: expectedMaterialRevision,
+              analysisBasis: expectedJDRevision === undefined ? null : { materialRevision: expectedMaterialRevision, jdAnalysisRevision: expectedJDRevision },
               finalResumeStatus: "draft",
               hasManualEdits: false,
             }),
@@ -692,10 +781,15 @@ export const useResumeStore = create<ResumeStore>()(
 
         if (step === "input") {
           if (currentStep === "input") return "active";
-          return analysisFresh ? "completed" : "pending";
+          return state.jdAnalysisDocument?.materialRevision === state.materialRevision ? "completed" : "pending";
         }
 
-        const analysisSteps = new Set(["jd-analysis", "diagnosis", "match", "follow-up"]);
+        if (step === "jd-analysis") {
+          if (currentStep === step) return "active";
+          return state.jdAnalysisDocument?.status === "confirmed" ? "completed" : state.jdAnalysisDocument ? "pending" : "disabled";
+        }
+
+        const analysisSteps = new Set(["diagnosis", "match", "follow-up"]);
         if (step === "interview-recording") return currentStep === step ? "active" : "pending";
         if (step === "interview") {
           if (!analysisResult || !analysisFresh) return "disabled";
@@ -716,11 +810,11 @@ export const useResumeStore = create<ResumeStore>()(
     }),
     {
       name: RESUME_STORAGE_KEY,
-      version: 9,
+      version: 10,
       skipHydration: true,
       storage: createJSONStorage<ResumeLibraryState>(() => safeLocalStorage),
       partialize: (state) => ({
-        schemaVersion: 9,
+        schemaVersion: 10,
         documents: state.documents,
         activeDocumentId: state.activeDocumentId,
         // Schema 8 将事实主数据迁入 IndexedDB；此字段仅用于首次迁移和旧组件兼容。
@@ -736,7 +830,7 @@ export const useResumeStore = create<ResumeStore>()(
           ? persisted.documents.map((document) => migrateDocument(document))
           : [];
         return {
-          schemaVersion: 9,
+          schemaVersion: 10,
           documents,
           activeDocumentId: persisted.activeDocumentId ?? documents[0]?.id ?? "",
           careerEvidence: Array.isArray(persisted.careerEvidence)

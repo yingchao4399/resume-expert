@@ -15,14 +15,14 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("analysis stream client", () => {
   it("reports progress and accepts only a terminal completed result", async () => {
-    const result = { optimizedItems: [] } as never;
+    const document = { schemaVersion: 1, status: "draft" } as never;
     const progress = vi.fn();
     vi.stubGlobal("fetch", vi.fn(async () => streamResponse([
       { type: "started", requestId: "run-1", elapsedMs: 0, remainingMs: 360_000 },
-      { type: "completed", requestId: "run-1", elapsedMs: 10, remainingMs: 359_990, result, mode: "mock" },
+      { type: "completed", elapsedMs: 10, document, mode: "mock" },
     ])));
 
-    await expect(runResumeAnalysisStreaming(EXAMPLE_USER_INPUT, context, [], "ai-product", { onProgress: progress })).resolves.toStrictEqual(result);
+    await expect(runResumeAnalysisStreaming(EXAMPLE_USER_INPUT, context, [], "ai-product", { onProgress: progress })).resolves.toStrictEqual(document);
     expect(progress).toHaveBeenCalledTimes(2);
   });
 
