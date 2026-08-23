@@ -2,18 +2,20 @@
 
 > 所有「已实现」表述均可在仓库代码、测试、评测或 Trace 中验证；截图使用合成/示例数据，不含真实简历、API Key、录音或本机配置。
 
-## 1. 验证命令结果（2026-08-16 复跑）
+## 1. 验证命令结果（2026-08-24 复跑）
 
 | 命令 | 结果 |
 | --- | --- |
 | `npm run lint` | ✅ exit 0 |
 | `npm run typecheck` | ✅ exit 0（next typegen + tsc --noEmit） |
 | `npm test` | ✅ 46 个测试文件 / 155 个用例全部通过 |
+| `npm run audit:prod` | ✅ 生产依赖审计，0 个已发现漏洞 |
+| `npm run eval:validate` | ✅ 24 个冻结合成用例通过结构校验 |
 | `npm run eval:mock` | ✅ 24 个冻结合成用例，schemaValidityRate=1、immutableFactRetentionRate=1、unsupportedClaimRate=0、finalResumeFactAccuracy=1、jdRequirementRecall=1、needsSupplementF1=1、evidenceStrengthMacroF1=1 |
 | `npm run eval:career` | ✅ 6 个用例，sourceGroundingRate=1、unsupportedClaimRate=0、quoteRetentionRate=1、duplicateClaimRate=0、questionRelevant=1、deterministicTermination=1 |
 | `npm run eval:jd` | ✅ 2 个文件 / 9 个用例全部通过 |
 | `npm run build` | ✅ exit 0（27 个静态页 + 服务端 API 路由） |
-| `npm run test:e2e` | ⚠️ 32 passed / 3 failed（环境相关：PDF.js CMap 字体路径、Studio 视图与审计用例；详见 test-results/） |
+| `npm run test:e2e` | ✅ 35 个 Chromium 端到端用例全部通过（含中文 CID/TTF PDF、DOCX、Studio、导出与 A4 模板） |
 
 ## 2. 测试覆盖（仓库内 `*.test.ts` / `*.spec.ts`）
 
