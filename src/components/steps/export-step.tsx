@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Check,
   Copy,
@@ -28,9 +28,11 @@ import {
 import { EmptyState, SectionTitle } from "@/components/shared/ui-helpers";
 import { ATSAssessmentCard } from "@/components/resume/ats-assessment-card";
 import { ResumeDocumentView } from "@/components/resume/resume-document-view";
+import { ResumePaginatedView } from "@/components/resume/resume-paginated-view";
 import { useResumeStore } from "@/store/resume-store";
 import { calculateATSAssessment } from "@/lib/ats";
 import { downloadResumeDocx } from "@/lib/export/docx";
+import { downloadATSTextPdf, downloadVisualPdf } from "@/lib/export/resume-pdf";
 import { copyToClipboard, formatResumeAsText } from "@/lib/utils";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 
@@ -45,10 +47,13 @@ export function ExportStep() {
     setCurrentStep,
     materialRevision,
     analysisRevision,
+    activeDocumentId,
   } = useResumeStore();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [pdfExport, setPdfExport] = useState<"ats-text" | "visual" | null>(null);
+  const visualPagesRef = useRef<HTMLDivElement>(null);
 
   const finalResume = analysisResult?.finalResume;
   const assessment = useMemo(
@@ -95,10 +100,24 @@ export function ExportStep() {
 
   const handlePrint = () => {
     if (exportBlocked) return;
-    const printWindow = window.open("/print", "_blank");
+    const printWindow = window.open(`/print?documentId=${encodeURIComponent(activeDocumentId)}`, "_blank");
     if (!printWindow) {
       setExportError("浏览器阻止了打印窗口，请允许本站打开新窗口后重试。");
     }
+  };
+
+  const handlePdf = async (mode: "ats-text" | "visual") => {
+    if (exportBlocked) return;
+    setPdfExport(mode); setExportError(null);
+    try {
+      if (mode === "ats-text") await downloadATSTextPdf(finalResume, userInput.targetRole, layoutConfig);
+      else {
+        const pages = Array.from(visualPagesRef.current?.querySelectorAll<HTMLElement>("[data-pdf-page]") ?? []);
+        await downloadVisualPdf(pages, finalResume, userInput.targetRole);
+      }
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "PDF 生成失败，请稍后重试。");
+    } finally { setPdfExport(null); }
   };
 
   return (
@@ -135,7 +154,7 @@ export function ExportStep() {
         </div>
       )}
 
-      <div className="mb-6 grid gap-4 md:grid-cols-3">
+      <div className="mb-6 grid gap-4 lg:grid-cols-3">
         <ExportCard
           icon={<Download className="h-4 w-4" />}
           title="下载 Word"
@@ -157,18 +176,22 @@ export function ExportStep() {
 
         <ExportCard
           icon={<Printer className="h-4 w-4" />}
-          title="打印为 PDF"
-          description="打开 A4 预览，在打印窗口选择另存为 PDF"
+          title="PDF 与打印"
+          description="直接下载可检索 ATS 版或视觉还原版，也可打开 A4 预览"
         >
-          <Button
-            variant="outline"
-            className="w-full"
-            disabled={exportBlocked}
-            onClick={handlePrint}
-          >
-            <Printer className="h-4 w-4" />
-            打开打印页
-          </Button>
+          <div className="space-y-2">
+            <Button className="w-full" disabled={exportBlocked || pdfExport !== null} onClick={() => void handlePdf("ats-text")}>
+              {pdfExport === "ats-text" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {pdfExport === "ats-text" ? "正在生成 ATS PDF…" : "下载 ATS 文字版"}
+            </Button>
+            <Button variant="outline" className="w-full" disabled={exportBlocked || pdfExport !== null} onClick={() => void handlePdf("visual")}>
+              {pdfExport === "visual" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {pdfExport === "visual" ? "正在生成视觉 PDF…" : "下载视觉还原版"}
+            </Button>
+            <Button variant="outline" className="w-full" disabled={exportBlocked || pdfExport !== null} onClick={handlePrint}>
+              <Printer className="h-4 w-4" />打开 A4 预览
+            </Button>
+          </div>
         </ExportCard>
 
         <ExportCard
@@ -215,6 +238,9 @@ export function ExportStep() {
       </div>
 
       <ATSAssessmentCard assessment={assessment} />
+      <div ref={visualPagesRef} className="pointer-events-none fixed left-[-10000px] top-0" aria-hidden="true">
+        <ResumePaginatedView resume={finalResume} layoutConfig={layoutConfig} />
+      </div>
     </div>
   );
 }
