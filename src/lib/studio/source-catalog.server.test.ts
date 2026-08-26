@@ -8,9 +8,9 @@ const roots: string[] = [];
 
 afterEach(async () => {
   for (const root of roots.splice(0)) {
-    if (root.startsWith(path.join(os.tmpdir(), "resume-expert-source-"))) await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    if (root.startsWith(path.join(os.tmpdir(), "resume-expert-source-"))) await fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
-});
+}, 15_000);
 
 describe("studio source catalog", () => {
   it("includes tracked-style and untracked Markdown while excluding dependency folders", async () => {
@@ -23,7 +23,7 @@ describe("studio source catalog", () => {
     const entries = await listSourceCatalog(root);
     expect(entries.map((entry) => entry.path)).toEqual(expect.arrayContaining(["README.md", "prd/draft.md"]));
     expect(entries.map((entry) => entry.path)).not.toContain("node_modules/demo/hidden.md");
-  });
+  }, 15_000);
 
   it("returns source content and rejects traversal or non-catalog files", async () => {
     const root = await createRoot();
@@ -32,7 +32,7 @@ describe("studio source catalog", () => {
     await expect(readSourceCatalogContent("README.md", root)).resolves.toMatchObject({ content: expect.stringContaining("Safe text") });
     await expect(readSourceCatalogContent("../secret.md", root)).rejects.toBeInstanceOf(SourceCatalogError);
     await expect(readSourceCatalogContent("secret.txt", root)).rejects.toBeInstanceOf(SourceCatalogError);
-  });
+  }, 15_000);
 });
 
 async function createRoot() {

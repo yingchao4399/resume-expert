@@ -2,8 +2,10 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { PDFDocument } from "pdf-lib";
 import { buildResumePdfFileName, generateATSTextPdf } from "@/lib/export/resume-pdf";
+import { buildResumeRenderModel } from "@/lib/export/resume-render-model";
+import { hashResumeRenderModel } from "@/lib/export/resume-pagination";
 import { getDefaultLayoutConfig } from "@/lib/templates/resume-templates";
-import type { FinalResume } from "@/types/resume";
+import type { FinalResume, ResumePaginationPlan } from "@/types/resume";
 
 const resume: FinalResume = {
   personalInfo: { name: "测试用户", email: "test@example.com", phone: "13800000000", location: "上海" },
@@ -35,4 +37,26 @@ describe("ATS text PDF public interface", () => {
     expect(buildResumePdfFileName(resume, "AI/产品经理", "ATS")).toMatch(/^测试用户-AI-产品经理-\d{8}-ATS\.pdf$/);
     expect(buildResumePdfFileName(resume, "AI/产品经理", "视觉版")).toMatch(/-视觉版\.pdf$/);
   });
+
+  it("uses the shared A4 pagination plan instead of repaginating independently", async () => {
+    const font = await readFile(new URL("../../../public/fonts/NotoSansSC-Variable.ttf", import.meta.url));
+    const layout = getDefaultLayoutConfig("ats-classic");
+    const model = buildResumeRenderModel(resume, layout);
+    const splitAt = Math.max(1, Math.floor(model.blocks.length / 2));
+    const plan: ResumePaginationPlan = {
+      contentHash: hashResumeRenderModel(model),
+      pageCount: 2,
+      pages: [
+        { index: 0, includeHeader: true, blockIds: model.blocks.slice(0, splitAt).map((block) => block.id), usedHeight: 200, availableHeight: 650 },
+        { index: 1, includeHeader: false, blockIds: model.blocks.slice(splitAt).map((block) => block.id), usedHeight: 200, availableHeight: 720 },
+      ],
+      overflow: false,
+      compatibilityRatio: 0.94,
+      measuredAt: "2026-08-26T00:00:00.000Z",
+    };
+
+    const bytes = await generateATSTextPdf(resume, layout, { fontBytes: font, paginationPlan: plan });
+    const pdf = await PDFDocument.load(bytes);
+    expect(pdf.getPageCount()).toBe(2);
+  }, 30_000);
 });

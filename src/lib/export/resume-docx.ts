@@ -17,6 +17,8 @@ import {
 } from "@/lib/templates/resume-templates";
 import type { FinalResume, ResumeLayoutConfig, ResumeSectionId } from "@/types/resume";
 import { buildResumeRenderModel } from "@/lib/export/resume-render-model";
+import { isPaginationPlanCurrent } from "@/lib/export/resume-pagination";
+import type { ResumePaginationPlan } from "@/types/resume";
 
 function colorValue(hex: string) {
   return hex.replace("#", "");
@@ -24,15 +26,19 @@ function colorValue(hex: string) {
 
 export function buildResumeDocument(
   resume: FinalResume,
-  layoutConfig: ResumeLayoutConfig = getDefaultLayoutConfig()
+  layoutConfig: ResumeLayoutConfig = getDefaultLayoutConfig(),
+  paginationPlan?: ResumePaginationPlan,
 ): Document {
   const layout = sanitizeLayoutConfig(layoutConfig);
   const renderModel = buildResumeRenderModel(resume, layout);
+  if (paginationPlan && !isPaginationPlanCurrent(paginationPlan, renderModel)) {
+    throw new Error("A4 分页结果已过期，请等待预览重新分页后再下载。");
+  }
   const font = getDocxFont(layout.fontFamily);
-  const bodySize = Math.round(layout.baseFontSize * 2);
+  const bodySize = Math.round(renderModel.tokens.bodyFontSizePt * 2);
   const accent = colorValue(layout.accentColor);
   const spacingLine = Math.round(layout.lineHeight * 240);
-  const sectionBefore = Math.round(layout.sectionSpacing * 12);
+  const sectionBefore = Math.round(renderModel.tokens.sectionSpacingPt * 20);
 
   const run = (text: string, options: { bold?: boolean; size?: number; color?: string } = {}) =>
     new TextRun({
@@ -46,7 +52,7 @@ export function buildResumeDocument(
   const heading = (id: ResumeSectionId) =>
     new Paragraph({
       heading: HeadingLevel.HEADING_2,
-      spacing: { before: sectionBefore, after: 80 },
+      spacing: { before: sectionBefore, after: Math.round(renderModel.tokens.headingAfterPt * 20) },
       border:
         layout.templateId === "modern-clean"
           ? {
@@ -60,22 +66,16 @@ export function buildResumeDocument(
 
   const bodyParagraph = (text: string) =>
     new Paragraph({
-      spacing: { after: 60, line: spacingLine },
+      spacing: { after: Math.round(renderModel.tokens.paragraphAfterPt * 20), line: spacingLine },
       children: [run(text)],
     });
 
   const bulletParagraph = (text: string) => {
-    if (layout.bulletStyle === "disc") {
-      return new Paragraph({
-        bullet: { level: 0 },
-        spacing: { after: 40, line: spacingLine },
-        children: [run(text)],
-      });
-    }
-    const prefix = layout.bulletStyle === "square" ? "▪ " : "– ";
+    const prefix = layout.bulletStyle === "square" ? "▪ " : layout.bulletStyle === "dash" ? "– " : "• ";
     return new Paragraph({
-      indent: { left: 300, hanging: 180 },
-      spacing: { after: 40, line: spacingLine },
+      keepLines: true,
+      indent: { left: 240, hanging: 140 },
+      spacing: { after: Math.round(renderModel.tokens.bulletAfterPt * 20), line: spacingLine },
       children: [run(`${prefix}${text}`)],
     });
   };
@@ -86,7 +86,7 @@ export function buildResumeDocument(
     if (block.kind === "experience-heading") return [new Paragraph({
       keepNext: true,
       tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
-      spacing: { before: 70, after: 50 },
+      spacing: { before: Math.round(renderModel.tokens.experienceBeforePt * 20), after: Math.round(renderModel.tokens.experienceAfterPt * 20) },
       children: [run(block.text, { bold: true }), run(block.secondaryText ? `\t${block.secondaryText}` : "", { color: "666666" })],
     })];
     return [bodyParagraph(block.text)];
@@ -97,18 +97,18 @@ export function buildResumeDocument(
     new Paragraph({
       alignment: headerAlignment,
       spacing: { after: 60 },
-      children: [run(resume.personalInfo.name || "姓名", { bold: true, size: bodySize + 12, color: layout.templateId === "modern-clean" ? accent : undefined })],
+      children: [run(resume.personalInfo.name || "姓名", { bold: true, size: Math.round(renderModel.tokens.nameFontSizePt * 2), color: layout.templateId === "modern-clean" ? accent : undefined })],
     }),
     new Paragraph({
       alignment: headerAlignment,
-      spacing: { after: 120 },
+      spacing: { after: Math.round(renderModel.tokens.headerToContentPt * 20) },
       border: { bottom: { color: accent, size: layout.templateId === "modern-clean" ? 8 : 4, space: 5, style: BorderStyle.SINGLE } },
       children: [
         run(
           [resume.personalInfo.email, resume.personalInfo.phone, resume.personalInfo.location]
             .filter(Boolean)
             .join("  |  "),
-          { size: Math.max(16, bodySize - 2), color: "666666" }
+          { size: Math.round(renderModel.tokens.contactFontSizePt * 2), color: "666666" }
         ),
       ],
     }),
@@ -159,9 +159,10 @@ export function buildResumeFileName(
 export async function downloadResumeDocx(
   resume: FinalResume,
   targetRole: string,
-  layoutConfig: ResumeLayoutConfig = getDefaultLayoutConfig()
+  layoutConfig: ResumeLayoutConfig = getDefaultLayoutConfig(),
+  paginationPlan?: ResumePaginationPlan,
 ): Promise<void> {
-  const blob = await Packer.toBlob(buildResumeDocument(resume, layoutConfig));
+  const blob = await Packer.toBlob(buildResumeDocument(resume, layoutConfig, paginationPlan));
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;

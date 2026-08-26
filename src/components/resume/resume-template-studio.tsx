@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   closestCenter,
   DndContext,
@@ -27,17 +27,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ResumeTemplateView } from "@/components/resume/resume-template-view";
+import { ResumePaginatedView } from "@/components/resume/resume-paginated-view";
 import {
   getDefaultLayoutConfig,
   RESUME_SECTION_LABELS,
   RESUME_TEMPLATES,
   sanitizeLayoutConfig,
 } from "@/lib/templates/resume-templates";
+import { buildOnePageFitCandidates, hashResumeRenderModel } from "@/lib/export/resume-pagination";
+import { buildResumeRenderModel } from "@/lib/export/resume-render-model";
 import { cn } from "@/lib/utils";
 import type {
   FinalResume,
   ResumeLayoutConfig,
+  ResumeFitResult,
+  ResumePaginationPlan,
+  ResumePaginationStatus,
   ResumeSectionId,
   ResumeTemplateId,
 } from "@/types/resume";
@@ -53,6 +58,10 @@ interface ResumeTemplateStudioProps {
 
 export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave }: ResumeTemplateStudioProps) {
   const [draft, setDraft] = useState(value);
+  const [paginationPlan, setPaginationPlan] = useState<ResumePaginationPlan | null>(null);
+  const [paginationStatus, setPaginationStatus] = useState<ResumePaginationStatus>("measuring");
+  const [fitSession, setFitSession] = useState<{ candidates: ResumeLayoutConfig[]; index: number; initial: ResumeLayoutConfig } | null>(null);
+  const [fitResult, setFitResult] = useState<ResumeFitResult | null>(null);
   const { dirtyScope, setDirtyScope } = useResumeStore();
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -60,15 +69,22 @@ export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave
   );
 
   useEffect(() => {
-    if (open) setDraft(structuredClone(value));
+    if (open) {
+      setDraft(structuredClone(value));
+      setFitSession(null);
+      setFitResult(null);
+    }
   }, [open, value]);
 
   const safeDraft = useMemo(() => sanitizeLayoutConfig(draft), [draft]);
+  const expectedContentHash = useMemo(() => hashResumeRenderModel(buildResumeRenderModel(resume, safeDraft)), [resume, safeDraft]);
 
   const changeTemplate = (templateId: ResumeTemplateId) => {
     if (templateId === draft.templateId) return;
     if (!window.confirm("切换模板会恢复该模板的视觉默认值，但保留区块顺序和显隐。是否继续？")) return;
     setDirtyScope("layout");
+    setFitSession(null);
+    setFitResult(null);
     setDraft({
       ...getDefaultLayoutConfig(templateId),
       sectionOrder: draft.sectionOrder,
@@ -78,8 +94,50 @@ export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave
 
   const update = (patch: Partial<ResumeLayoutConfig>) => {
     setDirtyScope("layout");
+    setFitSession(null);
+    setFitResult(null);
     setDraft((current) => ({ ...current, ...patch }));
   };
+
+  const handlePaginationPlanChange = useCallback((plan: ResumePaginationPlan | null, status: ResumePaginationStatus) => {
+    setPaginationPlan(plan);
+    setPaginationStatus(status);
+  }, []);
+
+  const startOnePageFit = () => {
+    if (paginationPlan?.pageCount === 1 && !paginationPlan.overflow) {
+      setFitResult({ status: "fitted", layoutConfig: safeDraft, pageCount: 1, changedFields: [], message: "当前排版已经是 1 页，无需调整。" });
+      return;
+    }
+    const candidates = buildOnePageFitCandidates(safeDraft);
+    if (!candidates.length) {
+      setFitResult({ status: "cannot-fit", layoutConfig: safeDraft, pageCount: paginationPlan?.pageCount ?? 0, changedFields: [], message: "当前已达到排版护栏下限，仍无法安全适配为 1 页。" });
+      return;
+    }
+    setDirtyScope("layout");
+    setFitResult({ status: "running", layoutConfig: safeDraft, pageCount: paginationPlan?.pageCount ?? 0, changedFields: [], message: "正在按可读性优先顺序适配 1 页…" });
+    setFitSession({ candidates, index: 0, initial: safeDraft });
+    setDraft(candidates[0]);
+  };
+
+  useEffect(() => {
+    if (!fitSession || paginationStatus !== "ready" || !paginationPlan || paginationPlan.contentHash !== expectedContentHash) return;
+    if (paginationPlan.pageCount === 1 && !paginationPlan.overflow) {
+      const changedFields = (["sectionSpacing", "pageMargin", "lineHeight", "baseFontSize"] as const)
+        .filter((field) => fitSession.initial[field] !== safeDraft[field]);
+      setFitResult({ status: "fitted", layoutConfig: safeDraft, pageCount: 1, changedFields, message: `已适配为 1 页：${changedFields.map((field) => FIT_FIELD_LABELS[field]).join("、") || "无需调整"}。你仍可继续手动微调。` });
+      setFitSession(null);
+      return;
+    }
+    const nextIndex = fitSession.index + 1;
+    if (nextIndex < fitSession.candidates.length) {
+      setFitSession({ ...fitSession, index: nextIndex });
+      setDraft(fitSession.candidates[nextIndex]);
+      return;
+    }
+    setFitResult({ status: "cannot-fit", layoutConfig: safeDraft, pageCount: paginationPlan.pageCount, changedFields: ["sectionSpacing", "pageMargin", "lineHeight", "baseFontSize"], message: `已达到字号 8.5pt、行距 1.15、页边距 10mm 等安全下限，仍为 ${paginationPlan.pageCount} 页。请精简内容或隐藏非必要区块。` });
+    setFitSession(null);
+  }, [expectedContentHash, fitSession, paginationPlan, paginationStatus, safeDraft]);
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
@@ -125,6 +183,18 @@ export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave
             </div>
 
             <div className="grid gap-3 rounded-lg border p-3">
+              <div className="rounded-md bg-neutral-50 p-3" aria-live="polite">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-medium">A4 分页</p>
+                    <p className="text-xs text-neutral-500">{paginationStatus === "ready" ? `当前共 ${paginationPlan?.pageCount ?? 0} 页${paginationPlan?.overflow ? "，存在内容溢出" : ""}` : "正在测量真实 A4 版面…"}</p>
+                  </div>
+                  <Button type="button" size="sm" variant="outline" disabled={fitResult?.status === "running" || paginationStatus !== "ready"} onClick={startOnePageFit}>
+                    {fitResult?.status === "running" ? "正在适配…" : "一键适配 1 页"}
+                  </Button>
+                </div>
+                {fitResult && fitResult.status !== "running" && <p className={cn("mt-2 text-xs", fitResult.status === "cannot-fit" ? "text-amber-700" : "text-emerald-700")}>{fitResult.message}</p>}
+              </div>
               <label className="grid gap-1 text-xs">
                 字体
                 <select className="h-9 rounded-md border bg-white px-2 text-sm" value={draft.fontFamily} onChange={(event) => update({ fontFamily: event.target.value as ResumeLayoutConfig["fontFamily"] })}>
@@ -196,12 +266,7 @@ export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave
           </div>
 
           <div className="overflow-auto rounded-lg bg-neutral-100 p-4">
-            <div
-              className="mx-auto min-h-[297mm] w-[210mm] max-w-full bg-white shadow-sm"
-              style={{ padding: `${safeDraft.pageMargin}mm` }}
-            >
-              <ResumeTemplateView resume={resume} layoutConfig={safeDraft} />
-            </div>
+            <ResumePaginatedView resume={resume} layoutConfig={safeDraft} onPaginationPlanChange={handlePaginationPlanChange} />
           </div>
         </div>
 
@@ -225,6 +290,13 @@ export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave
     </Dialog>
   );
 }
+
+const FIT_FIELD_LABELS = {
+  sectionSpacing: "区块间距",
+  pageMargin: "页边距",
+  lineHeight: "行距",
+  baseFontSize: "正文字号",
+} as const;
 
 function RangeField({
   label,

@@ -188,7 +188,9 @@ export function FinalResumeStep() {
         <>
           <Card className="mb-6">
             <CardContent className="p-6">
-              <ResumeDocumentView resume={finalResume} layoutConfig={layoutConfig} />
+              <div className="overflow-x-auto bg-neutral-100 p-4">
+                <ResumeDocumentView resume={finalResume} layoutConfig={layoutConfig} />
+              </div>
               <ResumeSourceTrace resume={finalResume} evidence={careerEvidence} />
             </CardContent>
           </Card>

@@ -17,12 +17,23 @@ export interface ResumeRenderModel {
   contactLine: string;
   blocks: ResumeRenderBlock[];
   layout: ResumeLayoutConfig;
+  tokens: ResumeTypographyTokens;
 }
 
-export interface ResumeRenderPage {
-  index: number;
-  includeHeader: boolean;
-  blocks: ResumeRenderBlock[];
+export interface ResumeTypographyTokens {
+  bodyFontSizePt: number;
+  lineHeightPt: number;
+  nameFontSizePt: number;
+  contactFontSizePt: number;
+  headingFontSizePt: number;
+  sectionSpacingPt: number;
+  headingAfterPt: number;
+  experienceBeforePt: number;
+  experienceAfterPt: number;
+  paragraphAfterPt: number;
+  bulletAfterPt: number;
+  headerRuleBeforePt: number;
+  headerToContentPt: number;
 }
 
 export function buildResumeRenderModel(
@@ -42,36 +53,27 @@ export function buildResumeRenderModel(
     contactLine: [resume.personalInfo.email, resume.personalInfo.phone, resume.personalInfo.location].filter(Boolean).join(" · "),
     blocks,
     layout,
+    tokens: buildResumeTypographyTokens(layout),
   };
 }
 
-export function paginateResumeRenderModel(model: ResumeRenderModel): ResumeRenderPage[] {
-  const contentWidthPt = (210 - model.layout.pageMargin * 2) * 2.83465;
-  const pageHeightPt = (297 - model.layout.pageMargin * 2) * 2.83465;
-  const pages: ResumeRenderPage[] = [];
-  let current: ResumeRenderPage = { index: 0, includeHeader: true, blocks: [] };
-  let remaining = pageHeightPt - estimateHeaderHeight(model);
-
-  const pushPage = () => {
-    pages.push(current);
-    current = { index: pages.length, includeHeader: false, blocks: [] };
-    remaining = pageHeightPt;
+export function buildResumeTypographyTokens(layout: ResumeLayoutConfig): ResumeTypographyTokens {
+  const base = layout.baseFontSize;
+  return {
+    bodyFontSizePt: base,
+    lineHeightPt: base * layout.lineHeight,
+    nameFontSizePt: base + 12,
+    contactFontSizePt: Math.max(8, base - 1),
+    headingFontSizePt: base + 1,
+    sectionSpacingPt: layout.sectionSpacing * 0.75,
+    headingAfterPt: 6,
+    experienceBeforePt: base * 0.65,
+    experienceAfterPt: base * 0.25,
+    paragraphAfterPt: base * 0.35,
+    bulletAfterPt: base * 0.2,
+    headerRuleBeforePt: layout.templateId === "modern-clean" ? 9 : 12,
+    headerToContentPt: 12,
   };
-
-  for (let index = 0; index < model.blocks.length; index += 1) {
-    const block = model.blocks[index];
-    const height = estimateBlockHeight(block, model.layout, contentWidthPt);
-    const nextHeight = model.blocks[index + 1]
-      ? estimateBlockHeight(model.blocks[index + 1], model.layout, contentWidthPt)
-      : 0;
-    const keepWithNext = block.kind === "section-heading" || block.kind === "experience-heading";
-    const required = height + (keepWithNext ? Math.min(nextHeight, 90) : 0);
-    if (current.blocks.length > 0 && remaining < required) pushPage();
-    current.blocks.push(block);
-    remaining -= height;
-  }
-  if (current.blocks.length || pages.length === 0) pages.push(current);
-  return pages;
 }
 
 function sectionBlocks(sectionId: ResumeSectionId, resume: FinalResume): ResumeRenderBlock[] {
@@ -104,18 +106,4 @@ function experienceBlocks(sectionId: ResumeSectionId, id: string, title: string,
   const result: ResumeRenderBlock[] = [{ id: `${id}-heading`, sectionId, kind: "experience-heading", text: title, secondaryText: period }];
   result.push(...bullets.filter((text) => text.trim()).map((text, index) => ({ id: `${id}-bullet-${index}`, sectionId, kind: "bullet" as const, text })));
   return result;
-}
-
-function estimateHeaderHeight(model: ResumeRenderModel): number {
-  return model.contactLine ? 76 : 56;
-}
-
-function estimateBlockHeight(block: ResumeRenderBlock, layout: ResumeLayoutConfig, widthPt: number): number {
-  if (block.kind === "section-heading") return 20 + layout.sectionSpacing * 0.75;
-  if (block.kind === "experience-heading") return 21;
-  const indentation = block.kind === "bullet" ? 18 : 0;
-  const charsPerLine = Math.max(18, Math.floor((widthPt - indentation) / Math.max(layout.baseFontSize, 8.5)));
-  const weightedLength = Array.from(block.text).reduce((total, char) => total + (/\s/.test(char) ? 0.4 : /[\u0000-\u00ff]/.test(char) ? 0.55 : 1), 0);
-  const lines = Math.max(1, Math.ceil(weightedLength / charsPerLine));
-  return lines * layout.baseFontSize * layout.lineHeight + (block.kind === "bullet" ? 4 : 6);
 }

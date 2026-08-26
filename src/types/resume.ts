@@ -380,6 +380,33 @@ export interface ResumeLayoutConfig {
   hiddenSections: ResumeSectionId[];
 }
 
+export type ResumePaginationStatus = "measuring" | "ready" | "error";
+
+export interface ResumePaginationPage {
+  index: number;
+  includeHeader: boolean;
+  blockIds: string[];
+  usedHeight: number;
+  availableHeight: number;
+}
+
+export interface ResumePaginationPlan {
+  contentHash: string;
+  pageCount: number;
+  pages: ResumePaginationPage[];
+  overflow: boolean;
+  compatibilityRatio: number;
+  measuredAt: string;
+}
+
+export interface ResumeFitResult {
+  status: "idle" | "running" | "fitted" | "cannot-fit";
+  layoutConfig: ResumeLayoutConfig;
+  pageCount: number;
+  changedFields: Array<keyof Pick<ResumeLayoutConfig, "sectionSpacing" | "pageMargin" | "lineHeight" | "baseFontSize">>;
+  message: string;
+}
+
 export interface InterviewQuestion {
   requirementId?: string;
   question: string;

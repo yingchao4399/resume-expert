@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
+import JSZip from "jszip";
 import { runMockInterviewAnalysis } from "../src/services/ai/interviewAgent.mock";
 import type { CareerEvidence, ResumeBullet, ResumeLibraryState } from "../src/types/resume";
 
@@ -71,6 +72,21 @@ function stateFor(templateId = "ats-classic", finalResumeStatus: "draft" | "conf
     hasManualEdits: false,
   } as ResumeLibraryState["documents"][number];
   return { state: { schemaVersion: 10, documents: [document], activeDocumentId: document.id, careerEvidence: [] as CareerEvidence[], jobApplications: [], interviewReviews: [] } satisfies ResumeLibraryState, version: 10 };
+}
+
+function paginationBoundaryState() {
+  const state = stateFor("ats-classic");
+  state.state.documents[0].analysisResult!.finalResume.workExperience = Array.from({ length: 7 }, (_, index) => ({
+    company: `合成科技 ${index + 1}`,
+    role: "产品经理",
+    period: "2021 - 至今",
+    bullets: [
+      `负责第 ${index + 1} 个企业服务项目的需求分析、方案设计、跨团队协作和上线复盘，确保全部描述仅用于分页测试。`,
+      "围绕用户反馈梳理业务流程并形成可核验交付记录，持续跟踪关键节点和风险。",
+    ],
+  }));
+  state.state.documents[0].layoutConfig = { ...layoutDefaults, templateId: "ats-classic", pageMargin: 12 } as ResumeLibraryState["documents"][number]["layoutConfig"];
+  return state;
 }
 
 async function seed(page: Page, templateId = "ats-classic") {
@@ -589,9 +605,23 @@ test("exports a DOCX that can be imported again", async ({ page }) => {
 });
 
 test("downloads searchable ATS and visual A4 PDFs", async ({ page }) => {
-  await seed(page);
+  test.setTimeout(60_000);
+  await page.addInitScript((value) => localStorage.setItem("resume-expert-library", JSON.stringify(value)), paginationBoundaryState());
   await page.goto("/");
   await page.getByRole("button", { name: /ATS 与导出 4\.2/ }).click();
+  const paginationPreview = page.locator(".resume-paginated-view").last();
+  await expect(paginationPreview).toHaveAttribute("data-pagination-status", "ready");
+  const expectedPageCount = Number(await paginationPreview.getAttribute("data-page-count"));
+  expect(expectedPageCount).toBeGreaterThan(1);
+
+  const docxDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "下载 DOCX" }).click();
+  const docxDownload = await docxDownloadPromise;
+  const docxPath = path.join(process.cwd(), "test-results", "v1.10-pagination.docx");
+  await docxDownload.saveAs(docxPath);
+  const docxArchive = await JSZip.loadAsync(await fs.promises.readFile(docxPath));
+  const documentXml = await docxArchive.file("word/document.xml")!.async("string");
+  expect(documentXml).not.toContain("w:pageBreakBefore");
 
   const atsDownloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "下载 ATS 文字版" }).click();
@@ -603,7 +633,7 @@ test("downloads searchable ATS and visual A4 PDFs", async ({ page }) => {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const atsBytes = new Uint8Array(await fs.promises.readFile(atsPath));
   const atsPdf = await pdfjs.getDocument({ data: atsBytes }).promise;
-  expect(atsPdf.numPages).toBeGreaterThan(0);
+  expect(atsPdf.numPages).toBe(expectedPageCount);
   const atsPage = await atsPdf.getPage(1);
   const atsViewport = atsPage.getViewport({ scale: 1 });
   expect(atsViewport.width).toBeCloseTo(595.28, 1);
@@ -619,7 +649,7 @@ test("downloads searchable ATS and visual A4 PDFs", async ({ page }) => {
   await visualDownload.saveAs(visualPath);
   const visualBytes = new Uint8Array(await fs.promises.readFile(visualPath));
   const visualPdf = await pdfjs.getDocument({ data: visualBytes }).promise;
-  expect(visualPdf.numPages).toBeGreaterThan(0);
+  expect(visualPdf.numPages).toBe(expectedPageCount);
   const visualViewport = (await visualPdf.getPage(1)).getViewport({ scale: 1 });
   expect(visualViewport.width).toBeCloseTo(595.28, 1);
   expect(visualViewport.height).toBeCloseTo(841.89, 1);
@@ -634,6 +664,27 @@ test("downloads searchable ATS and visual A4 PDFs", async ({ page }) => {
   await expect(preview.getByRole("button", { name: "系统打印" })).toBeEnabled();
   await expect(preview.getByRole("button", { name: "返回" })).toBeEnabled();
   await expect(preview.getByRole("button", { name: "关闭窗口" })).toBeEnabled();
+});
+
+test("uses one measured A4 pagination plan in final preview and template studio", async ({ page }) => {
+  await page.addInitScript((value) => localStorage.setItem("resume-expert-library", JSON.stringify(value)), paginationBoundaryState());
+
+  await page.goto("/");
+  const finalPreview = page.locator(".resume-paginated-view").first();
+  await expect(finalPreview).toHaveAttribute("data-pagination-status", "ready");
+  const initialPageCount = Number(await finalPreview.getAttribute("data-page-count"));
+  expect(initialPageCount).toBeGreaterThan(1);
+
+  await page.getByRole("button", { name: "模板与排版" }).click();
+  const studio = page.getByRole("dialog", { name: "模板与统一排版" });
+  const studioPreview = studio.locator(".resume-paginated-view");
+  await expect(studioPreview).toHaveAttribute("data-pagination-status", "ready");
+  await expect(studioPreview).toHaveAttribute("data-page-count", String(initialPageCount));
+  await expect(studio.getByText(`共 ${initialPageCount} 页`, { exact: true })).toBeVisible();
+
+  await studio.getByRole("button", { name: "一键适配 1 页" }).click();
+  await expect(studioPreview).toHaveAttribute("data-page-count", "1", { timeout: 20_000 });
+  await expect(studio.getByText("已适配为 1 页", { exact: false })).toBeVisible();
 });
 
 test("persists custom style and only finalizes a user-confirmed keyword enhancement", async ({ page }) => {
@@ -750,7 +801,8 @@ for (const templateId of ["ats-classic", "modern-clean", "compact-professional"]
     test.skip(process.platform !== "win32", "Pixel baselines are generated with Windows Chinese fonts.");
     await seed(page, templateId);
     await page.goto("/print?documentId=e2e-document");
-    await expect(page.locator(".resume-document")).toBeVisible();
-    await expect(page.locator(".resume-document")).toHaveScreenshot(`${templateId}-a4.png`, { animations: "disabled" });
+    const firstA4Page = page.locator("[data-pdf-page]").first();
+    await expect(firstA4Page).toBeVisible();
+    await expect(firstA4Page).toHaveScreenshot(`${templateId}-a4.png`, { animations: "disabled" });
   });
 }

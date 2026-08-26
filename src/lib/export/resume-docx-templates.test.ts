@@ -1,8 +1,11 @@
 import { Packer } from "docx";
+import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 import { buildResumeDocument } from "@/lib/export/docx";
+import { buildResumeRenderModel } from "@/lib/export/resume-render-model";
+import { hashResumeRenderModel } from "@/lib/export/resume-pagination";
 import { getDefaultLayoutConfig } from "@/lib/templates/resume-templates";
-import type { FinalResume, ResumeTemplateId } from "@/types/resume";
+import type { FinalResume, ResumePaginationPlan, ResumeTemplateId } from "@/types/resume";
 
 const resume: FinalResume = {
   personalInfo: { name: "模板测试", email: "test@example.com", phone: "13800000000", location: "上海" },
@@ -34,4 +37,25 @@ describe("template DOCX export", () => {
       expect(buffer.byteLength).toBeGreaterThan(1000);
     }
   );
+
+  it("validates the shared A4 plan without adding hard breaks that create extra Word pages", async () => {
+    const layout = getDefaultLayoutConfig("ats-classic");
+    const model = buildResumeRenderModel(resume, layout);
+    const splitAt = Math.max(1, Math.floor(model.blocks.length / 2));
+    const plan: ResumePaginationPlan = {
+      contentHash: hashResumeRenderModel(model),
+      pageCount: 2,
+      pages: [
+        { index: 0, includeHeader: true, blockIds: model.blocks.slice(0, splitAt).map((block) => block.id), usedHeight: 200, availableHeight: 650 },
+        { index: 1, includeHeader: false, blockIds: model.blocks.slice(splitAt).map((block) => block.id), usedHeight: 200, availableHeight: 720 },
+      ],
+      overflow: false,
+      compatibilityRatio: 0.94,
+      measuredAt: "2026-08-26T00:00:00.000Z",
+    };
+    const buffer = await Packer.toBuffer(buildResumeDocument(resume, layout, plan));
+    const archive = await JSZip.loadAsync(buffer);
+    const xml = await archive.file("word/document.xml")!.async("string");
+    expect(xml).not.toContain("w:pageBreakBefore");
+  });
 });

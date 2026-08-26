@@ -1,1 +1,1 @@
-export { ResumeTemplateView as ResumeDocumentView } from "@/components/resume/resume-template-view";
+export { ResumePaginatedView as ResumeDocumentView } from "@/components/resume/resume-paginated-view";

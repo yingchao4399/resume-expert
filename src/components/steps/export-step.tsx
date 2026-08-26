@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Check,
   Copy,
@@ -35,6 +35,7 @@ import { downloadResumeDocx } from "@/lib/export/docx";
 import { downloadATSTextPdf, downloadVisualPdf } from "@/lib/export/resume-pdf";
 import { copyToClipboard, formatResumeAsText } from "@/lib/utils";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
+import type { ResumePaginationPlan, ResumePaginationStatus } from "@/types/resume";
 
 export function ExportStep() {
   const {
@@ -53,7 +54,13 @@ export function ExportStep() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [pdfExport, setPdfExport] = useState<"ats-text" | "visual" | null>(null);
+  const [paginationPlan, setPaginationPlan] = useState<ResumePaginationPlan | null>(null);
+  const [paginationStatus, setPaginationStatus] = useState<ResumePaginationStatus>("measuring");
   const visualPagesRef = useRef<HTMLDivElement>(null);
+  const handlePaginationPlanChange = useCallback((plan: ResumePaginationPlan | null, status: ResumePaginationStatus) => {
+    setPaginationPlan(plan);
+    setPaginationStatus(status);
+  }, []);
 
   const finalResume = analysisResult?.finalResume;
   const assessment = useMemo(
@@ -71,6 +78,8 @@ export function ExportStep() {
   const resumeText = formatResumeAsText(finalResume);
   const analysisFresh = isAnalysisFresh({ analysisResult, materialRevision, analysisRevision });
   const exportBlocked = finalResumeStatus !== "confirmed" || !analysisFresh;
+  const paginationOverflow = Boolean(paginationPlan?.overflow);
+  const paginationBlocked = paginationStatus !== "ready" || !paginationPlan || paginationOverflow;
 
   const handleCopy = async () => {
     if (exportBlocked) return;
@@ -84,11 +93,11 @@ export function ExportStep() {
   };
 
   const handleDocx = async () => {
-    if (exportBlocked) return;
+    if (exportBlocked || paginationBlocked || !paginationPlan) return;
     setExporting(true);
     setExportError(null);
     try {
-      await downloadResumeDocx(finalResume, userInput.targetRole, layoutConfig);
+      await downloadResumeDocx(finalResume, userInput.targetRole, layoutConfig, paginationPlan);
     } catch (error) {
       setExportError(
         error instanceof Error ? error.message : "Word 文件生成失败"
@@ -99,7 +108,7 @@ export function ExportStep() {
   };
 
   const handlePrint = () => {
-    if (exportBlocked) return;
+    if (exportBlocked || paginationBlocked || !paginationPlan) return;
     const printWindow = window.open(`/print?documentId=${encodeURIComponent(activeDocumentId)}`, "_blank");
     if (!printWindow) {
       setExportError("浏览器阻止了打印窗口，请允许本站打开新窗口后重试。");
@@ -107,13 +116,13 @@ export function ExportStep() {
   };
 
   const handlePdf = async (mode: "ats-text" | "visual") => {
-    if (exportBlocked) return;
+    if (exportBlocked || paginationBlocked || !paginationPlan) return;
     setPdfExport(mode); setExportError(null);
     try {
-      if (mode === "ats-text") await downloadATSTextPdf(finalResume, userInput.targetRole, layoutConfig);
+      if (mode === "ats-text") await downloadATSTextPdf(finalResume, userInput.targetRole, layoutConfig, { paginationPlan });
       else {
         const pages = Array.from(visualPagesRef.current?.querySelectorAll<HTMLElement>("[data-pdf-page]") ?? []);
-        await downloadVisualPdf(pages, finalResume, userInput.targetRole);
+        await downloadVisualPdf(pages, finalResume, userInput.targetRole, { paginationPlan });
       }
     } catch (error) {
       setExportError(error instanceof Error ? error.message : "PDF 生成失败，请稍后重试。");
@@ -154,6 +163,16 @@ export function ExportStep() {
         </div>
       )}
 
+      {!exportBlocked && paginationBlocked && (
+        <div className="mb-4 rounded-md border bg-neutral-50 px-4 py-3 text-sm text-neutral-600" aria-live="polite">
+          {paginationOverflow
+            ? "存在单个内容块超过一页的情况。为避免文件裁切，下载已暂停；请返回模板页压缩排版或精简该段内容。"
+            : paginationStatus === "error"
+              ? "A4 分页失败，请返回模板页调整排版后重试。"
+              : "正在测量真实 A4 版面，完成后即可下载 PDF 和 Word。"}
+        </div>
+      )}
+
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
         <ExportCard
           icon={<Download className="h-4 w-4" />}
@@ -162,7 +181,7 @@ export function ExportStep() {
         >
           <Button
             className="w-full"
-            disabled={exportBlocked || exporting}
+            disabled={exportBlocked || paginationBlocked || exporting}
             onClick={handleDocx}
           >
             {exporting ? (
@@ -180,15 +199,15 @@ export function ExportStep() {
           description="直接下载可检索 ATS 版或视觉还原版，也可打开 A4 预览"
         >
           <div className="space-y-2">
-            <Button className="w-full" disabled={exportBlocked || pdfExport !== null} onClick={() => void handlePdf("ats-text")}>
+            <Button className="w-full" disabled={exportBlocked || paginationBlocked || pdfExport !== null} onClick={() => void handlePdf("ats-text")}>
               {pdfExport === "ats-text" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {pdfExport === "ats-text" ? "正在生成 ATS PDF…" : "下载 ATS 文字版"}
             </Button>
-            <Button variant="outline" className="w-full" disabled={exportBlocked || pdfExport !== null} onClick={() => void handlePdf("visual")}>
+            <Button variant="outline" className="w-full" disabled={exportBlocked || paginationBlocked || pdfExport !== null} onClick={() => void handlePdf("visual")}>
               {pdfExport === "visual" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {pdfExport === "visual" ? "正在生成视觉 PDF…" : "下载视觉还原版"}
             </Button>
-            <Button variant="outline" className="w-full" disabled={exportBlocked || pdfExport !== null} onClick={handlePrint}>
+            <Button variant="outline" className="w-full" disabled={exportBlocked || paginationBlocked || pdfExport !== null} onClick={handlePrint}>
               <Printer className="h-4 w-4" />打开 A4 预览
             </Button>
           </div>
@@ -217,11 +236,9 @@ export function ExportStep() {
                   预览内容与 Word、打印版本使用同一份最终简历数据。
                 </DialogDescription>
               </DialogHeader>
-              <ResumeDocumentView
-                resume={finalResume}
-                layoutConfig={layoutConfig}
-                className="rounded-md border p-6"
-              />
+              <div className="overflow-x-auto rounded-md border bg-neutral-100 p-4">
+                <ResumeDocumentView resume={finalResume} layoutConfig={layoutConfig} />
+              </div>
               <div className="flex justify-end">
                 <Button onClick={handleCopy}>
                   {copied ? (
@@ -239,7 +256,7 @@ export function ExportStep() {
 
       <ATSAssessmentCard assessment={assessment} />
       <div ref={visualPagesRef} className="pointer-events-none fixed left-[-10000px] top-0" aria-hidden="true">
-        <ResumePaginatedView resume={finalResume} layoutConfig={layoutConfig} />
+        <ResumePaginatedView resume={finalResume} layoutConfig={layoutConfig} onPaginationPlanChange={handlePaginationPlanChange} showPageCount={false} />
       </div>
     </div>
   );

@@ -27,6 +27,6 @@ export function ResumeTemplateView({ resume, layoutConfig, className }: ResumeTe
     data-template={model.layout.templateId}
   >
     <ResumeRenderHeader model={model} />
-    <ResumeRenderBlocks blocks={model.blocks} layout={model.layout} />
+    <ResumeRenderBlocks blocks={model.blocks} layout={model.layout} tokens={model.tokens} />
   </article>;
 }

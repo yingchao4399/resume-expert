@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Download, Loader2, Printer, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { ResumePaginatedView } from "@/components/resume/resume-paginated-view";
 import { downloadATSTextPdf, downloadVisualPdf } from "@/lib/export/resume-pdf";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 import { useResumeStore } from "@/store/resume-store";
+import type { ResumePaginationPlan, ResumePaginationStatus } from "@/types/resume";
 
 export default function PrintResumePage() {
   const router = useRouter();
@@ -16,6 +17,8 @@ export default function PrintResumePage() {
   const [queryReady, setQueryReady] = useState(false);
   const [exporting, setExporting] = useState<"ats-text" | "visual" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [paginationPlan, setPaginationPlan] = useState<ResumePaginationPlan | null>(null);
+  const [paginationStatus, setPaginationStatus] = useState<ResumePaginationStatus>("measuring");
   const pagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -36,15 +39,21 @@ export default function PrintResumePage() {
     : resumeDocument.finalResumeStatus !== "confirmed"
       ? resumeDocument.finalResumeStatus === "stale" ? "最终简历已过期，请返回制作页重新生成。" : "当前内容仍是草稿，请先确认最终简历。"
       : !analysisFresh ? "岗位材料已变化，旧简历已锁定，请重新分析并生成。" : null;
+  const paginationOverflow = Boolean(paginationPlan?.overflow);
+  const paginationBlocked = paginationStatus !== "ready" || !paginationPlan || paginationOverflow;
+  const handlePaginationPlanChange = useCallback((plan: ResumePaginationPlan | null, status: ResumePaginationStatus) => {
+    setPaginationPlan(plan);
+    setPaginationStatus(status);
+  }, []);
 
   const download = async (mode: "ats-text" | "visual") => {
-    if (!resumeDocument?.analysisResult || blockedReason) return;
+    if (!resumeDocument?.analysisResult || blockedReason || paginationBlocked || !paginationPlan) return;
     setExporting(mode); setError(null);
     try {
-      if (mode === "ats-text") await downloadATSTextPdf(resumeDocument.analysisResult.finalResume, resumeDocument.userInput.targetRole, resumeDocument.layoutConfig);
+      if (mode === "ats-text") await downloadATSTextPdf(resumeDocument.analysisResult.finalResume, resumeDocument.userInput.targetRole, resumeDocument.layoutConfig, { paginationPlan });
       else {
         const pages = Array.from(pagesRef.current?.querySelectorAll<HTMLElement>("[data-pdf-page]") ?? []);
-        await downloadVisualPdf(pages, resumeDocument.analysisResult.finalResume, resumeDocument.userInput.targetRole);
+        await downloadVisualPdf(pages, resumeDocument.analysisResult.finalResume, resumeDocument.userInput.targetRole, { paginationPlan });
       }
     } catch (next) { setError(next instanceof Error ? next.message : "PDF 生成失败，请稍后重试。"); }
     finally { setExporting(null); }
@@ -63,19 +72,20 @@ export default function PrintResumePage() {
     <div className="print-controls mx-auto mb-4 flex max-w-[210mm] flex-wrap items-center justify-between gap-3 rounded-lg border bg-white px-4 py-3 shadow-sm">
       <div><p className="text-sm font-medium">A4 简历预览 · {resumeDocument.title}</p><p className="text-xs text-neutral-500">直接下载 PDF，或使用系统打印。工具栏不会进入文件。</p></div>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" disabled={Boolean(blockedReason) || exporting !== null} onClick={() => void download("ats-text")}>
+        <Button size="sm" disabled={Boolean(blockedReason) || paginationBlocked || exporting !== null} onClick={() => void download("ats-text")}>
           {exporting === "ats-text" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}下载 ATS PDF
         </Button>
-        <Button size="sm" variant="outline" disabled={Boolean(blockedReason) || exporting !== null} onClick={() => void download("visual")}>
+        <Button size="sm" variant="outline" disabled={Boolean(blockedReason) || paginationBlocked || exporting !== null} onClick={() => void download("visual")}>
           {exporting === "visual" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}下载视觉 PDF
         </Button>
-        <Button size="sm" variant="outline" disabled={Boolean(blockedReason) || exporting !== null} onClick={() => window.print()}><Printer className="h-4 w-4" />系统打印</Button>
+        <Button size="sm" variant="outline" disabled={Boolean(blockedReason) || paginationBlocked || exporting !== null} onClick={() => window.print()}><Printer className="h-4 w-4" />系统打印</Button>
         <Button size="sm" variant="outline" onClick={() => router.push("/")}><ArrowLeft className="h-4 w-4" />返回</Button>
         <Button size="sm" variant="ghost" aria-label="关闭窗口" onClick={() => { window.close(); window.setTimeout(() => { if (!window.closed) router.push("/"); }, 150); }}><X className="h-4 w-4" />关闭</Button>
       </div>
     </div>
     {blockedReason && <div className="print-controls mx-auto mb-4 max-w-[210mm] rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="alert">{blockedReason}</div>}
     {error && <div className="print-controls mx-auto mb-4 max-w-[210mm] rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert" aria-live="assertive">{error}</div>}
-    <div ref={pagesRef}><ResumePaginatedView resume={resumeDocument.analysisResult.finalResume} layoutConfig={resumeDocument.layoutConfig} /></div>
+    {!blockedReason && paginationBlocked && <div className="print-controls mx-auto mb-4 max-w-[210mm] rounded-md border bg-white px-4 py-3 text-sm text-neutral-600" aria-live="polite">{paginationOverflow ? "存在单个内容块超过一页的情况。为避免裁切，请返回模板页压缩排版或精简该段内容。" : paginationStatus === "error" ? "A4 分页失败，请返回模板页调整排版。" : "正在测量真实 A4 版面…"}</div>}
+    <div ref={pagesRef} className="overflow-x-auto print:overflow-visible"><ResumePaginatedView resume={resumeDocument.analysisResult.finalResume} layoutConfig={resumeDocument.layoutConfig} onPaginationPlanChange={handlePaginationPlanChange} /></div>
   </main>;
 }
