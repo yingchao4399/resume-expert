@@ -5,6 +5,7 @@ import {
   createInterviewPrepResultSchema,
   finalResumeResultSchema,
   followUpBulletResultSchema,
+  keywordEnhancementModelResultSchema,
   optimizedItemsResultSchema,
   jobOverviewModelResultSchema,
 } from "@/lib/ai/schemas";
@@ -13,6 +14,7 @@ import {
   RESUME_AGENT_SYSTEM_PROMPT,
   buildFinalizeResumePrompt,
   buildFollowUpBulletPrompt,
+  buildKeywordEnhancementPrompt,
   buildOptimizeUserPrompt,
   normalizeAnalysisResult,
   normalizeFinalResume,
@@ -317,12 +319,13 @@ export async function runLLMFollowUpGuidance(
 export async function runLLMRegenerateOptimizedItems(
   input: UserInput,
   style: OptimizeStyle,
-  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture"> = {}
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture"> = {},
+  customInstruction = ""
 ): Promise<AnalysisResult["optimizedItems"]> {
   const raw = await chatCompletionJSON({
     promptId: "resume.optimize-items",
     system: RESUME_AGENT_SYSTEM_PROMPT,
-    user: buildOptimizeUserPrompt(input, style),
+    user: buildOptimizeUserPrompt(input, style, customInstruction),
     schema: optimizedItemsResultSchema,
     schemaName: "resume_optimized_items",
     temperature: 0.5,
@@ -331,6 +334,24 @@ export async function runLLMRegenerateOptimizedItems(
   });
 
   return normalizeOptimizedItems(raw.optimizedItems);
+}
+
+export async function runLLMKeywordEnhancement(
+  input: UserInput,
+  items: Array<{ itemId: string; section: string; currentText: string; selectedKeywords: string[]; evidence: Array<{ id: string; text: string }> }>,
+  customInstruction = "",
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture"> = {},
+) {
+  return chatCompletionJSON({
+    promptId: "resume.keyword-enhancement",
+    system: RESUME_AGENT_SYSTEM_PROMPT,
+    user: buildKeywordEnhancementPrompt(input, items, customInstruction),
+    schema: keywordEnhancementModelResultSchema,
+    schemaName: "keyword_enhancements",
+    temperature: 0.2,
+    maxTokens: 5000,
+    ...execution,
+  });
 }
 
 export async function runLLMFollowUpBullet(
@@ -359,7 +380,8 @@ export async function runLLMFinalizeResume(
   style: OptimizeStyle,
   optimizedItems: AnalysisResult["optimizedItems"],
   followUpQuestions: AnalysisResult["followUpQuestions"],
-  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture"> = {}
+  execution: Pick<WorkflowExecutionOptions, "model" | "timeoutMs" | "capture"> = {},
+  customInstruction = ""
 ): Promise<AnalysisResult["finalResume"]> {
   const raw = await chatCompletionJSON({
     promptId: "resume.finalize",
@@ -368,7 +390,8 @@ export async function runLLMFinalizeResume(
       input,
       style,
       optimizedItems,
-      followUpQuestions
+      followUpQuestions,
+      customInstruction
     ),
     schema: finalResumeResultSchema,
     schemaName: "resume_final_document",

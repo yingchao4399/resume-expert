@@ -186,7 +186,7 @@ export function migrateDocument(document: LegacyResumeDocument): ResumeDocument 
   return {
     ...base,
     ...documentWithoutLegacyStatus,
-    schemaVersion: 10,
+    schemaVersion: 11,
     jobTargetContext: document.jobTargetContext ?? { companyName: "", notes: "", companySnapshotId: null },
     materialRevision: typeof document.materialRevision === "number" ? document.materialRevision : 0,
     analysisRevision: analysisResult && hasCurrentRequirementMap && typeof document.analysisRevision === "number" ? document.analysisRevision : null,
@@ -196,6 +196,9 @@ export function migrateDocument(document: LegacyResumeDocument): ResumeDocument 
     importedResume,
     analysisResult,
     finalResumeStatus,
+    customOptimizeInstruction: typeof document.customOptimizeInstruction === "string"
+      ? document.customOptimizeInstruction.slice(0, 300)
+      : "",
     layoutConfig: sanitizeLayoutConfig(document.layoutConfig),
   } as ResumeDocument;
 }

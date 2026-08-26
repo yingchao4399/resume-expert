@@ -3,6 +3,7 @@ export const STYLE_LABELS = {
   "reduce-exaggeration": "降低夸张",
   "ai-product": "更偏 AI 产品",
   "tob-saas": "更偏 ToB SaaS",
+  custom: "自定义风格",
 } as const;
 
 export type AIMode = "mock" | "llm";
@@ -24,6 +25,25 @@ export interface AnalyzeRequestBody {
 export interface OptimizeRequestBody {
   input: import("@/types/resume").UserInput;
   style: import("@/types/resume").OptimizeStyle;
+  customInstruction?: string;
+}
+
+export interface KeywordEnhancementRequestBody {
+  input: import("@/types/resume").UserInput;
+  items: Array<{
+    itemId: string;
+    section: string;
+    currentText: string;
+    selectedKeywords: string[];
+    evidence: Array<{ id: string; text: string }>;
+  }>;
+  allowedKeywords: string[];
+  customInstruction?: string;
+}
+
+export interface KeywordEnhancementResponseBody {
+  enhancements: import("@/types/resume").KeywordEnhancementDraft[];
+  mode: AIMode;
 }
 
 export interface FollowUpBulletRequestBody {
@@ -38,6 +58,7 @@ export interface FinalizeResumeRequestBody {
   style: import("@/types/resume").OptimizeStyle;
   optimizedItems: import("@/types/resume").OptimizedItem[];
   followUpQuestions: import("@/types/resume").FollowUpQuestion[];
+  customInstruction?: string;
 }
 
 export interface APIErrorResponse {

@@ -7,6 +7,7 @@ export const CALLABLE_PROMPT_IDS = [
   "resume.interview-strategy",
   "resume.follow-up-guidance",
   "resume.optimize-items",
+  "resume.keyword-enhancement",
   "resume.follow-up-bullet",
   "resume.finalize",
   "resume.import-structure",

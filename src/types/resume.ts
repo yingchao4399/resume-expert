@@ -149,7 +149,46 @@ export type OptimizeStyle =
   | "concise"
   | "reduce-exaggeration"
   | "ai-product"
-  | "tob-saas";
+  | "tob-saas"
+  | "custom";
+
+export type PdfExportMode = "ats-text" | "visual";
+
+export type KeywordEnhancementEvidenceStatus =
+  | "supported"
+  | "partial"
+  | "missing";
+
+export type KeywordEnhancementAdoptionStatus =
+  | "draft"
+  | "unverified"
+  | "user-confirmed"
+  | "evidence-confirmed"
+  | "rejected";
+
+export interface KeywordEnhancementDraft {
+  id: string;
+  itemId: string;
+  selectedKeywords: string[];
+  enhancedText: string;
+  sourceAfter: string;
+  evidenceStatus: KeywordEnhancementEvidenceStatus;
+  evidenceClaimIds: string[];
+  evidenceCorrectionSourceIds: string[];
+  foundEvidence: string[];
+  missingEvidence: string[];
+  riskWarnings: string[];
+  adoptionStatus: KeywordEnhancementAdoptionStatus;
+  generatedAt: string;
+  verifiedAt: string | null;
+}
+
+export interface PdfGenerationProgress {
+  mode: PdfExportMode;
+  stage: "loading-font" | "paginating" | "rendering" | "downloading" | "completed";
+  page: number;
+  pageCount: number;
+}
 
 export interface OptimizedItem {
   id: string;
@@ -158,6 +197,7 @@ export interface OptimizedItem {
   after: string;
   reason: string;
   riskWarning: string;
+  keywordEnhancement?: KeywordEnhancementDraft | null;
 }
 
 export interface WorkExperience {
@@ -395,7 +435,7 @@ export interface StepConfig {
 export type FinalResumeStatus = "draft" | "confirmed" | "stale";
 
 export interface ResumeDocument {
-  schemaVersion: 9 | 10;
+  schemaVersion: 9 | 10 | 11;
   id: string;
   title: string;
   createdAt: string;
@@ -413,6 +453,7 @@ export interface ResumeDocument {
   importMetadata: ResumeImportMetadata | null;
   layoutConfig: ResumeLayoutConfig;
   optimizeStyle: OptimizeStyle;
+  customOptimizeInstruction?: string;
   finalResumeStatus: FinalResumeStatus;
   hasManualEdits: boolean;
 }
@@ -435,7 +476,7 @@ export interface JobApplication {
 }
 
 export interface ResumeLibraryState {
-  schemaVersion: 10 | 11;
+  schemaVersion: 10 | 11 | 12;
   documents: ResumeDocument[];
   activeDocumentId: string;
   careerEvidence: CareerEvidence[];

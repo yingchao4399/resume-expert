@@ -9,6 +9,7 @@ export const optimizeStyleSchema = z.enum([
   "reduce-exaggeration",
   "ai-product",
   "tob-saas",
+  "custom",
 ]);
 
 export const userInputSchema = z.object({
@@ -189,6 +190,15 @@ export const optimizedItemSchema = z.object({
   after: z.string(),
   reason: z.string(),
   riskWarning: z.string(),
+  keywordEnhancement: z.object({
+    id: z.string(), itemId: z.string(), selectedKeywords: z.array(z.string()).max(8),
+    enhancedText: z.string(), sourceAfter: z.string(),
+    evidenceStatus: z.enum(["supported", "partial", "missing"]),
+    evidenceClaimIds: z.array(z.string()), evidenceCorrectionSourceIds: z.array(z.string()).optional().default([]), foundEvidence: z.array(z.string()),
+    missingEvidence: z.array(z.string()), riskWarnings: z.array(z.string()),
+    adoptionStatus: z.enum(["draft", "unverified", "user-confirmed", "evidence-confirmed", "rejected"]),
+    generatedAt: z.string(), verifiedAt: z.string().nullable(),
+  }).nullable().optional(),
 });
 
 const resumeBulletSchema = z.union([
@@ -503,6 +513,42 @@ export const optimizeRequestSchema = z.object({
     "缺少原始简历"
   ),
   style: optimizeStyleSchema,
+  customInstruction: z.string().trim().max(300).optional().default(""),
+});
+
+const keywordEnhancementItemRequestSchema = z.object({
+  itemId: z.string().min(1), section: z.string(), currentText: z.string().min(1),
+  selectedKeywords: z.array(z.string().min(1)).min(1).max(8),
+  evidence: z.array(z.object({ id: z.string().min(1), text: z.string().min(1) })).max(12),
+});
+
+export const keywordEnhancementRequestSchema = z.object({
+  input: userInputSchema,
+  items: z.array(keywordEnhancementItemRequestSchema).min(1).max(12),
+  allowedKeywords: z.array(z.string().min(1)).min(1).max(80),
+  customInstruction: z.string().trim().max(300).optional().default(""),
+}).superRefine((value, context) => {
+  const allowed = new Set(value.allowedKeywords.map(normalizeCatalogKeyword));
+  for (const [itemIndex, item] of value.items.entries()) {
+    for (const keyword of item.selectedKeywords) {
+      if (!allowed.has(normalizeCatalogKeyword(keyword))) context.addIssue({
+        code: "custom", path: ["items", itemIndex, "selectedKeywords"], message: `关键词“${keyword}”不在当前已确认 JD 中`,
+      });
+    }
+  }
+});
+
+function normalizeCatalogKeyword(value: string) {
+  return value.normalize("NFKC").toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+}
+
+export const keywordEnhancementModelResultSchema = z.object({
+  enhancements: z.array(z.object({
+    itemId: z.string().min(1), enhancedText: z.string().min(1),
+    appliedKeywords: z.array(z.string()).max(8), evidenceClaimIds: z.array(z.string()).max(12),
+    foundEvidence: z.array(z.string()).max(12), missingEvidence: z.array(z.string()).max(12),
+    riskWarnings: z.array(z.string()).max(12),
+  })).max(12),
 });
 
 export const followUpBulletRequestSchema = z.object({
@@ -519,6 +565,7 @@ export const finalizeResumeRequestSchema = z.object({
     "缺少原始简历或目标岗位"
   ),
   style: optimizeStyleSchema.optional().default("ai-product"),
+  customInstruction: z.string().trim().max(300).optional().default(""),
   optimizedItems: z.array(optimizedItemSchema).optional().default([]),
   followUpQuestions: z.array(followUpQuestionSchema).optional().default([]),
 });

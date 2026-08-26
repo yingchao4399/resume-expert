@@ -10,12 +10,12 @@ import { readWorkflowExecution } from "@/lib/studio/execution";
 export async function POST(request: Request) {
   const execution = readWorkflowExecution(request);
   try {
-    const { input, style } = await parseAPIRequest(
+    const { input, style, customInstruction } = await parseAPIRequest(
       request,
       optimizeRequestSchema
     );
     const { optimizedItems, mode } =
-      await regenerateOptimizedItemsServer(input, style, execution);
+      await regenerateOptimizedItemsServer(input, style, execution, customInstruction);
     return tracedAIResponse({ optimizedItems, mode }, mode, execution.capture?.snapshots);
   } catch (error) {
     return toAPIErrorResponse(

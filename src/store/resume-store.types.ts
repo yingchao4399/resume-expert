@@ -58,6 +58,7 @@ export interface ResumeStore {
   analysisError: string | null;
   aiMode: AIMode | null;
   optimizeStyle: OptimizeStyle;
+  customOptimizeInstruction: string;
   finalResumeStatus: FinalResumeStatus;
   hasManualEdits: boolean;
   copied: boolean;
@@ -112,6 +113,7 @@ export interface ResumeStore {
   setAnalysisError: (error: string | null) => void;
   setAiMode: (mode: AIMode | null) => void;
   setOptimizeStyle: (style: OptimizeStyle) => void;
+  setCustomOptimizeInstruction: (instruction: string) => void;
   updateFollowUpAnswer: (id: string, answer: string) => void;
   setFollowUpBullet: (id: string, bullet: string) => void;
   getStepStatus: (step: StepId) => StepStatus;

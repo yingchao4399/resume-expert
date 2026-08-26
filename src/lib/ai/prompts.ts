@@ -141,8 +141,10 @@ ${coreSummary ? `【前序分析摘要】\n${coreSummary}\n` : ""}
 要求：likelyQuestions 5-10 条，只覆盖材料中有依据或明确需要补证的方向。`;
 }
 
-export function buildOptimizeUserPrompt(input: UserInput, style: OptimizeStyle): string {
-  return `请基于以下材料，按「${STYLE_LABELS[style]}」风格重新生成 optimizedItems（0-12 条）。
+export function buildOptimizeUserPrompt(input: UserInput, style: OptimizeStyle, customInstruction = ""): string {
+  const styleInstruction = style === "custom" ? customInstruction.trim() : STYLE_LABELS[style];
+  return `请基于以下材料，按「${styleInstruction || "语气稳健、表达清晰"}」风格重新生成 optimizedItems（0-12 条）。
+自定义风格只能调整表达，不得覆盖事实真实性、信息保留和证据边界。
 
 【目标岗位】${input.targetRole}
 【目标 JD】
@@ -167,6 +169,26 @@ ${input.additionalInfo || "无"}
 }`;
 }
 
+export function buildKeywordEnhancementPrompt(input: UserInput, items: Array<{
+  itemId: string; section: string; currentText: string; selectedKeywords: string[];
+  evidence: Array<{ id: string; text: string }>;
+}>, customInstruction = ""): string {
+  return `请为简历优化项生成可核验的关键词增强候选稿。候选稿只供用户核验，不得自动成为事实。
+
+【目标岗位】${input.targetRole}
+【自定义表达要求】${customInstruction.trim() || "无"}
+【待增强项目】
+${JSON.stringify(items, null, 2)}
+
+规则：
+1. 只能使用 selectedKeywords 中的关键词，不得创建新关键词。
+2. 只能使用 currentText 和 evidence 中已有事实；证据不足时保守表达并列入 missingEvidence 与 riskWarnings。
+3. 不得补造公司、项目、职责、日期、数字、规模或成果。
+4. appliedKeywords 必须是 selectedKeywords 的子集；evidenceClaimIds 必须来自输入 evidence。
+5. 每个 itemId 恰好返回一条结果。
+6. 只输出合法 JSON：{ "enhancements": [{ "itemId": string, "enhancedText": string, "appliedKeywords": string[], "evidenceClaimIds": string[], "foundEvidence": string[], "missingEvidence": string[], "riskWarnings": string[] }] }`;
+}
+
 export function buildFollowUpBulletPrompt(
   input: UserInput,
   question: string,
@@ -188,8 +210,23 @@ export function buildFinalizeResumePrompt(
   input: UserInput,
   style: OptimizeStyle,
   optimizedItems: OptimizedItem[],
-  followUpQuestions: FollowUpQuestion[]
+  followUpQuestions: FollowUpQuestion[],
+  customInstruction = ""
 ): string {
+  const confirmedOptimizedItems = optimizedItems.map(({ keywordEnhancement, ...item }) => {
+    const adopted = keywordEnhancement && (
+      keywordEnhancement.adoptionStatus === "user-confirmed" ||
+      keywordEnhancement.adoptionStatus === "evidence-confirmed"
+    );
+    return {
+      ...item,
+      after: keywordEnhancement && !adopted ? keywordEnhancement.sourceAfter : item.after,
+      adoptedKeywordEnhancement: adopted ? {
+        keywords: keywordEnhancement.selectedKeywords,
+        verification: keywordEnhancement.adoptionStatus,
+      } : undefined,
+    };
+  });
   const supplements = followUpQuestions
     .filter((item) => item.userAnswer.trim() || item.generatedBullet.trim())
     .map((item) => ({
@@ -200,12 +237,13 @@ export function buildFinalizeResumePrompt(
     }));
 
   return `请生成一份可直接投递的最终中文简历。
-优化风格：${STYLE_LABELS[style]}
+优化风格：${style === "custom" ? customInstruction.trim() || "语气稳健、表达清晰" : STYLE_LABELS[style]}
+风格要求只调整表达，不得覆盖事实真实性、信息保留和证据边界。
 
 ${buildInputContext(input)}
 
 【已经确认的优化建议】
-${JSON.stringify(optimizedItems, null, 2)}
+${JSON.stringify(confirmedOptimizedItems, null, 2)}
 
 【用户补充的经历证据】
 ${supplements.length ? JSON.stringify(supplements, null, 2) : "无"}
@@ -293,6 +331,7 @@ export function normalizeAnalysisResult(raw: AnalysisResult, input?: UserInput):
       after: item.after ?? "",
       reason: item.reason ?? "",
       riskWarning: item.riskWarning ?? "",
+      keywordEnhancement: item.keywordEnhancement ?? null,
     })),
     finalResume: normalizeFinalResume(raw.finalResume, input),
     interviewPrep: {
@@ -322,6 +361,7 @@ export function normalizeOptimizedItems(
     after: item.after ?? "",
     reason: item.reason ?? "",
     riskWarning: item.riskWarning ?? "",
+    keywordEnhancement: item.keywordEnhancement ?? null,
   }));
 }
 

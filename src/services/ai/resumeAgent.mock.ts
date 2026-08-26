@@ -15,6 +15,7 @@ const STYLE_LABELS: Record<OptimizeStyle, string> = {
   "reduce-exaggeration": "降低夸张",
   "ai-product": "更偏 AI 产品",
   "tob-saas": "更偏 ToB SaaS",
+  custom: "自定义风格",
 };
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

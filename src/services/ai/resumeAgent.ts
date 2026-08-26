@@ -9,6 +9,8 @@ import type {
   FollowUpGuidanceResponseBody,
   InterviewAnalyzeRequestBody,
   InterviewAnalyzeResponseBody,
+  KeywordEnhancementRequestBody,
+  KeywordEnhancementResponseBody,
   OptimizeResponseBody,
   PublicAIConfig,
   SaveAIConfigBody,
@@ -385,10 +387,18 @@ export async function structureImportedResume(text: string): Promise<{
 
 export async function regenerateOptimizedItems(
   input: UserInput,
-  style: OptimizeStyle
+  style: OptimizeStyle,
+  customInstruction = ""
 ): Promise<AnalysisResult["optimizedItems"]> {
-  const data = await postWorkflowJSON<OptimizeResponseBody>("/api/optimize", { input, style });
+  const data = await postWorkflowJSON<OptimizeResponseBody>("/api/optimize", { input, style, customInstruction });
   return data.optimizedItems;
+}
+
+export async function enhanceMissingKeywords(
+  request: KeywordEnhancementRequestBody
+): Promise<KeywordEnhancementResponseBody["enhancements"]> {
+  const data = await postWorkflowJSON<KeywordEnhancementResponseBody>("/api/optimize/keyword-enhance", request);
+  return data.enhancements;
 }
 
 export async function generateFollowUpBullet(
@@ -410,10 +420,11 @@ export async function finalizeResume(
   input: UserInput,
   style: OptimizeStyle,
   optimizedItems: AnalysisResult["optimizedItems"],
-  followUpQuestions: AnalysisResult["followUpQuestions"]
+  followUpQuestions: AnalysisResult["followUpQuestions"],
+  customInstruction = ""
 ): Promise<AnalysisResult["finalResume"]> {
   const data = await postWorkflowJSON<FinalizeResumeResponseBody>("/api/finalize", {
-    input, style, optimizedItems, followUpQuestions,
+    input, style, optimizedItems, followUpQuestions, customInstruction,
   });
   return data.finalResume;
 }

@@ -289,8 +289,8 @@ export const useResumeStore = create<ResumeStore>()(
             ? parsed.state?.activeDocumentId as string
             : recoveredDocuments[0].id;
           const recoveredValue = JSON.stringify({
-            state: { schemaVersion: 11, documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
-            version: 9,
+            state: { schemaVersion: 12, documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
+            version: 12,
           });
           validatePersistedLibrary(recoveredValue);
           unlockStorageWrites();
@@ -738,6 +738,14 @@ export const useResumeStore = create<ResumeStore>()(
           })
         ),
 
+      setCustomOptimizeInstruction: (instruction) =>
+        set((state) =>
+          updateActiveDocument(state, {
+            customOptimizeInstruction: instruction.slice(0, 300),
+            finalResumeStatus: state.analysisResult ? "stale" : "draft",
+          })
+        ),
+
       updateFollowUpAnswer: (id, answer) =>
         set((state) => {
           if (!state.analysisResult) return state;
@@ -845,11 +853,11 @@ export const useResumeStore = create<ResumeStore>()(
     }),
     {
       name: RESUME_STORAGE_KEY,
-       version: 11,
+       version: 12,
       skipHydration: true,
       storage: createJSONStorage<ResumeLibraryState>(() => safeLocalStorage),
       partialize: (state) => ({
-        schemaVersion: 11,
+        schemaVersion: 12,
         documents: state.documents,
         activeDocumentId: state.activeDocumentId,
         // Schema 8 将事实主数据迁入 IndexedDB；此字段仅用于首次迁移和旧组件兼容。
@@ -865,7 +873,7 @@ export const useResumeStore = create<ResumeStore>()(
           ? persisted.documents.map((document) => migrateDocument(document))
           : [];
         return {
-           schemaVersion: 11,
+           schemaVersion: 12,
           documents,
           activeDocumentId: persisted.activeDocumentId ?? documents[0]?.id ?? "",
           careerEvidence: Array.isArray(persisted.careerEvidence)

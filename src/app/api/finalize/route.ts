@@ -10,14 +10,15 @@ import { readWorkflowExecution } from "@/lib/studio/execution";
 export async function POST(request: Request) {
   const execution = readWorkflowExecution(request);
   try {
-    const { input, style, optimizedItems, followUpQuestions } =
+    const { input, style, optimizedItems, followUpQuestions, customInstruction } =
       await parseAPIRequest(request, finalizeResumeRequestSchema);
     const { finalResume, mode } = await finalizeResumeServer(
       input,
       style,
       optimizedItems,
       followUpQuestions,
-      execution
+      execution,
+      customInstruction
     );
     return tracedAIResponse({ finalResume, mode }, mode, execution.capture?.snapshots);
   } catch (error) {
