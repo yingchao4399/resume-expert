@@ -38,7 +38,7 @@ describe("template DOCX export", () => {
     }
   );
 
-  it("validates the shared A4 plan without adding hard breaks that create extra Word pages", async () => {
+  it("writes the shared A4 page boundaries as explicit DOCX page breaks", async () => {
     const layout = getDefaultLayoutConfig("ats-classic");
     const model = buildResumeRenderModel(resume, layout);
     const splitAt = Math.max(1, Math.floor(model.blocks.length / 2));
@@ -56,6 +56,18 @@ describe("template DOCX export", () => {
     const buffer = await Packer.toBuffer(buildResumeDocument(resume, layout, plan));
     const archive = await JSZip.loadAsync(buffer);
     const xml = await archive.file("word/document.xml")!.async("string");
-    expect(xml).not.toContain("w:pageBreakBefore");
+    expect(xml.match(/w:pageBreakBefore/g)).toHaveLength(plan.pageCount - 1);
+    expect(xml).toContain('w:lineRule="exact"');
+  });
+
+  it("rejects an overflowing A4 plan instead of exporting a misleading DOCX", () => {
+    const layout = getDefaultLayoutConfig("ats-classic");
+    const model = buildResumeRenderModel(resume, layout);
+    const plan: ResumePaginationPlan = {
+      contentHash: hashResumeRenderModel(model), pageCount: 1,
+      pages: [{ index: 0, includeHeader: true, blockIds: model.blocks.map((block) => block.id), usedHeight: 800, availableHeight: 700 }],
+      overflow: true, compatibilityRatio: 0.94, measuredAt: "2026-08-26T00:00:00.000Z",
+    };
+    expect(() => buildResumeDocument(resume, layout, plan)).toThrow(/无法安全分页/);
   });
 });

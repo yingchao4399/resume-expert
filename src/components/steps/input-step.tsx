@@ -23,7 +23,7 @@ import { buildCareerAnalysisClaims } from "@/lib/career/career-context";
 import { useCareerDomain } from "@/hooks/use-career-domain";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 import { COMPANY_TYPES, isCompanyType, isJobStage, JOB_STAGES } from "@/config/job-options";
-const ANALYSIS_STAGES = [{ id: "jd-draft", label: "JD 需求地图草稿" }] as const;
+const ANALYSIS_STAGES = ["拆分原子要求", "生成岗位画像"] as const;
 
 
 export function InputStep() {
@@ -138,11 +138,6 @@ export function InputStep() {
     abortControllerRef.current?.abort();
   };
 
-  const currentStage = analysisProgress && "stage" in analysisProgress
-    ? analysisProgress.stage
-    : "jd-draft";
-  const completedStageIndex = analysisProgress?.type === "stage-completed" ? 1 : 0;
-
   return (
     <div>
       <SectionTitle
@@ -168,7 +163,7 @@ export function InputStep() {
           ) : (
             <>
               <Sparkles className="h-3.5 w-3.5" />
-              解析 JD
+              生成 JD 需求地图
             </>
           )}
         </Button>
@@ -182,7 +177,7 @@ export function InputStep() {
 
       {exampleLoaded && (
         <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status" aria-live="polite">
-          示例材料已载入，下一步点击“解析 JD”。
+          示例材料已载入，下一步点击“生成 JD 需求地图”。
         </div>
       )}
 
@@ -196,15 +191,16 @@ export function InputStep() {
               已用 {elapsedSeconds}s · 最多剩余 {Math.max(0, 120 - elapsedSeconds)}s
             </span>
           </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {ANALYSIS_STAGES.map((stage, index) => {
-              const stageIndex = index + 1;
-              const completed = stageIndex <= completedStageIndex;
-              const active = stage.id === currentStage && !completed;
+              const progressMessage = analysisProgress && "message" in analysisProgress ? analysisProgress.message ?? "" : "";
+              const overviewActive = /岗位画像/.test(progressMessage);
+              const completed = analysisProgress?.type === "stage-completed" || (index === 0 && Boolean(overviewActive));
+              const active = !completed && (index === 0 ? !overviewActive : Boolean(overviewActive));
               return (
-                <div key={stage.id} className={`flex items-center gap-2 rounded border px-3 py-2 text-xs ${completed ? "border-emerald-200 bg-emerald-50 text-emerald-800" : active ? "border-blue-300 bg-white text-blue-900" : "border-blue-100 text-blue-500"}`}>
+                <div key={stage} className={`flex items-center gap-2 rounded border px-3 py-2 text-xs ${completed ? "border-emerald-200 bg-emerald-50 text-emerald-800" : active ? "border-blue-300 bg-white text-blue-900" : "border-blue-100 text-blue-500"}`}>
                   {completed ? <CheckCircle2 className="h-3.5 w-3.5" /> : active ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span className="h-3.5 w-3.5 rounded-full border" />}
-                  {stage.label}
+                  {stage}
                 </div>
               );
             })}
@@ -327,7 +323,7 @@ export function InputStep() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">目标 JD</CardTitle>
-            <CardDescription>粘贴完整岗位描述，Agent 将解析职责与要求</CardDescription>
+            <CardDescription>粘贴完整岗位描述，先生成并确认需求地图；真实经历匹配在下一页单独执行</CardDescription>
           </CardHeader>
           <CardContent>
             <Label htmlFor="jobDescription" className="sr-only">目标 JD</Label>

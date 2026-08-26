@@ -3,6 +3,7 @@ import {
   BorderStyle,
   Document,
   HeadingLevel,
+  LineRuleType,
   Packer,
   Paragraph,
   TabStopPosition,
@@ -34,24 +35,33 @@ export function buildResumeDocument(
   if (paginationPlan && !isPaginationPlanCurrent(paginationPlan, renderModel)) {
     throw new Error("A4 分页结果已过期，请等待预览重新分页后再下载。");
   }
+  if (paginationPlan?.overflow) {
+    throw new Error("当前内容存在无法安全分页的超长区块，请压缩排版或精简内容后再下载 Word。");
+  }
   const font = getDocxFont(layout.fontFamily);
+  const wordFont = { ascii: font, hAnsi: font, eastAsia: font, cs: font };
   const bodySize = Math.round(renderModel.tokens.bodyFontSizePt * 2);
   const accent = colorValue(layout.accentColor);
-  const spacingLine = Math.round(layout.lineHeight * 240);
+  const spacingLine = Math.round(renderModel.tokens.lineHeightPt * 20);
   const sectionBefore = Math.round(renderModel.tokens.sectionSpacingPt * 20);
+  const pageBreakBlockIds = new Set(
+    paginationPlan?.pages.slice(1).map((page) => page.blockIds[0]).filter((id): id is string => Boolean(id)) ?? [],
+  );
 
   const run = (text: string, options: { bold?: boolean; size?: number; color?: string } = {}) =>
     new TextRun({
       text,
       bold: options.bold,
       size: options.size ?? bodySize,
-      font,
+      font: wordFont,
       color: options.color,
     });
 
-  const heading = (id: ResumeSectionId) =>
+  const heading = (id: ResumeSectionId, pageBreakBefore = false) =>
     new Paragraph({
       heading: HeadingLevel.HEADING_2,
+      keepNext: true,
+      pageBreakBefore,
       spacing: { before: sectionBefore, after: Math.round(renderModel.tokens.headingAfterPt * 20) },
       border:
         layout.templateId === "modern-clean"
@@ -64,32 +74,39 @@ export function buildResumeDocument(
       children: [run(RESUME_SECTION_LABELS[id], { bold: true, size: bodySize + 2, color: accent })],
     });
 
-  const bodyParagraph = (text: string) =>
+  const bodyParagraph = (text: string, pageBreakBefore = false) =>
     new Paragraph({
-      spacing: { after: Math.round(renderModel.tokens.paragraphAfterPt * 20), line: spacingLine },
+      pageBreakBefore,
+      widowControl: true,
+      spacing: { after: Math.round(renderModel.tokens.paragraphAfterPt * 20), line: spacingLine, lineRule: LineRuleType.EXACT },
       children: [run(text)],
     });
 
-  const bulletParagraph = (text: string) => {
+  const bulletParagraph = (text: string, pageBreakBefore = false) => {
     const prefix = layout.bulletStyle === "square" ? "▪ " : layout.bulletStyle === "dash" ? "– " : "• ";
     return new Paragraph({
       keepLines: true,
-      indent: { left: 240, hanging: 140 },
-      spacing: { after: Math.round(renderModel.tokens.bulletAfterPt * 20), line: spacingLine },
+      widowControl: true,
+      pageBreakBefore,
+      indent: { left: 180, hanging: 120 },
+      spacing: { after: Math.round(renderModel.tokens.bulletAfterPt * 20), line: spacingLine, lineRule: LineRuleType.EXACT },
       children: [run(`${prefix}${text}`)],
     });
   };
 
   const renderBlock = (block: (typeof renderModel.blocks)[number]): Paragraph[] => {
-    if (block.kind === "section-heading") return [heading(block.sectionId)];
-    if (block.kind === "bullet") return [bulletParagraph(block.text)];
+    const pageBreakBefore = pageBreakBlockIds.has(block.id);
+    if (block.kind === "section-heading") return [heading(block.sectionId, pageBreakBefore)];
+    if (block.kind === "bullet") return [bulletParagraph(block.text, pageBreakBefore)];
     if (block.kind === "experience-heading") return [new Paragraph({
       keepNext: true,
+      pageBreakBefore,
+      widowControl: true,
       tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
       spacing: { before: Math.round(renderModel.tokens.experienceBeforePt * 20), after: Math.round(renderModel.tokens.experienceAfterPt * 20) },
       children: [run(block.text, { bold: true }), run(block.secondaryText ? `\t${block.secondaryText}` : "", { color: "666666" })],
     })];
-    return [bodyParagraph(block.text)];
+    return [bodyParagraph(block.text, pageBreakBefore)];
   };
 
   const headerAlignment = layout.templateId === "modern-clean" ? AlignmentType.LEFT : AlignmentType.CENTER;
@@ -120,8 +137,8 @@ export function buildResumeDocument(
     styles: {
       default: {
         document: {
-          run: { font, size: bodySize },
-          paragraph: { spacing: { line: spacingLine } },
+          run: { font: wordFont, size: bodySize },
+          paragraph: { spacing: { line: spacingLine, lineRule: LineRuleType.EXACT } },
         },
       },
     },
