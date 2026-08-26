@@ -99,7 +99,7 @@ export function InterviewStep() {
 
       <Card className="mb-4">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm">可能追问（10 题）</CardTitle>
+          <CardTitle className="text-sm">可能追问（{interviewPrep.likelyQuestions.length} 题）</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {interviewPrep.likelyQuestions.map((q, i) => (

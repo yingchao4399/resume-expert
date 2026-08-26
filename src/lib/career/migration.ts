@@ -54,7 +54,9 @@ function legacyClaim(item: CareerEvidence, experienceId: string): EvidenceClaim 
 }
 
 export function mergeCareerSnapshots(existing: CareerDomainSnapshot, incoming: CareerDomainSnapshot): CareerDomainSnapshot {
-  const merge = <T extends { id: string }>(left: T[], right: T[]) => [...new Map([...left, ...right].map((item) => [item.id, item])).values()];
+  // IndexedDB is the current source of truth. Legacy localStorage may only fill
+  // missing records; it must never replace a record the user already reviewed.
+  const merge = <T extends { id: string }>(left: T[], right: T[]) => [...new Map([...right, ...left].map((item) => [item.id, item])).values()];
   return {
     schemaVersion: 1,
     experiences: merge(existing.experiences, incoming.experiences), claims: merge(existing.claims, incoming.claims),

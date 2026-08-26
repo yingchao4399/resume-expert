@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { ResumeEditor } from "@/components/resume/resume-editor";
 import { extractResumeText, type ExtractedResumeText } from "@/lib/import/resume-import";
 import { structureImportedResume } from "@/services/ai/resumeAgent";
-import type { FinalResume, ImportedResumeProfile, ResumeImportMetadata } from "@/types/resume";
+import type { FinalResume, ImportedResumeItem, ImportedResumeProfile, ResumeImportMetadata } from "@/types/resume";
 
 interface ResumeImportDialogProps {
   open: boolean;
@@ -39,6 +39,8 @@ export function ResumeImportDialog({ open, onOpenChange, onConfirm }: ResumeImpo
   const [structuring, setStructuring] = useState(false);
   const [mode, setMode] = useState<"mock" | "llm" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [unmappedTargets, setUnmappedTargets] = useState<Record<string, UnmappedTarget>>({});
 
   const reset = () => {
     setExtracted(null);
@@ -48,6 +50,8 @@ export function ResumeImportDialog({ open, onOpenChange, onConfirm }: ResumeImpo
     setView("structured");
     setMode(null);
     setError(null);
+    setNotice(null);
+    setUnmappedTargets({});
   };
 
   const handleFile = async (file?: File) => {
@@ -79,6 +83,7 @@ export function ResumeImportDialog({ open, onOpenChange, onConfirm }: ResumeImpo
       setDraft(result.finalResume);
       setImportedProfile(result.importedResume ?? null);
       setMode(result.mode);
+      setNotice("结构化结果已生成，请逐项核对后确认导入。");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "AI 整理失败");
     } finally {
@@ -88,7 +93,8 @@ export function ResumeImportDialog({ open, onOpenChange, onConfirm }: ResumeImpo
 
   const handleConfirm = () => {
     if (!extracted || text.trim().length < 20) return;
-    onConfirm(text.trim(), draft, {
+    const synchronizedDraft = draft && importedProfile ? synchronizeDraftWithProfile(draft, importedProfile) : draft;
+    onConfirm(text.trim(), synchronizedDraft, {
       sourceType: extracted.fileType,
       fileName: extracted.fileName,
       importedAt: new Date().toISOString(),
@@ -96,6 +102,38 @@ export function ResumeImportDialog({ open, onOpenChange, onConfirm }: ResumeImpo
     }, importedProfile ? confirmImportedProfile(importedProfile) : null);
     reset();
     onOpenChange(false);
+  };
+
+  const handleTextChange = (nextText: string) => {
+    setText(nextText);
+    if (draft || importedProfile) {
+      setDraft(null);
+      setImportedProfile(null);
+      setMode(null);
+      setView("structured");
+      setNotice("原始文本已修改。为避免保存旧识别结果，请重新点击“AI 整理结构”。");
+    }
+  };
+
+  const updateImportedProfile = (nextProfile: ImportedResumeProfile) => {
+    setImportedProfile(nextProfile);
+    setDraft((current) => current ? synchronizeDraftWithProfile(current, nextProfile) : current);
+  };
+
+  const resolveUnmapped = (segment: ImportedResumeItem, action: "categorize" | "keep" | "delete") => {
+    if (!importedProfile) return;
+    if (action === "delete") {
+      updateImportedProfile({ ...importedProfile, unmappedSegments: importedProfile.unmappedSegments.filter((item) => item.id !== segment.id) });
+      return;
+    }
+    const target = action === "keep" ? "otherSections" : (unmappedTargets[segment.id] ?? "skillsAndTools");
+    const nextProfile = categorizeUnmapped(importedProfile, segment, target);
+    updateImportedProfile(nextProfile);
+    if (target === "workExperience") {
+      setDraft((current) => current ? { ...current, workExperience: [...current.workExperience, { company: "", role: "", period: "", bullets: [segment.text] }] } : current);
+    } else if (target === "projectExperience") {
+      setDraft((current) => current ? { ...current, projectExperience: [...current.projectExperience, { name: "", role: "", period: "", bullets: [segment.text] }] } : current);
+    }
   };
 
   return (
@@ -158,7 +196,7 @@ export function ResumeImportDialog({ open, onOpenChange, onConfirm }: ResumeImpo
                   {structuring ? "整理中…" : "AI 整理结构"}
                 </Button>
               </div>
-              <Textarea className="min-h-56 font-mono text-xs leading-relaxed" value={text} onChange={(event) => { setText(event.target.value); if (importedProfile) setImportedProfile(markImportedProfileNeedsReview(importedProfile)); }} />
+              <Textarea className="min-h-56 font-mono text-xs leading-relaxed" value={text} onChange={(event) => handleTextChange(event.target.value)} />
             </div>
 
             {draft && (
@@ -176,22 +214,40 @@ export function ResumeImportDialog({ open, onOpenChange, onConfirm }: ResumeImpo
                   </div>
                 )}
                 {view === "source" ? (
-                  <Textarea className="min-h-56 font-mono text-xs leading-relaxed" value={text} onChange={(event) => { setText(event.target.value); if (importedProfile) setImportedProfile(markImportedProfileNeedsReview(importedProfile)); }} />
+                  <Textarea className="min-h-56 font-mono text-xs leading-relaxed" value={text} onChange={(event) => handleTextChange(event.target.value)} />
                 ) : view === "unmapped" && importedProfile ? (
                   <div className="space-y-2 text-sm">
                     <p className="text-xs text-neutral-500">这些片段没有被自动写入可信资料，请确认后再整理。</p>
-                    {importedProfile.unmappedSegments.length ? importedProfile.unmappedSegments.map((segment) => <div key={segment.id} className="rounded border bg-amber-50 p-2">{segment.text}</div>) : <p className="text-neutral-500">没有待确认片段。</p>}
+                    {importedProfile.unmappedSegments.length ? importedProfile.unmappedSegments.map((segment) => (
+                      <div key={segment.id} className="space-y-2 rounded border bg-amber-50 p-3">
+                        <p>{segment.text}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="sr-only" htmlFor={`unmapped-target-${segment.id}`}>归入区块</label>
+                          <select
+                            id={`unmapped-target-${segment.id}`}
+                            className="h-8 rounded-md border bg-white px-2 text-xs"
+                            value={unmappedTargets[segment.id] ?? "skillsAndTools"}
+                            onChange={(event) => setUnmappedTargets((current) => ({ ...current, [segment.id]: event.target.value as UnmappedTarget }))}
+                          >
+                            {UNMAPPED_TARGETS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                          </select>
+                          <Button type="button" size="sm" onClick={() => resolveUnmapped(segment, "categorize")}>归类</Button>
+                          <Button type="button" size="sm" variant="outline" onClick={() => resolveUnmapped(segment, "keep")}>保留为其他信息</Button>
+                          <Button type="button" size="sm" variant="ghost" onClick={() => resolveUnmapped(segment, "delete")}>删除</Button>
+                        </div>
+                      </div>
+                    )) : <p className="text-neutral-500">没有待确认片段。</p>}
                   </div>
                 ) : (
                   <>
                 <div className="mb-4">
                   <p className="text-sm font-medium">结构化结果</p>
                   <p className="text-xs text-neutral-500">
-                    {mode === "mock" ? "当前为 Mock，本地仅整理基础信息；请人工补充后确认。" : "请核对所有事实，保存后作为当前岗位版本的源简历。"}
+                    {mode === "mock" ? "当前为 Mock 流程验证：仅按原文确定性整理，不会补造事实；请人工核对后确认。" : "请核对所有事实，保存后作为当前岗位版本的源简历。"}
                   </p>
                 </div>
                     <ResumeEditor value={draft} onChange={setDraft} />
-                    {importedProfile && <ImportedProfileEditor profile={importedProfile} onChange={setImportedProfile} />}
+                    {importedProfile && <ImportedProfileEditor profile={importedProfile} onChange={updateImportedProfile} />}
                   </>
                 )}
               </div>
@@ -199,7 +255,8 @@ export function ResumeImportDialog({ open, onOpenChange, onConfirm }: ResumeImpo
           </div>
         )}
 
-        {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+        {notice && <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700" role="status">{notice}</div>}
+        {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</div>}
 
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
@@ -210,18 +267,6 @@ export function ResumeImportDialog({ open, onOpenChange, onConfirm }: ResumeImpo
       </DialogContent>
     </Dialog>
   );
-}
-
-function markImportedProfileNeedsReview(profile: ImportedResumeProfile): ImportedResumeProfile {
-  const mark = <T extends { status: "candidate" | "confirmed" | "needs-review" }>(value: T): T => ({ ...value, status: "needs-review" });
-  return {
-    ...profile,
-    workExperience: profile.workExperience.map((entry) => ({ ...entry, status: "needs-review", bullets: entry.bullets.map(mark) })),
-    internshipExperience: profile.internshipExperience.map((entry) => ({ ...entry, status: "needs-review", bullets: entry.bullets.map(mark) })),
-    projectExperience: profile.projectExperience.map((entry) => ({ ...entry, status: "needs-review", bullets: entry.bullets.map(mark) })),
-    educationHistory: profile.educationHistory.map((entry) => ({ ...entry, status: "needs-review", details: entry.details.map(mark) })),
-    skillsAndTools: profile.skillsAndTools.map(mark), certifications: profile.certifications.map(mark), languages: profile.languages.map(mark), awards: profile.awards.map(mark), links: profile.links.map(mark), otherSections: profile.otherSections.map(mark),
-  };
 }
 
 function confirmImportedProfile(profile: ImportedResumeProfile): ImportedResumeProfile {
@@ -243,6 +288,47 @@ function confirmImportedProfile(profile: ImportedResumeProfile): ImportedResumeP
 }
 
 type ImportedItemKey = "skillsAndTools" | "certifications" | "languages" | "awards" | "links" | "otherSections";
+type UnmappedTarget = ImportedItemKey | "workExperience" | "projectExperience" | "educationHistory";
+
+const UNMAPPED_TARGETS: Array<[UnmappedTarget, string]> = [
+  ["workExperience", "工作经历"], ["projectExperience", "项目经历"], ["educationHistory", "教育经历"],
+  ["skillsAndTools", "技能与工具"], ["certifications", "证书"], ["languages", "语言"],
+  ["awards", "奖项与荣誉"], ["links", "链接"], ["otherSections", "其他信息"],
+];
+
+function categorizeUnmapped(profile: ImportedResumeProfile, segment: ImportedResumeItem, target: UnmappedTarget): ImportedResumeProfile {
+  const unmappedSegments = profile.unmappedSegments.filter((item) => item.id !== segment.id);
+  const sourceQuote = segment.sourceQuote || segment.text;
+  const baseItem = { ...segment, sourceQuote, status: "candidate" as const, confidence: "medium" as const };
+  if (target === "workExperience" || target === "projectExperience") {
+    const entry = {
+      id: `manual-${target}-${segment.id}`, organization: "", name: "", role: "", period: "",
+      summary: segment.text, bullets: [baseItem], sourceQuote, status: "candidate" as const, confidence: "medium" as const,
+    };
+    return { ...profile, [target]: [...profile[target], entry], unmappedSegments };
+  }
+  if (target === "educationHistory") {
+    const entry = { id: `manual-education-${segment.id}`, school: segment.text, degree: "", period: "", details: [], sourceQuote, status: "candidate" as const, confidence: "medium" as const };
+    return { ...profile, educationHistory: [...profile.educationHistory, entry], unmappedSegments };
+  }
+  return { ...profile, [target]: [...profile[target], baseItem], unmappedSegments };
+}
+
+function synchronizeDraftWithProfile(draft: FinalResume, profile: ImportedResumeProfile): FinalResume {
+  const visible = <T extends { status: "candidate" | "confirmed" | "needs-review" }>(values: T[]) => values.filter((item) => item.status !== "needs-review");
+  const skills = visible(profile.skillsAndTools);
+  const educationHistory = visible(profile.educationHistory);
+  const firstEducation = educationHistory[0];
+  return {
+    ...draft,
+    coreSkills: skills.map((item) => item.text),
+    skillsAndTools: skills.map((item) => item.text),
+    education: firstEducation ? { school: firstEducation.school, degree: firstEducation.degree, period: firstEducation.period } : draft.education,
+    educationHistory,
+    certifications: visible(profile.certifications), languages: visible(profile.languages), awards: visible(profile.awards),
+    links: visible(profile.links), otherSections: visible(profile.otherSections),
+  };
+}
 
 function ImportedProfileEditor({ profile, onChange }: { profile: ImportedResumeProfile; onChange: (profile: ImportedResumeProfile) => void }) {
   const sections: Array<[ImportedItemKey, string]> = [
@@ -263,7 +349,7 @@ function ImportedProfileEditor({ profile, onChange }: { profile: ImportedResumeP
   };
   const addItem = (key: ImportedItemKey) => {
     const text = "";
-    const next = { id: `manual-import-${key}-${profile[key].length + 1}`, text, sourceQuote: "", status: "needs-review" as const, confidence: "low" as const };
+    const next = { id: `manual-import-${key}-${crypto.randomUUID()}`, text, sourceQuote: "", status: "needs-review" as const, confidence: "low" as const };
     onChange({ ...profile, [key]: [...profile[key], next] });
   };
   return (

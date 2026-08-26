@@ -23,6 +23,28 @@ describe("on-demand interview preparation stream", () => {
     expect(output.at(-1).interviewPrep.likelyQuestions.length).toBeGreaterThan(0);
   });
 
+  it("accepts legacy analysis with a long JD evidence excerpt", async () => {
+    const analysisResult = await mockAnalysisResult();
+    analysisResult.jdAnalysis.roleInference = { items: [{
+      topic: "work-content",
+      level: "explicit",
+      conclusion: "负责复杂业务系统建设",
+      evidence: ["负责复杂业务系统建设、需求分析、跨团队协同与持续交付。".repeat(30)],
+      confidence: "high",
+      verificationQuestion: "该岗位最重要的交付目标是什么？",
+    }] };
+
+    const response = await prepare(new Request("http://localhost/api/interview/prepare/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Workflow-Provider": "mock" },
+      body: JSON.stringify({ input: EXAMPLE_USER_INPUT, jobTargetContext: context, analysisResult, materialRevision: 1 }),
+    }));
+    const output = await events(response);
+
+    expect(response.status).toBe(200);
+    expect(output.at(-1).type).toBe("completed");
+  });
+
   it("emits cancellation without a completed payload", async () => {
     const analysisResult = await mockAnalysisResult();
     const controller = new AbortController();

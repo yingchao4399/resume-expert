@@ -1,4 +1,6 @@
 export const RELEASE_RECORDS = [
+  { version: "1.9.7", goal: "面试策略与导入数据完整性修复", modules: ["长 JD 兼容", "错误透传", "导入引用门禁", "待确认归类", "旧证据覆盖保护"], tests: "160 Vitest / 35 Playwright / evals / audit / build", status: "released" },
+  { version: "1.9.6", goal: "简历导入完整识别与待确认修复", modules: ["确定性 Mock 解析", "完整导入资料", "扩展区块", "V7 备份"], tests: "155 Vitest / 35 Playwright / evals / audit / build", status: "released" },
   { version: "1.9.5", goal: "JD 决策地图与可信匹配升级", modules: ["JD 草稿确认", "逐要求事实召回", "确定性岗位准备度", "四视图原文审计", "48 条 Gold 评测"], tests: "151 Vitest / 35 Playwright / evals / audit / build", status: "released" },
   { version: "1.9.4", goal: "分析性能与任务拆分修复", modules: ["非思考结构抽取", "预测拆批", "两阶段快速分析", "按需面试策略", "性能追踪"], tests: "142 Vitest / 35 Playwright / evals / audit / build", status: "released" },
   { version: "1.9.3", goal: "深度分析超时、进度与取消修复", modules: ["有界分析执行器", "流式三阶段进度", "主动取消", "制作阶段优化"], tests: "128+ Vitest / 32+ Playwright / evals / CI", status: "released" },

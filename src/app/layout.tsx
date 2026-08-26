@@ -15,6 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "简历专家 - JD 定制简历优化 Agent",
   description: "基于目标岗位 JD，诊断简历、匹配岗位要求、挖掘经历、重构表达，并生成面试准备材料",
+  icons: { icon: "/icon.svg" },
 };
 
 export default function RootLayout({

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyDocument } from "@/store/resume-store";
 import { createResumeBackup, parseResumeBackup } from "@/lib/backup/resume-backup";
+import { EXAMPLE_USER_INPUT } from "@/store/resume-store-example";
+import { runMockResumeAnalysis } from "@/services/ai/resumeAgent.mock";
 
 describe("resume backup", () => {
   it("round-trips business documents", () => {
@@ -40,6 +42,28 @@ describe("resume backup", () => {
       sourceResume: null,
       importMetadata: null,
     });
+  });
+
+  it("round-trips analysis created from a long JD source span", async () => {
+    const document = createEmptyDocument("long-jd-backup");
+    document.analysisResult = await runMockResumeAnalysis(
+      EXAMPLE_USER_INPUT,
+      "ai-product",
+      { companyName: "", notes: "", companySnapshotId: null },
+      [],
+    );
+    document.analysisResult.jdAnalysis.roleInference = { items: [{
+      topic: "work-content",
+      level: "explicit",
+      conclusion: "负责复杂业务系统建设",
+      evidence: ["一段来自 JD 的完整原文引用。".repeat(80)],
+      confidence: "high",
+      verificationQuestion: "核心目标是什么？",
+    }] };
+
+    const parsed = parseResumeBackup(createResumeBackup([document], [], []));
+
+    expect(parsed.documents[0].analysisResult?.jdAnalysis.roleInference?.items[0].evidence[0].length).toBeLessThanOrEqual(500);
   });
 
   it("rejects malformed or empty backups", () => {

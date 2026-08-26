@@ -6,7 +6,7 @@
 | --- | --- |
 | 仓库 | https://github.com/yingchao4399/resume-expert |
 | 分支 | `main` |
-| 版本 | v1.9.6 |
+| 版本 | v1.9.7 |
 | 技术栈 | Next.js（App Router）+ TypeScript + React + Zustand + Zod + IndexedDB + docx |
 
 ## 2. 第三方依赖披露

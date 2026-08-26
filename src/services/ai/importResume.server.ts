@@ -41,7 +41,7 @@ export async function structureImportedResumeServer(
   });
   const importedResume = sanitizeImportedProfile(result.importedResume ?? profileFromFinalResume(result.finalResume, text), text);
   return {
-    finalResume: projectFinalResume(importedResume, result.finalResume),
+    finalResume: projectFinalResume(importedResume),
     importedResume,
     unmappedSegments: importedResume.unmappedSegments,
     mode,
@@ -55,7 +55,9 @@ function stableId(prefix: string, value: string): string {
 }
 
 function item(text: string, sourceQuote = text): ImportedResumeItem {
-  return { id: stableId("import", sourceQuote), text: text.trim(), sourceQuote: sourceQuote.trim(), status: "candidate", confidence: "medium" };
+  const normalizedText = text.trim();
+  const normalizedQuote = sourceQuote.trim();
+  return { id: stableId("import", `${normalizedQuote}\u0000${normalizedText}`), text: normalizedText, sourceQuote: normalizedQuote, status: "candidate", confidence: "medium" };
 }
 
 const SECTION_PATTERNS: Array<[RegExp, keyof ImportedResumeProfile]> = [
@@ -177,15 +179,57 @@ function profileFromFinalResume(resume: FinalResume, text: string): ImportedResu
   };
 }
 
-function sanitizeImportedProfile(profile: ImportedResumeProfile, sourceText: string): ImportedResumeProfile {
-  const sanitize = (entry: ImportedResumeItem): ImportedResumeItem => sourceText.includes(entry.sourceQuote) ? entry : { ...entry, sourceQuote: "", status: "needs-review", confidence: "low" };
-  const sanitizeExperience = (entry: ImportedExperience): ImportedExperience => ({ ...entry, bullets: entry.bullets.map(sanitize), status: sourceText.includes(entry.sourceQuote) ? entry.status : "needs-review" });
+function hasSourceQuote(sourceText: string, sourceQuote: string): boolean {
+  const normalizedQuote = sourceQuote.trim();
+  return normalizedQuote.length > 0 && sourceText.includes(normalizedQuote);
+}
+
+export function sanitizeImportedProfile(profile: ImportedResumeProfile, sourceText: string): ImportedResumeProfile {
+  const invalidSegments: ImportedResumeItem[] = [];
+  const quarantine = (entry: ImportedResumeItem) => {
+    if (!entry.text.trim()) return;
+    if (!invalidSegments.some((item) => item.text === entry.text)) {
+      invalidSegments.push({ ...entry, id: stableId("unmapped-invalid", `${entry.id}\u0000${entry.text}`), sourceQuote: "", status: "needs-review", confidence: "low" });
+    }
+  };
+  const sanitize = (entry: ImportedResumeItem): ImportedResumeItem => {
+    if (hasSourceQuote(sourceText, entry.sourceQuote)) return entry;
+    quarantine(entry);
+    return { ...entry, sourceQuote: "", status: "needs-review", confidence: "low" };
+  };
+  const sanitizeExperience = (entry: ImportedExperience): ImportedExperience => {
+    const valid = hasSourceQuote(sourceText, entry.sourceQuote);
+    if (!valid) quarantine({
+      id: entry.id,
+      text: entry.summary || [entry.organization, entry.name, entry.role, entry.period].filter(Boolean).join(" · "),
+      sourceQuote: "",
+      status: "needs-review",
+      confidence: "low",
+    });
+    return {
+      ...entry,
+      bullets: entry.bullets.map(sanitize),
+      sourceQuote: valid ? entry.sourceQuote : "",
+      status: valid ? entry.status : "needs-review",
+      confidence: valid ? entry.confidence : "low",
+    };
+  };
   const parsed = importedResumeProfileSchema.parse({
     ...profile,
     workExperience: profile.workExperience.map(sanitizeExperience),
     internshipExperience: profile.internshipExperience.map(sanitizeExperience),
     projectExperience: profile.projectExperience.map(sanitizeExperience),
-    educationHistory: profile.educationHistory.map((entry) => ({ ...entry, details: entry.details.map(sanitize), status: sourceText.includes(entry.sourceQuote) ? entry.status : "needs-review" })),
+    educationHistory: profile.educationHistory.map((entry) => {
+      const valid = hasSourceQuote(sourceText, entry.sourceQuote);
+      if (!valid) quarantine({ id: entry.id, text: [entry.school, entry.degree, entry.period].filter(Boolean).join(" · "), sourceQuote: "", status: "needs-review", confidence: "low" });
+      return {
+        ...entry,
+        details: entry.details.map(sanitize),
+        sourceQuote: valid ? entry.sourceQuote : "",
+        status: valid ? entry.status : "needs-review",
+        confidence: valid ? entry.confidence : "low",
+      };
+    }),
     skillsAndTools: profile.skillsAndTools.map(sanitize), certifications: profile.certifications.map(sanitize), languages: profile.languages.map(sanitize), awards: profile.awards.map(sanitize), links: profile.links.map(sanitize), otherSections: profile.otherSections.map(sanitize), unmappedSegments: profile.unmappedSegments.map(sanitize),
   });
   const quotes = collectSourceQuotes(parsed);
@@ -193,7 +237,11 @@ function sanitizeImportedProfile(profile: ImportedResumeProfile, sourceText: str
   const existing = new Set(parsed.unmappedSegments.map((segment) => segment.text));
   return {
     ...parsed,
-    unmappedSegments: [...parsed.unmappedSegments, ...missing.filter((line) => !existing.has(line)).map((line) => ({ ...item(line), id: stableId("unmapped", line), confidence: "low" as const }))],
+    unmappedSegments: [
+      ...parsed.unmappedSegments,
+      ...invalidSegments.filter((entry) => !existing.has(entry.text)),
+      ...missing.filter((line) => !existing.has(line) && !invalidSegments.some((entry) => entry.text === line)).map((line) => ({ ...item(line), id: stableId("unmapped", line), confidence: "low" as const })),
+    ],
   };
 }
 
@@ -207,22 +255,27 @@ function collectSourceQuotes(profile: ImportedResumeProfile): string[] {
   return quotes;
 }
 
-function projectFinalResume(profile: ImportedResumeProfile, fallback?: FinalResume): FinalResume {
-  const firstEducation = profile.educationHistory[0];
+export function projectFinalResume(profile: ImportedResumeProfile): FinalResume {
+  const safeItems = (values: ImportedResumeItem[]) => values.filter((item) => item.status !== "needs-review" && item.text.trim());
+  const safeWork = [...profile.workExperience, ...profile.internshipExperience].filter((entry) => entry.status !== "needs-review");
+  const safeProjects = profile.projectExperience.filter((entry) => entry.status !== "needs-review");
+  const safeEducation = profile.educationHistory.filter((entry) => entry.status !== "needs-review");
+  const firstEducation = safeEducation[0];
+  const skills = safeItems(profile.skillsAndTools);
   return {
     personalInfo: profile.personalInfo,
     jobIntent: profile.jobIntent,
     summary: profile.summary,
-    coreSkills: profile.skillsAndTools.map((value) => value.text),
-    workExperience: [...profile.workExperience, ...profile.internshipExperience].map((entry) => ({ company: entry.organization, role: entry.role, period: entry.period, bullets: entry.bullets.map((value) => value.text) })),
-    projectExperience: profile.projectExperience.map((entry) => ({ name: entry.name, role: entry.role, period: entry.period, bullets: entry.bullets.map((value) => value.text) })),
-    skillsAndTools: profile.skillsAndTools.map((value) => value.text),
-    education: firstEducation ? { school: firstEducation.school, degree: firstEducation.degree, period: firstEducation.period } : fallback?.education ?? { school: "", degree: "", period: "" },
-    educationHistory: profile.educationHistory,
-    certifications: profile.certifications,
-    languages: profile.languages,
-    awards: profile.awards,
-    links: profile.links,
-    otherSections: profile.otherSections,
+    coreSkills: skills.map((value) => value.text),
+    workExperience: safeWork.map((entry) => ({ company: entry.organization, role: entry.role, period: entry.period, bullets: safeItems(entry.bullets).map((value) => value.text) })),
+    projectExperience: safeProjects.map((entry) => ({ name: entry.name, role: entry.role, period: entry.period, bullets: safeItems(entry.bullets).map((value) => value.text) })),
+    skillsAndTools: skills.map((value) => value.text),
+    education: firstEducation ? { school: firstEducation.school, degree: firstEducation.degree, period: firstEducation.period } : { school: "", degree: "", period: "" },
+    educationHistory: safeEducation,
+    certifications: safeItems(profile.certifications),
+    languages: safeItems(profile.languages),
+    awards: safeItems(profile.awards),
+    links: safeItems(profile.links),
+    otherSections: safeItems(profile.otherSections),
   };
 }

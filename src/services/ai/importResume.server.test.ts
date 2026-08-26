@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { structureLocally } from "@/services/ai/importResume.server";
+import { projectFinalResume, sanitizeImportedProfile, structureLocally } from "@/services/ai/importResume.server";
 
 const resumeText = `张三 | 产品经理 | 上海
 电话：13812345678 | 邮箱：san@example.com
@@ -43,6 +43,7 @@ describe("local resume structure parser", () => {
     expect(profile.languages[0]?.text).toContain("英语");
     expect(profile.awards[0]?.text).toContain("年度优秀员工");
     expect(profile.links[0]?.text).toContain("github.com");
+    expect(new Set(profile.skillsAndTools.map((item) => item.id)).size).toBe(profile.skillsAndTools.length);
   });
 
   it("does not fabricate unknown facts", () => {
@@ -51,5 +52,29 @@ describe("local resume structure parser", () => {
     expect(profile.projectExperience).toEqual([]);
     expect(profile.educationHistory).toEqual([]);
     expect(JSON.stringify(profile)).not.toContain("示例科技");
+  });
+
+  it("quarantines empty or invalid source quotes instead of exporting them", () => {
+    const profile = structureLocally(resumeText);
+    profile.certifications.push({
+      id: "fabricated-certificate",
+      text: "不存在的高级证书",
+      sourceQuote: "",
+      status: "candidate",
+      confidence: "high",
+    });
+    profile.workExperience.push({
+      id: "fabricated-job", organization: "不存在的公司", name: "", role: "高级顾问", period: "2030",
+      summary: "负责不存在的业务", bullets: [], sourceQuote: "", status: "candidate", confidence: "high",
+    });
+
+    const sanitized = sanitizeImportedProfile(profile, resumeText);
+    const resume = projectFinalResume(sanitized);
+
+    expect(sanitized.certifications.at(-1)?.status).toBe("needs-review");
+    expect(sanitized.unmappedSegments.some((item) => item.text === "不存在的高级证书")).toBe(true);
+    expect(sanitized.unmappedSegments.some((item) => item.text === "负责不存在的业务")).toBe(true);
+    expect(resume.certifications?.some((item) => item.text === "不存在的高级证书")).toBe(false);
+    expect(resume.workExperience.some((item) => item.company === "不存在的公司")).toBe(false);
   });
 });

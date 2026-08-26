@@ -211,7 +211,9 @@ function legacyRoleInference(hypotheses: RoleHypothesis[], document: JDAnalysisD
     topic: item.type === "role-mission" ? "work-content" : item.type === "work-focus" ? "work-focus" : item.type === "business-line" ? "business-line" : item.type === "reporting-line" ? "reporting-line" : item.type === "team-pain" ? "team-pain" : "implicit-expectation",
     level: item.status === "unknown" ? "unknown" : "inferred",
     conclusion: item.conclusion,
-    evidence: item.sourceSpanIds.map((id) => spanMap.get(id)).filter((value): value is string => Boolean(value)),
+    evidence: item.sourceSpanIds
+      .map((id) => spanMap.get(id)?.slice(0, 500))
+      .filter((value): value is string => Boolean(value)),
     confidence: item.decisionImpact,
     verificationQuestion: item.verificationQuestion,
   })) };

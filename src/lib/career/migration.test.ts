@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { migrateLegacyEvidence } from "@/lib/career/migration";
+import { mergeCareerSnapshots, migrateLegacyEvidence } from "@/lib/career/migration";
 import type { CareerEvidence } from "@/types/resume";
 
 function legacy(id: string, patch: Partial<CareerEvidence> = {}): CareerEvidence {
@@ -19,5 +19,18 @@ describe("legacy career migration", () => {
     const result = migrateLegacyEvidence([legacy("skill-1", { type: "skill", organization: "", description: "TypeScript", skills: ["TypeScript"] })]);
     expect(result.experiences[0]).toMatchObject({ id: "experience-inbox", type: "inbox", status: "needs-review" });
     expect(result.claims[0].experienceId).toBe("experience-inbox");
+  });
+
+  it("never overwrites a newer IndexedDB claim with a legacy localStorage copy", () => {
+    const incoming = migrateLegacyEvidence([legacy("e-1", { description: "旧版本内容", status: "candidate" })]);
+    const existing = structuredClone(incoming);
+    existing.claims[0] = { ...existing.claims[0], text: "用户已经确认并修改的内容", status: "confirmed" };
+
+    const merged = mergeCareerSnapshots(existing, incoming);
+
+    expect(merged.claims.find((claim) => claim.id === "e-1")).toMatchObject({
+      text: "用户已经确认并修改的内容",
+      status: "confirmed",
+    });
   });
 });

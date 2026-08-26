@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createEmptyDocument } from "@/store/resume-store-document";
+import { EXAMPLE_USER_INPUT } from "@/store/resume-store-example";
+import { runMockResumeAnalysis } from "@/services/ai/resumeAgent.mock";
 import {
   RESUME_RECOVERY_KEY,
   RESUME_STORAGE_KEY,
@@ -52,6 +54,37 @@ describe("resume store persistence", () => {
     expect(safeLocalStorage.getItem(RESUME_STORAGE_KEY)).toBeNull();
     expect(values.get(RESUME_RECOVERY_KEY)).toContain("{broken-json");
     expect(getPendingRecovery()?.raw).toBe("{broken-json");
+  });
+
+  it("accepts persisted analysis containing a legacy long JD evidence excerpt", async () => {
+    const document = createEmptyDocument("long-evidence-document");
+    document.analysisResult = await runMockResumeAnalysis(
+      EXAMPLE_USER_INPUT,
+      "ai-product",
+      { companyName: "", notes: "", companySnapshotId: null },
+      [],
+    );
+    document.analysisResult.jdAnalysis.roleInference = { items: [{
+      topic: "work-content",
+      level: "explicit",
+      conclusion: "负责复杂业务系统建设",
+      evidence: ["来自历史版本的超长岗位原文。".repeat(80)],
+      confidence: "high",
+      verificationQuestion: "核心交付是什么？",
+    }] };
+    const raw = JSON.stringify({
+      state: {
+        schemaVersion: 10,
+        documents: [document],
+        activeDocumentId: document.id,
+        careerEvidence: [],
+        jobApplications: [],
+        interviewReviews: [],
+      },
+      version: 10,
+    });
+
+    expect(() => validatePersistedLibrary(raw)).not.toThrow();
   });
 
   it("keeps the existing schema versions when migrating legacy documents", () => {

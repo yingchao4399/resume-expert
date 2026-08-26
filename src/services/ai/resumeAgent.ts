@@ -33,6 +33,18 @@ class ResumeAgentClientError extends Error {
   }
 }
 
+async function responseError(response: Response, fallback: string): Promise<ResumeAgentClientError> {
+  const raw = await response.text().catch(() => "");
+  let message = "";
+  try {
+    const data = JSON.parse(raw) as { error?: string };
+    message = data.error ?? "";
+  } catch {
+    message = raw;
+  }
+  return new ResumeAgentClientError(message.trim() || `${fallback} (${response.status})`);
+}
+
 export class ResumeAnalysisCancelledError extends Error {
   constructor(message = "分析已取消，当前材料和已有结果均未改变。") {
     super(message);
@@ -264,7 +276,8 @@ export async function runRequirementMatchStreaming(
   const startedAt = new Date();
   try {
     const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal });
-    if (!response.ok || !response.body) throw new ResumeAgentClientError(`事实匹配请求失败 (${response.status})`);
+    if (!response.ok) throw await responseError(response, "事实匹配请求失败");
+    if (!response.body) throw new ResumeAgentClientError("事实匹配响应缺少内容，请重试。");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -320,7 +333,8 @@ export async function prepareInterviewStreaming(
   const startedAt = new Date();
   try {
     const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal });
-    if (!response.ok || !response.body) throw new ResumeAgentClientError(`面试策略请求失败 (${response.status})`);
+    if (!response.ok) throw await responseError(response, "面试策略请求失败");
+    if (!response.body) throw new ResumeAgentClientError("面试策略响应缺少内容，请重试。");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";

@@ -42,7 +42,9 @@ const jobRequirementSchema = z.object({
 
 const conciseText = z.string().max(500);
 const boundedInferenceEvidenceSchema = z.preprocess(
-  (value) => (Array.isArray(value) ? value.slice(0, 4) : value),
+  (value) => (Array.isArray(value)
+    ? value.slice(0, 4).map((item) => typeof item === "string" ? item.slice(0, 500) : item)
+    : value),
   z.array(conciseText).max(4),
 );
 const roleInferenceItemSchema = z.object({
@@ -441,7 +443,7 @@ export const finalResumeResultSchema = z.object({
 });
 
 export const structureResumeRequestSchema = z.object({
-  text: z.string().trim().min(20, "??????").max(100000, "???????? 100000 ?"),
+  text: z.string().trim().min(20, "简历文本至少需要 20 个字符").max(100000, "简历文本不能超过 100000 个字符"),
 });
 
 export const structureResumeResultSchema = finalResumeResultSchema.extend({
