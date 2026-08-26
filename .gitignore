@@ -1,5 +1,6 @@
 node_modules
 .next
+.next-e2e/
 next-env.d.ts
 .pnpm-store
 out
@@ -15,6 +16,7 @@ data/recordings/*
 playwright-report/
 test-results/
 output/playwright/
+.playwright-cli/
 
 # Local AI evaluation runs (frozen cases and approved baselines remain tracked)
 evals/results/*

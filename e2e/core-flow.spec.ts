@@ -207,7 +207,7 @@ test("loads example data and keeps an evidence item after reload", async ({ page
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "使用示例数据" }).click();
   await expect(page.getByLabel("目标岗位")).toHaveValue("AI 产品经理");
-  await expect(page.getByText("示例材料已载入，下一步点击“解析 JD”。")).toBeVisible();
+  await expect(page.getByText("示例材料已载入，下一步点击“生成 JD 需求地图”。")).toBeVisible();
 
   await page.getByRole("button", { name: /经历证据库/ }).click();
   await page.getByRole("button", { name: "新增经历" }).click();
@@ -273,7 +273,7 @@ test("keeps creation pending until the final resume is generated", async ({ page
   await page.route("**/api/finalize", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ finalResume: resume, mode: "mock" }) }));
   await page.goto("/");
   await page.getByRole("button", { name: "使用示例数据" }).click();
-  await page.getByRole("button", { name: "解析 JD", exact: true }).click();
+  await page.getByRole("button", { name: "生成 JD 需求地图", exact: true }).click();
   await page.getByRole("button", { name: "批量确认安全项" }).click();
   await page.getByRole("button", { name: "确认需求地图" }).click();
   await page.getByRole("button", { name: "匹配真实经历", exact: true }).click();
@@ -298,19 +298,19 @@ test("streams analysis progress, cancels actively and recovers after refresh", a
   await page.goto("/");
   await page.getByRole("button", { name: "使用示例数据" }).click();
 
-  await page.getByRole("button", { name: "解析 JD", exact: true }).click();
+  await page.getByRole("button", { name: "生成 JD 需求地图", exact: true }).click();
   await expect(page.getByRole("button", { name: "取消分析" })).toBeVisible();
   await expect(page.getByText("正在启动深度分析", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "取消分析" }).click();
   await expect(page.getByText(/分析已取消/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "解析 JD", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "生成 JD 需求地图", exact: true })).toBeEnabled();
 
-  await page.getByRole("button", { name: "解析 JD", exact: true }).click();
+  await page.getByRole("button", { name: "生成 JD 需求地图", exact: true }).click();
   await expect(page.getByRole("button", { name: "取消分析" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("button", { name: "解析 JD", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "生成 JD 需求地图", exact: true })).toBeEnabled();
 
-  await page.getByRole("button", { name: "解析 JD", exact: true }).click();
+  await page.getByRole("button", { name: "生成 JD 需求地图", exact: true }).click();
   await expect(page.getByRole("heading", { name: "JD 决策地图" })).toBeVisible();
 });
 
@@ -621,7 +621,7 @@ test("downloads searchable ATS and visual A4 PDFs", async ({ page }) => {
   await docxDownload.saveAs(docxPath);
   const docxArchive = await JSZip.loadAsync(await fs.promises.readFile(docxPath));
   const documentXml = await docxArchive.file("word/document.xml")!.async("string");
-  expect(documentXml).not.toContain("w:pageBreakBefore");
+  expect(documentXml.match(/w:pageBreakBefore/g) ?? []).toHaveLength(expectedPageCount - 1);
 
   const atsDownloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "下载 ATS 文字版" }).click();

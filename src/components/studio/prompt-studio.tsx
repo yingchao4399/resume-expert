@@ -29,23 +29,31 @@ export function PromptStudio({ selectedPromptId, onSelectedPrompt }: { selectedP
 
   const load = useCallback(async () => {
     setError(null);
+    const warnings: string[] = [];
     try {
-      const [promptResponse, sourceResponse, traceValues] = await Promise.all([
-        fetch("/api/studio/prompts", { cache: "no-store" }),
-        fetch("/api/studio/sources", { cache: "no-store" }),
-        listTraces(),
-      ]);
+      const promptResponse = await fetch("/api/studio/prompts", { cache: "no-store" });
       const promptData = await promptResponse.json() as PromptManifest & { error?: string };
-      const sourceData = await sourceResponse.json() as { sources?: SourceCatalogEntry[]; error?: string };
       if (!promptResponse.ok) throw new Error(promptData.error ?? "无法读取提示词注册表");
-      if (!sourceResponse.ok) throw new Error(sourceData.error ?? "无法读取底层文件目录");
       setManifest(promptData);
-      setSources(sourceData.sources ?? []);
-      setTraces(traceValues);
-      setStorageError(readTraceStorageError());
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "开发者资料读取失败");
+      setManifest(null);
+      setError(loadError instanceof Error ? loadError.message : "无法读取提示词注册表");
+      return;
     }
+    const [sourceResult, traceResult] = await Promise.allSettled([
+      fetch("/api/studio/sources", { cache: "no-store" }).then(async (response) => {
+        const data = await response.json() as { sources?: SourceCatalogEntry[]; error?: string };
+        if (!response.ok) throw new Error(data.error ?? "无法读取底层文件目录");
+        return data.sources ?? [];
+      }),
+      listTraces(),
+    ]);
+    if (sourceResult.status === "fulfilled") setSources(sourceResult.value);
+    else { setSources([]); warnings.push(`底层文件目录暂不可用：${sourceResult.reason instanceof Error ? sourceResult.reason.message : "读取失败"}`); }
+    if (traceResult.status === "fulfilled") setTraces(traceResult.value);
+    else { setTraces([]); warnings.push("运行快照暂不可用"); }
+    setStorageError(readTraceStorageError());
+    if (warnings.length) setError(warnings.join("；"));
   }, []);
 
   useEffect(() => { void load(); }, [load]);

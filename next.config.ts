@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  distDir: process.env.RESUME_EXPERT_E2E === "1" ? ".next-e2e" : ".next",
   // Next.js 16 blocks development assets requested from a hostname that was
   // not used to start the server. The app is intentionally local-only and is
   // documented for both loopback spellings.

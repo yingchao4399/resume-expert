@@ -23,7 +23,17 @@ export function WorkflowStudio() {
   const [realEval, setRealEval] = useState<RealEvalStatus>({ available: false, evaluatedAt: null });
   const [compareIds, setCompareIds] = useState<[string, string] | null>(null);
 
-  useEffect(() => { void Promise.all([loadWorkflowWorkspace(), fetch("/api/evals/latest-real", { cache: "no-store" }).then((response) => response.json() as Promise<RealEvalStatus>)]).then(([stored, evaluation]) => { setWorkspace(stored); setRealEval(evaluation); }); }, []);
+  useEffect(() => {
+    let active = true;
+    void loadWorkflowWorkspace().then((stored) => {
+      if (active) setWorkspace(stored);
+    });
+    void fetch("/api/evals/latest-real", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() as Promise<RealEvalStatus> : Promise.reject(new Error("真实评测状态不可用")))
+      .then((evaluation) => { if (active) setRealEval(evaluation); })
+      .catch(() => { if (active) setRealEval({ available: false, evaluatedAt: null, reason: "真实评测状态暂不可用" }); });
+    return () => { active = false; };
+  }, []);
 
   const updateDefinition = useCallback((updater: (value: WorkflowDefinition) => WorkflowDefinition) => {
     setWorkspace((current) => current ? { ...current, draft: { ...current.draft, definition: updater(cloneDefinition(current.draft.definition)), updatedAt: new Date().toISOString(), lastTest: null } } : current);

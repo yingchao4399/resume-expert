@@ -1,18 +1,20 @@
 {
   "name": "resume-expert",
-  "version": "1.10.1",
+  "version": "1.10.2",
   "private": true,
   "engines": {
     "node": ">=24 <25"
   },
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
+    "dev:e2e": "node scripts/start-e2e-server.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint src",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:local": "node scripts/run-local-e2e.mjs",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "eval:validate": "node evals/runner.mjs validate",
     "eval:mock": "node evals/runner.mjs mock",
