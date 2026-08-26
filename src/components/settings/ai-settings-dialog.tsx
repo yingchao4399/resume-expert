@@ -92,14 +92,21 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
             </SelectContent></Select>
             <Label htmlFor="ai-model" className="block text-[11px] text-neutral-500">手动模型 ID</Label><Input id="ai-model" value={model} onChange={(event) => setModel(event.target.value)} placeholder="输入服务商官网或 /models 返回的模型 ID" className="font-mono text-xs" />
             {currentPreset && <div className="flex flex-wrap gap-3 text-[11px]"><span className="text-neutral-400">官方清单更新：{currentPreset.catalogUpdatedAt}</span>{currentPreset.modelDocsUrl && <a href={currentPreset.modelDocsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:underline">查看官方模型文档<ExternalLink className="h-3 w-3" /></a>}</div>}
-            {provider === "deepseek" && <p className="text-[11px] text-blue-700">结构抽取会关闭 DeepSeek V4 思考模式以缩短等待；当前模型不会被静默替换。更看重速度时建议使用 deepseek-v4-flash。</p>}
+            {(provider === "deepseek" || provider === "qwen") && <p className="text-[11px] text-blue-700">结构抽取会关闭当前模型的思考模式以缩短等待；当前模型不会被静默替换。普通聊天能力不受这项结构化任务策略影响。</p>}
             {oldModelWarning && <Alert tone="amber">当前模型“{model}”不在最新官方预设或账号返回清单中，可能已下线；不会自动替换。建议改用“{currentPreset?.recommendedModel}”并先测试连接。</Alert>}
             {catalog && <div className="rounded-md border bg-neutral-50 px-3 py-2 text-[11px]" role="status" aria-live="polite">已于 {new Date(catalog.refreshedAt).toLocaleString("zh-CN")} 刷新，共 {catalog.models.filter((item) => item.source === "account").length} 个账号模型。{catalog.warning && <span className="block text-amber-700">{catalog.warning}</span>}</div>}
           </div>
           {currentPreset?.docsUrl && <a href={currentPreset.docsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline">获取 {currentPreset.label} API Key<ExternalLink className="h-3 w-3" /></a>}
         </fieldset>
         <div className="mt-5 border-t pt-4"><div className="flex items-start justify-between gap-4 rounded-md border bg-neutral-50 px-3 py-3"><div><Label htmlFor="studio-enabled" className="text-xs">高级功能：开发者工作台</Label><p className="mt-1 text-[11px] text-neutral-500">显示工作流、运行追踪、测评和开发记录入口，仅适合本机使用。</p></div><input id="studio-enabled" type="checkbox" checked={studioEnabled} onChange={(event) => setStudioEnabledState(event.target.checked)} /></div></div>
-        {testResult && <div className={`mt-4 rounded-md border px-3 py-2 text-xs ${testResult.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`} role="status" aria-live="polite">{testResult.message} · {testResult.latencyMs} ms{testResult.category ? ` · ${testResult.category}` : ""}</div>}
+        {testResult && <div className={`mt-4 rounded-md border px-3 py-2 text-xs ${testResult.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`} role="status" aria-live="polite">
+          <p className="font-medium">{testResult.message} · 总耗时 {testResult.latencyMs} ms{testResult.category ? ` · ${testResult.category}` : ""}</p>
+          <div className="mt-2 grid gap-1 sm:grid-cols-2">
+            <span>基础连接：{testResult.checks.basic.ok ? "通过" : "失败"} · {testResult.checks.basic.latencyMs} ms</span>
+            <span>JSON 结构化：{testResult.checks.structured.ok ? "通过" : "失败"} · {testResult.checks.structured.latencyMs} ms</span>
+          </div>
+          <p className="mt-1 text-[11px] opacity-80">结构任务推理模式：{testResult.reasoningMode === "disabled" ? "已关闭思考" : "模型默认"}</p>
+        </div>}
         {error && <Alert tone="red">{error}</Alert>}
       </div>}
       <div className="flex justify-end gap-2 border-t px-5 py-3"><Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>取消</Button><Button variant="outline" size="sm" onClick={() => void handleTest()} disabled={useMock || saving || testing || loading}>{testing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{testing ? "测试中" : "测试连接"}</Button><Button size="sm" onClick={() => void handleSave()} disabled={saving || loading}>{saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{saving ? "保存中" : "保存配置"}</Button></div>

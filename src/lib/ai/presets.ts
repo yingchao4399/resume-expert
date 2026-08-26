@@ -1,5 +1,6 @@
 export type StructuredOutputStrategy = "json-schema" | "json-object" | "prompt-json";
 export type StructuredTaskReasoningMode = "disabled" | "provider-default";
+export type StructuredTaskReasoningControl = "deepseek-thinking" | "qwen-enable-thinking" | null;
 
 export interface ProviderCapabilityPolicy {
   structuredOutput: StructuredOutputStrategy;
@@ -158,7 +159,18 @@ export function getStructuredOutputStrategy(provider: string): StructuredOutputS
 }
 
 export function getStructuredTaskReasoningMode(provider: string, model: string): StructuredTaskReasoningMode {
-  if (provider === "deepseek" && /^deepseek-v4(?:-|$)/i.test(model)) return "disabled";
+  if (getStructuredTaskReasoningControl(provider, model)) return "disabled";
   if (provider === "deepseek") return "provider-default";
   return getProviderPreset(provider)?.capability.structuredTaskReasoning ?? "provider-default";
+}
+
+export function getStructuredTaskReasoningControl(provider: string, model: string): StructuredTaskReasoningControl {
+  const mayInferFromModel = provider === "custom";
+  if ((provider === "deepseek" || mayInferFromModel) && /^deepseek-v4(?:-|$)/i.test(model)) {
+    return "deepseek-thinking";
+  }
+  if ((provider === "qwen" || mayInferFromModel) && /^qwen3(?:$|[.\-_])/i.test(model)) {
+    return "qwen-enable-thinking";
+  }
+  return null;
 }

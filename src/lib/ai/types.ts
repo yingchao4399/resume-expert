@@ -135,6 +135,13 @@ export type AIConnectionErrorCategory =
 
 export type AIConnectionTestRequest = SaveAIConfigBody;
 
+export interface AIConnectionCheckResult {
+  ok: boolean;
+  latencyMs: number;
+  message: string;
+  category?: AIConnectionErrorCategory;
+}
+
 export interface AIConnectionTestResult {
   ok: boolean;
   latencyMs: number;
@@ -142,6 +149,11 @@ export interface AIConnectionTestResult {
   model: string;
   message: string;
   category?: AIConnectionErrorCategory;
+  reasoningMode: import("@/lib/ai/presets").StructuredTaskReasoningMode;
+  checks: {
+    basic: AIConnectionCheckResult;
+    structured: AIConnectionCheckResult;
+  };
 }
 
 export type AIModelSource = "official" | "account";

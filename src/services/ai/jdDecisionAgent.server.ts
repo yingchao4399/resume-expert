@@ -14,6 +14,7 @@ import type { CareerAnalysisClaim } from "@/lib/career/career-context";
 import type { AnalysisResult, EvidenceStrength, JobRequirement, JobRoleInferenceItem, JobTargetContext, UserInput } from "@/types/resume";
 import type { JDAnalysisDocument, JDRequirementAtom, JDRequirementAtomDraft, RoleHypothesis } from "@/types/jd-analysis";
 import type { AIMode } from "@/lib/ai/types";
+import { AnalysisCancelledError } from "@/lib/ai/errors";
 
 type Progress = (event: {
   type: "stage-started" | "batch-progress" | "stage-completed";
@@ -100,6 +101,28 @@ function overviewHypotheses(
   });
 }
 
+function unknownOverviewHypotheses(): RoleHypothesis[] {
+  const items: Array<Pick<RoleHypothesis, "id" | "type" | "verificationQuestion" | "decisionImpact">> = [
+    { id: "hypothesis-work-content", type: "role-mission", verificationQuestion: "这个岗位入职后最核心的工作内容是什么？", decisionImpact: "high" },
+    { id: "hypothesis-work-focus", type: "work-focus", verificationQuestion: "这个岗位当前阶段最重要的工作重心是什么？", decisionImpact: "high" },
+    { id: "hypothesis-business-line", type: "business-line", verificationQuestion: "岗位具体服务哪条业务线或产品线？", decisionImpact: "medium" },
+    { id: "hypothesis-team-state", type: "team-pain", verificationQuestion: "团队目前处于什么阶段，人员和分工情况如何？", decisionImpact: "medium" },
+    { id: "hypothesis-business-scenario", type: "team-pain", verificationQuestion: "这个岗位主要面对哪些业务场景和用户？", decisionImpact: "medium" },
+    { id: "hypothesis-team-pain", type: "team-pain", verificationQuestion: "团队招聘这个岗位最希望优先解决什么问题？", decisionImpact: "high" },
+    { id: "hypothesis-implicit-expectation", type: "implicit-expectation", verificationQuestion: "除 JD 明示要求外，还有哪些隐性期待？", decisionImpact: "medium" },
+    { id: "hypothesis-reporting-line", type: "reporting-line", verificationQuestion: "这个岗位向谁汇报，主要协作对象有哪些？", decisionImpact: "medium" },
+    { id: "hypothesis-industry-experience", type: "implicit-expectation", verificationQuestion: "行业经验在筛选和定级中占多大权重？", decisionImpact: "low" },
+  ];
+  return items.map((item) => ({
+    ...item,
+    conclusion: "信息不足",
+    sourceSpanIds: [],
+    confidenceBasis: [],
+    alternativeExplanations: [],
+    status: "unknown" as const,
+  }));
+}
+
 function mockJDDocument(input: UserInput, materialRevision: number): JDAnalysisDocument {
   const spans = parseJDSourceSpans(input.jobDescription);
   const drafts: JDRequirementAtomDraft[] = spans.filter((span) => span.role === "requirement").slice(0, 40).map((span) => ({
@@ -174,13 +197,20 @@ export async function analyzeJDDecisionMapServer(
   let document = buildJDAnalysisDocument({ sourceText: input.jobDescription, materialRevision, spans: classifiedSpans, drafts });
   const legacyRequirements = document.requirements.filter((item) => item.anchorStatus === "validated").map(toLegacyRequirement);
   if (legacyRequirements.length) {
-    const overview = await chatCompletionJSON({
-      promptId: "resume.job-overview", system: RESUME_AGENT_SYSTEM_PROMPT,
-      user: buildJobOverviewPrompt(input, jobTargetContext, legacyRequirements), schema: jobOverviewModelResultSchema,
-      schemaName: "jd_role_hypotheses", maxTokens: 4000, timeoutMs: 60_000, batchSize: legacyRequirements.length,
-      analysisStage: "JD 需求解析", model: execution.model, capture: execution.capture, analysisBudget: budget, signal: execution.signal,
-    });
-    document = { ...document, hypotheses: overviewHypotheses(overview.roleInference.items, document) };
+    execution.onDecisionProgress?.({ type: "batch-progress", stage: "jd-draft", message: "正在生成岗位画像", batchIndex: 1, batchCount: 1 });
+    try {
+      const overview = await chatCompletionJSON({
+        promptId: "resume.job-overview", system: RESUME_AGENT_SYSTEM_PROMPT,
+        user: buildJobOverviewPrompt(input, jobTargetContext, legacyRequirements), schema: jobOverviewModelResultSchema,
+        schemaName: "jd_role_hypotheses", maxTokens: 4000, timeoutMs: 60_000, batchSize: legacyRequirements.length,
+        analysisStage: "JD 需求解析", model: execution.model, capture: execution.capture, analysisBudget: budget, signal: execution.signal,
+      });
+      document = { ...document, hypotheses: overviewHypotheses(overview.roleInference.items, document) };
+    } catch (error) {
+      if (error instanceof AnalysisCancelledError || execution.signal?.aborted) throw error;
+      document = { ...document, hypotheses: unknownOverviewHypotheses() };
+      execution.onDecisionProgress?.({ type: "batch-progress", stage: "jd-draft", message: "岗位画像暂不可用，已保留需求地图并标记为信息不足", batchIndex: 1, batchCount: 1 });
+    }
   }
   document = { ...document, qualityFindings: deterministicQualityFindings(document) };
   execution.onDecisionProgress?.({ type: "stage-completed", stage: "jd-draft", message: "JD 草稿已生成，等待人工确认" });

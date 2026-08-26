@@ -63,7 +63,7 @@ export interface PromptDefinition {
   evaluation: PromptEvaluationBinding;
 }
 
-export type PromptAttemptKind = "primary" | "response-format-fallback" | "schema-repair";
+export type PromptAttemptKind = "primary" | "response-format-fallback" | "reasoning-control-fallback" | "schema-repair";
 export type PromptSnapshotStatus = "prepared" | "success" | "http-error" | "validation-error" | "cancelled";
 
 export interface PromptRuntimeSnapshot {

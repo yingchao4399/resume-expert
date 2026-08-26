@@ -18,11 +18,16 @@ describe("multi-provider structured output", () => {
     expect(JSON.stringify(body.messages)).toContain("完整 JSON Schema");
   });
 
-  it("disables thinking for DeepSeek V4 structured tasks only", () => {
+  it("uses the provider-specific no-thinking parameter for structured tasks", () => {
     expect(buildCompletionRequestBody(config("deepseek", "deepseek-v4-pro"), options)).toMatchObject({ thinking: { type: "disabled" } });
     expect(buildCompletionRequestBody(config("deepseek", "deepseek-v4-flash"), options)).toMatchObject({ thinking: { type: "disabled" } });
     expect(buildCompletionRequestBody(config("deepseek", "deepseek-chat"), options)).not.toHaveProperty("thinking");
-    expect(buildCompletionRequestBody(config("qwen", "qwen3.7-plus"), options)).not.toHaveProperty("thinking");
+    expect(buildCompletionRequestBody(config("qwen", "qwen3.7-plus"), options)).toMatchObject({ enable_thinking: false });
+    expect(buildCompletionRequestBody(config("qwen", "qwen3.8-max"), options)).toMatchObject({ enable_thinking: false });
+    expect(buildCompletionRequestBody(config("qwen", "qwen3-32b"), options)).toMatchObject({ enable_thinking: false });
+    expect(buildCompletionRequestBody(config("qwen", "qwen2.5-72b-instruct"), options)).not.toHaveProperty("enable_thinking");
+    expect(buildCompletionRequestBody(config("custom", "qwen3.7-flash"), options)).toMatchObject({ enable_thinking: false });
+    expect(buildCompletionRequestBody(config("moonshot", "kimi-k3"), options)).not.toHaveProperty("enable_thinking");
   });
 
   it("uses strict JSON Schema and OpenAI completion-token parameters", () => {
@@ -50,6 +55,16 @@ describe("multi-provider structured output", () => {
     await expect(chatCompletionJSON({ ...options, configOverride: config("custom", "private-model") })).resolves.toEqual({ items: [], ok: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).not.toHaveProperty("response_format");
+  });
+
+  it("falls back once without the Qwen thinking control when a custom endpoint rejects it", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("unknown parameter: enable_thinking", { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: '{"items":[],"ok":true}' } }] }), { status: 200 }));
+    await expect(chatCompletionJSON({ ...options, configOverride: config("custom", "qwen3.7-flash") })).resolves.toEqual({ items: [], ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({ enable_thinking: false });
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).not.toHaveProperty("enable_thinking");
   });
 
   it("reports the exact analysis stage when output is truncated", async () => {

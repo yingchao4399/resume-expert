@@ -5,7 +5,7 @@ import { classifyAIHTTPError, LLMError, LLMStructureError, LLMTruncationError, t
 import { AnalysisCancelledError, AnalysisDeadlineError } from "@/lib/ai/errors";
 import type { AnalysisExecutionBudget } from "@/lib/ai/analysis-execution";
 import { parseJSONFromMessage } from "@/lib/ai/parse-json";
-import { getProviderPreset, getStructuredOutputStrategy, getStructuredTaskReasoningMode, type StructuredOutputStrategy } from "@/lib/ai/presets";
+import { getProviderPreset, getStructuredOutputStrategy, getStructuredTaskReasoningControl, getStructuredTaskReasoningMode, type StructuredOutputStrategy } from "@/lib/ai/presets";
 import { getCallablePromptDefinition } from "@/lib/studio/prompt-registry";
 import type { PromptAttemptKind, PromptCaptureContext, PromptId, PromptRuntimeSnapshot } from "@/lib/studio/prompt-types";
 
@@ -131,7 +131,12 @@ function addPromptSchema<T>(strategy: StructuredOutputStrategy, options: ChatCom
   };
 }
 
-export function buildCompletionRequestBody<T>(config: AIConfig, options: ChatCompletionOptions<T>, omitResponseFormat = false): Record<string, unknown> {
+export function buildCompletionRequestBody<T>(
+  config: AIConfig,
+  options: ChatCompletionOptions<T>,
+  omitResponseFormat = false,
+  omitReasoningControl = false,
+): Record<string, unknown> {
   const model = options.model || config.model;
   const strategy = getStructuredOutputStrategy(config.provider);
   const adapted = addPromptSchema(strategy, options);
@@ -143,8 +148,9 @@ export function buildCompletionRequestBody<T>(config: AIConfig, options: ChatCom
     model,
     messages: [{ role: "system", content: adapted.system }, { role: "user", content: adapted.user }],
   };
-  const reasoningMode = getStructuredTaskReasoningMode(config.provider, model);
-  if (reasoningMode === "disabled") body.thinking = { type: "disabled" };
+  const reasoningControl = omitReasoningControl ? null : getStructuredTaskReasoningControl(config.provider, model);
+  if (reasoningControl === "deepseek-thinking") body.thinking = { type: "disabled" };
+  if (reasoningControl === "qwen-enable-thinking") body.enable_thinking = false;
   if (!omitSampling) body.temperature = options.temperature ?? 0.3;
   body[useCompletionTokens ? "max_completion_tokens" : "max_tokens"] = options.maxTokens ?? 8192;
   if (!omitResponseFormat) body.response_format = buildResponseFormat(strategy, options);
@@ -158,10 +164,13 @@ async function callChatCompletions<T>(
   validationIssues: string[] = [],
 ): Promise<ChatCompletionData> {
   try {
-    return await performChatCompletion(config, options, false, attemptKind, validationIssues);
+    return await performChatCompletion(config, options, false, false, attemptKind, validationIssues);
   } catch (error) {
+    if (config.provider === "custom" && error instanceof LLMError && isReasoningControlUnsupported(error.message)) {
+      return performChatCompletion(config, options, false, true, "reasoning-control-fallback", validationIssues);
+    }
     if (config.provider === "custom" && error instanceof LLMError && /response[_ ]format|json[_ ]object|unsupported|not support/i.test(error.message)) {
-      return performChatCompletion(config, options, true, "response-format-fallback", validationIssues);
+      return performChatCompletion(config, options, true, false, "response-format-fallback", validationIssues);
     }
     throw error;
   }
@@ -171,10 +180,11 @@ async function performChatCompletion<T>(
   config: AIConfig,
   options: ChatCompletionOptions<T>,
   omitResponseFormat: boolean,
+  omitReasoningControl: boolean,
   attemptKind: PromptAttemptKind,
   validationIssues: string[],
 ): Promise<ChatCompletionData> {
-  const requestBody = buildCompletionRequestBody(config, options, omitResponseFormat);
+  const requestBody = buildCompletionRequestBody(config, options, omitResponseFormat, omitReasoningControl);
   const requestTimeoutMs = options.analysisBudget
     ? options.analysisBudget.claimProviderRequest(options.timeoutMs)
     : options.timeoutMs ?? FORMAL_AI_TIMEOUT_MS;
@@ -194,6 +204,15 @@ async function performChatCompletion<T>(
     }, requestTimeoutMs, options.signal, options.analysisBudget);
   } catch (error) {
     finishSnapshot(snapshot, error instanceof AnalysisCancelledError ? "cancelled" : "http-error");
+    if (error instanceof LLMError && error.category === "timeout" && options.analysisStage) {
+      const reasoningMode = getStructuredTaskReasoningMode(config.provider, options.model || config.model);
+      const batch = options.batchSize ? `；批次规模：${options.batchSize}` : "";
+      throw new LLMError(
+        `${error.message}；阶段：${options.analysisStage}；Provider：${config.provider}；模型：${options.model || config.model}；推理模式：${reasoningMode}${batch}`,
+        error.status,
+        error.category,
+      );
+    }
     throw error;
   }
 
@@ -206,6 +225,11 @@ async function performChatCompletion<T>(
   const data = (await response.json()) as ChatCompletionData;
   finishSnapshot(snapshot, "success", data);
   return data;
+}
+
+function isReasoningControlUnsupported(message: string): boolean {
+  return /(?:enable[_ ]thinking|\bthinking\b)/i.test(message) &&
+    /(?:unknown|unsupported|not support|unrecognized|invalid parameter)/i.test(message);
 }
 
 function capturePromptSnapshot<T>(
