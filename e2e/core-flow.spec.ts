@@ -264,7 +264,7 @@ test("keeps creation pending until the final resume is generated", async ({ page
   await expect(page.getByText("最终简历尚未生成确认")).toBeVisible();
   await page.getByRole("button", { name: /AI 优化 3\.1/ }).click();
   await page.getByRole("button", { name: "生成优化方案" }).click();
-  await page.getByRole("button", { name: "应用补充并重新生成最终简历", exact: true }).click();
+  await page.getByRole("button", { name: "重新生成最终简历", exact: true }).click();
   await expect(page.getByRole("heading", { name: "最终简历" })).toBeVisible();
 });
 
@@ -588,10 +588,126 @@ test("exports a DOCX that can be imported again", async ({ page }) => {
   await expect(page.getByRole("dialog", { name: "导入已有简历" }).locator("textarea").first()).toHaveValue(/张明/, { timeout: 20_000 });
 });
 
+test("downloads searchable ATS and visual A4 PDFs", async ({ page }) => {
+  await seed(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: /ATS 与导出 4\.2/ }).click();
+
+  const atsDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "下载 ATS 文字版" }).click();
+  const atsDownload = await atsDownloadPromise;
+  expect(atsDownload.suggestedFilename()).toMatch(/^张明-产品经理-\d{8}-ATS\.pdf$/);
+  const atsPath = path.join(process.cwd(), "test-results", "v1.10-ats.pdf");
+  await atsDownload.saveAs(atsPath);
+
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const atsBytes = new Uint8Array(await fs.promises.readFile(atsPath));
+  const atsPdf = await pdfjs.getDocument({ data: atsBytes }).promise;
+  expect(atsPdf.numPages).toBeGreaterThan(0);
+  const atsPage = await atsPdf.getPage(1);
+  const atsViewport = atsPage.getViewport({ scale: 1 });
+  expect(atsViewport.width).toBeCloseTo(595.28, 1);
+  expect(atsViewport.height).toBeCloseTo(841.89, 1);
+  const atsText = await atsPage.getTextContent();
+  expect(atsText.items.map((item) => "str" in item ? item.str : "").join(" ")).toContain("张明");
+
+  const visualDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "下载视觉还原版" }).click();
+  const visualDownload = await visualDownloadPromise;
+  expect(visualDownload.suggestedFilename()).toMatch(/^张明-产品经理-\d{8}-视觉版\.pdf$/);
+  const visualPath = path.join(process.cwd(), "test-results", "v1.10-visual.pdf");
+  await visualDownload.saveAs(visualPath);
+  const visualBytes = new Uint8Array(await fs.promises.readFile(visualPath));
+  const visualPdf = await pdfjs.getDocument({ data: visualBytes }).promise;
+  expect(visualPdf.numPages).toBeGreaterThan(0);
+  const visualViewport = (await visualPdf.getPage(1)).getViewport({ scale: 1 });
+  expect(visualViewport.width).toBeCloseTo(595.28, 1);
+  expect(visualViewport.height).toBeCloseTo(841.89, 1);
+
+  const previewPromise = page.waitForEvent("popup");
+  await page.getByRole("button", { name: "打开 A4 预览" }).click();
+  const preview = await previewPromise;
+  await expect(preview).toHaveURL(/\/print\?documentId=e2e-document$/);
+  await expect(preview.locator(".resume-document").first()).toBeVisible();
+  await expect(preview.getByRole("button", { name: "下载 ATS PDF" })).toBeEnabled();
+  await expect(preview.getByRole("button", { name: "下载视觉 PDF" })).toBeEnabled();
+  await expect(preview.getByRole("button", { name: "系统打印" })).toBeEnabled();
+  await expect(preview.getByRole("button", { name: "返回" })).toBeEnabled();
+  await expect(preview.getByRole("button", { name: "关闭窗口" })).toBeEnabled();
+});
+
+test("persists custom style and only finalizes a user-confirmed keyword enhancement", async ({ page }) => {
+  const state = stateFor();
+  state.state.documents[0].analysisResult!.optimizedItems = [{
+    id: "opt-keyword-e2e", section: "职业摘要", before: "原摘要", after: "优化摘要", reason: "对齐岗位", riskWarning: "核对事实",
+  }];
+  await page.addInitScript((value) => { if (!localStorage.getItem("resume-expert-library")) localStorage.setItem("resume-expert-library", JSON.stringify(value)); }, state);
+
+  let optimizeRequest: Record<string, unknown> | null = null;
+  let finalizeRequest: { optimizedItems?: Array<{ after?: string }> } | null = null;
+  await page.route("**/api/optimize", async (route) => {
+    optimizeRequest = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ mode: "mock", optimizedItems: [{ id: "opt-keyword-e2e", section: "职业摘要", before: "原摘要", after: "优化摘要", reason: "对齐岗位", riskWarning: "核对事实" }] }) });
+  });
+  await page.route("**/api/optimize/keyword-enhance", async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ mode: "mock", enhancements: [{
+      id: "keyword-draft-e2e", itemId: "opt-keyword-e2e", selectedKeywords: ["产品规划"], enhancedText: "负责企业服务产品规划与交付", sourceAfter: "优化摘要",
+      evidenceStatus: "missing", evidenceClaimIds: [], evidenceCorrectionSourceIds: [], foundEvidence: [], missingEvidence: ["缺少直接项目证据"], riskWarnings: ["请核验岗位职责边界"], adoptionStatus: "unverified", generatedAt: "2026-08-26T00:00:00.000Z", verifiedAt: null,
+    }] }),
+  }));
+  await page.route("**/api/finalize", async (route) => {
+    finalizeRequest = route.request().postDataJSON() as typeof finalizeRequest;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ finalResume: resume, mode: "mock" }) });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /AI 优化 3\.1/ }).click();
+  await page.getByRole("button", { name: "自定义", exact: true }).click();
+  await page.getByLabel("自定义优化风格").fill("突出平台化能力，语气稳健");
+  await page.getByRole("button", { name: "应用自定义风格并生成" }).click();
+  await expect.poll(() => optimizeRequest).toMatchObject({ style: "custom", customInstruction: "突出平台化能力，语气稳健" });
+  await page.reload();
+  await expect(page.getByLabel("自定义优化风格")).toHaveValue("突出平台化能力，语气稳健");
+
+  await page.locator("label").filter({ hasText: "产品规划" }).click();
+  await page.getByRole("button", { name: "批量 AI 增强" }).click();
+  await expect(page.getByText("负责企业服务产品规划与交付", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "补正证据后采用" }).click();
+  const correctionDialog = page.getByRole("dialog", { name: "补正证据后采用" });
+  await correctionDialog.getByPlaceholder("例如：智能知识库项目").fill("企业服务规划项目");
+  await correctionDialog.getByPlaceholder("只填写你真实做过、可以解释或验证的内容").fill("独立完成企业服务产品规划并推动交付");
+  await correctionDialog.getByRole("checkbox").check();
+  await correctionDialog.getByRole("button", { name: "保存真实证据并重新增强" }).click();
+  await expect(correctionDialog).toBeHidden();
+  await expect.poll(async () => page.evaluate(async () => {
+    const request = indexedDB.open("resume-expert-career", 1);
+    const database = await new Promise<IDBDatabase>((resolve, reject) => { request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+    const transaction = database.transaction("claims", "readonly");
+    const values = await new Promise<Array<{ sourceReference?: { referenceId?: string } }>>((resolve, reject) => {
+      const getAll = transaction.objectStore("claims").getAll();
+      getAll.onsuccess = () => resolve(getAll.result); getAll.onerror = () => reject(getAll.error);
+    });
+    database.close();
+    return values.some((value) => value.sourceReference?.referenceId?.startsWith("keyword-enhancement:e2e-document:opt-keyword-e2e:产品规划"));
+  })).toBe(true);
+  await page.getByRole("button", { name: "暂不采用" }).click();
+  await expect(page.getByRole("button", { name: "重新生成最终简历" })).toBeEnabled();
+  await page.getByRole("button", { name: "重新核验" }).click();
+  const verificationDialog = page.getByRole("dialog", { name: "核验关键词增强稿" });
+  await verificationDialog.getByRole("checkbox").check();
+  await verificationDialog.getByRole("button", { name: "确认采用" }).click();
+  await expect(page.getByText("已核验采用", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "重新生成最终简历" }).click();
+  await expect(page.getByRole("heading", { name: "最终简历" })).toBeVisible();
+  expect((finalizeRequest as unknown as { optimizedItems: Array<{ after: string }> }).optimizedItems[0].after).toBe("负责企业服务产品规划与交付");
+});
+
 test("prints with one 16 mm margin and no empty multi-page output", async ({ page }) => {
   await seed(page);
   await page.goto("/print?documentId=e2e-document");
-  await expect(page.locator(".resume-document")).toBeVisible();
+  await expect(page.locator(".resume-document").first()).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   const singlePageBuffer = await page.pdf({ printBackground: true, preferCSSPageSize: true });
   await fs.promises.writeFile(path.join(process.cwd(), "test-results", "print-16mm-single.pdf"), singlePageBuffer);
@@ -614,7 +730,7 @@ test("prints with one 16 mm margin and no empty multi-page output", async ({ pag
   }));
   await page.evaluate((value) => localStorage.setItem("resume-expert-library", JSON.stringify(value)), multiPageState);
   await page.reload();
-  await expect(page.locator(".resume-document")).toBeVisible();
+  await expect(page.locator(".resume-document").first()).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   const multiPageBuffer = await page.pdf({ printBackground: true, preferCSSPageSize: true });
   await fs.promises.writeFile(path.join(process.cwd(), "test-results", "print-16mm-multi.pdf"), multiPageBuffer);

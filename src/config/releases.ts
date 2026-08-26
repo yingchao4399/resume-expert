@@ -1,4 +1,5 @@
 export const RELEASE_RECORDS = [
+  { version: "1.10.0", goal: "双模式 PDF、自定义优化风格与可选关键词增强", modules: ["ATS 文字 PDF", "视觉还原 PDF", "统一渲染模型", "自定义风格", "关键词核验与补正"], tests: "171 Vitest / 37 Playwright / evals / audit / build", status: "released" },
   { version: "1.9.7", goal: "面试策略与导入数据完整性修复", modules: ["长 JD 兼容", "错误透传", "导入引用门禁", "待确认归类", "旧证据覆盖保护"], tests: "160 Vitest / 35 Playwright / evals / audit / build", status: "released" },
   { version: "1.9.6", goal: "简历导入完整识别与待确认修复", modules: ["确定性 Mock 解析", "完整导入资料", "扩展区块", "V7 备份"], tests: "155 Vitest / 35 Playwright / evals / audit / build", status: "released" },
   { version: "1.9.5", goal: "JD 决策地图与可信匹配升级", modules: ["JD 草稿确认", "逐要求事实召回", "确定性岗位准备度", "四视图原文审计", "48 条 Gold 评测"], tests: "151 Vitest / 35 Playwright / evals / audit / build", status: "released" },

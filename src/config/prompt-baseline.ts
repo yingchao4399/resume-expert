@@ -1,5 +1,5 @@
 export const PROMPT_BASELINE = {
-  version: "1.9.5",
-  approvedAt: "2026-08-15",
-  manifestHash: "866f8e4f3b82e0b2d9ff40d61756511aba3e404969efff96ca3216499ce9a821",
+  version: "1.10.0",
+  approvedAt: "2026-08-26",
+  manifestHash: "b5d6f63beb714733e0e141e1fcfcf910e5cb56e8d1ee678248f0e08f858bfee9",
 } as const;
