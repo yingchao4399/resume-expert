@@ -1,4 +1,5 @@
 import type { CareerAnalysisClaim } from "@/lib/career/career-context";
+import { JD_MAX_REQUIREMENTS, JD_CAPACITY_MESSAGE } from "./limits";
 import type {
   CoreCompetency,
   JDSourceClassification,
@@ -124,7 +125,7 @@ export interface JDRequirementDraft {
 }
 
 export function assembleRequirements(sourceItems: JDSourceItem[], drafts: JDRequirementDraft[]): JobRequirement[] {
-  if (drafts.length > 40) throw new Error("JD 拆分后超过 40 条原子要求，请精简或分段分析 JD。");
+  if (drafts.length > JD_MAX_REQUIREMENTS) throw new Error(JD_CAPACITY_MESSAGE);
   const sources = new Map(sourceItems.map((item) => [item.id, item]));
   return drafts.map((draft, index) => {
     const source = sources.get(draft.sourceItemId);

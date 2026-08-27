@@ -1,3 +1,6 @@
+import { JD_CLIENT_TIMEOUT_MS } from "@/lib/jd/limits";
+import { jdConsolidationProposalSchema } from "@/lib/jd/schemas";
+import type { JDConsolidationProposal } from "@/types/jd-analysis";
 import type {
   AIConnectionTestRequest,
   AIConnectionTestResult,
@@ -136,7 +139,7 @@ export async function runResumeAnalysis(
 export type DecisionStreamEvent =
   | { type: "started" | "heartbeat"; elapsedMs: number; message?: string }
   | { type: "stage-started" | "stage-completed" | "batch-progress"; stage: "jd-draft" | "fact-match"; message: string; elapsedMs: number; batchIndex?: number; batchCount?: number; promptSnapshots?: PromptRuntimeSnapshot[] }
-  | { type: "completed"; elapsedMs: number; document?: JDAnalysisDocument; result?: AnalysisResult; mode: "mock" | "llm"; promptSnapshots?: PromptRuntimeSnapshot[] }
+  | { type: "completed"; elapsedMs: number; document?: JDAnalysisDocument; proposal?: JDConsolidationProposal; result?: AnalysisResult; mode: "mock" | "llm"; promptSnapshots?: PromptRuntimeSnapshot[] }
   | { type: "failed"; elapsedMs: number; error: string; promptSnapshots?: PromptRuntimeSnapshot[] }
   | { type: "cancelled"; elapsedMs: number; message: string };
 
@@ -164,7 +167,7 @@ export async function runResumeAnalysisStreaming(
   const watchdog = globalThis.setTimeout(() => {
     watchdogExpired = true;
     controller.abort();
-  }, options.watchdogMs ?? 185_000);
+  }, options.watchdogMs ?? JD_CLIENT_TIMEOUT_MS);
   let result: JDAnalysisDocument | undefined;
   let mode: "mock" | "llm" | undefined;
   let promptSnapshots: PromptRuntimeSnapshot[] = [];
@@ -227,7 +230,7 @@ export async function runResumeAnalysisStreaming(
       throw new ResumeAnalysisCancelledError(terminalError);
     }
     if (watchdogExpired) {
-      terminalError = "快速分析连接已超过 185 秒，客户端已停止等待；本次未写入任何数据。";
+      terminalError = "分析连接已超过 365 秒，客户端已停止等待；本次未写入任何数据。";
       throw new ResumeAgentClientError(terminalError);
     }
     terminalError = error instanceof Error ? error.message : "分析失败";
@@ -256,6 +259,59 @@ export async function runResumeAnalysisStreaming(
   }
 }
 
+export async function runJDConsolidationStreaming(
+  jdAnalysisDocument: JDAnalysisDocument,
+  options: { signal?: AbortSignal; onProgress?: (event: DecisionStreamEvent) => void } = {},
+): Promise<JDConsolidationProposal> {
+  const url = "/api/analyze/consolidate/stream";
+  const traceId = crypto.randomUUID();
+  const startedAt = new Date();
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  options.signal?.addEventListener("abort", abort, { once: true });
+  if (options.signal?.aborted) abort();
+  const watchdog = setTimeout(abort, JD_CLIENT_TIMEOUT_MS);
+  let proposal: JDConsolidationProposal | undefined;
+  let errorMessage: string | undefined;
+  let snapshots: PromptRuntimeSnapshot[] = [];
+  try {
+    const headers = await buildWorkflowHeaders(url, traceId);
+    const response = await fetch(url, { method: "POST", headers, signal: controller.signal, body: JSON.stringify({ jdAnalysisDocument }) });
+    if (!response.ok) throw await responseError(response, "需求整理请求失败");
+    if (!response.body) throw new ResumeAgentClientError("需求整理响应缺少数据流。");
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      if (done && buffer.trim()) lines.push(buffer);
+      for (const line of lines.filter(line => line.trim())) {
+        const event = JSON.parse(line) as DecisionStreamEvent;
+        options.onProgress?.(event);
+        if ("promptSnapshots" in event && event.promptSnapshots) snapshots = event.promptSnapshots;
+        if (event.type === "failed") throw new ResumeAgentClientError(event.error);
+        if (event.type === "cancelled") throw new ResumeAnalysisCancelledError(event.message);
+        if (event.type === "completed") proposal = jdConsolidationProposalSchema.parse(event.proposal);
+      }
+      if (done) break;
+    }
+    if (!proposal) throw new ResumeAgentClientError("整理连接中断，未收到完整提案；已有地图未改变。");
+    if (controller.signal.aborted) throw new ResumeAnalysisCancelledError();
+    return proposal;
+  } catch (error) {
+    errorMessage = options.signal?.aborted ? "需求整理已取消，原地图未改变。" : controller.signal.aborted ? "需求整理超时，原地图未改变。" : error instanceof Error ? error.message : "需求整理失败";
+    throw options.signal?.aborted ? new ResumeAnalysisCancelledError(errorMessage) : new ResumeAgentClientError(errorMessage);
+  } finally {
+    controller.abort(); clearTimeout(watchdog); options.signal?.removeEventListener("abort", abort);
+    const finishedAt = new Date();
+    const latest = snapshots.at(-1);
+    void saveTraceSpan({ id: traceId, nodeId: "analyze", label: "JD 语义归并", status: proposal && !errorMessage ? "success" : "error", mode: proposal?.mode, provider: latest?.provider, model: latest?.model, startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), latencyMs: finishedAt.getTime() - startedAt.getTime(), input: jdAnalysisDocument, output: proposal, error: errorMessage, promptSnapshots: snapshots }).catch(reportTraceStorageError);
+  }
+}
+
 export async function runRequirementMatchStreaming(
   input: UserInput,
   jobTargetContext: JobTargetContext,
@@ -271,7 +327,8 @@ export async function runRequirementMatchStreaming(
   const controller = new AbortController();
   const abort = () => controller.abort();
   options.signal?.addEventListener("abort", abort, { once: true });
-  const watchdog = globalThis.setTimeout(() => controller.abort(), options.watchdogMs ?? 125_000);
+  if (options.signal?.aborted) abort();
+  const watchdog = globalThis.setTimeout(() => controller.abort(), options.watchdogMs ?? JD_CLIENT_TIMEOUT_MS);
   let result: AnalysisResult | undefined;
   let terminalError: string | undefined;
   let snapshots: PromptRuntimeSnapshot[] = [];
@@ -300,12 +357,15 @@ export async function runRequirementMatchStreaming(
       if (done) break;
     }
     if (!result) throw new ResumeAgentClientError("事实匹配连接意外结束，未收到完整结果；已有数据未改变。");
+    if (controller.signal.aborted) throw new ResumeAgentClientError("事实匹配已中止，未写入结果。");
     return result;
   } catch (error) {
     terminalError = error instanceof Error ? error.message : "事实匹配失败";
     if (options.signal?.aborted) throw new ResumeAnalysisCancelledError("事实匹配已取消，已有数据未改变。");
+    if (controller.signal.aborted) throw new ResumeAgentClientError("事实匹配等待超过 365 秒，已停止；已有数据未改变。请检查模型或缩短 JD。");
     throw error;
   } finally {
+    controller.abort();
     clearTimeout(watchdog);
     options.signal?.removeEventListener("abort", abort);
     const finishedAt = new Date();
@@ -328,7 +388,8 @@ export async function prepareInterviewStreaming(
   const controller = new AbortController();
   const abortFromCaller = () => controller.abort();
   options.signal?.addEventListener("abort", abortFromCaller, { once: true });
-  const watchdog = globalThis.setTimeout(() => controller.abort(), options.watchdogMs ?? 185_000);
+  if (options.signal?.aborted) abortFromCaller();
+  const watchdog = globalThis.setTimeout(() => controller.abort(), options.watchdogMs ?? JD_CLIENT_TIMEOUT_MS);
   let result: InterviewPrep | undefined;
   let terminalError: string | undefined;
   let snapshots: PromptRuntimeSnapshot[] = [];
@@ -357,12 +418,15 @@ export async function prepareInterviewStreaming(
       if (done) break;
     }
     if (!result) throw new ResumeAgentClientError("面试策略连接意外结束，未收到完整结果；已有内容未改变。");
+    if (controller.signal.aborted) throw new ResumeAgentClientError("面试策略已中止，未写入结果。");
     return result;
   } catch (error) {
     if (options.signal?.aborted) throw new ResumeAnalysisCancelledError("面试策略生成已取消，已有内容未改变。");
+    if (controller.signal.aborted) throw new ResumeAgentClientError("面试策略等待超过 365 秒，已停止；已有内容未改变。");
     terminalError = error instanceof Error ? error.message : "面试策略生成失败";
     throw error;
   } finally {
+    controller.abort();
     clearTimeout(watchdog);
     options.signal?.removeEventListener("abort", abortFromCaller);
     const finishedAt = new Date();

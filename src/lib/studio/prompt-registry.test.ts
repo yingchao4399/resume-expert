@@ -24,7 +24,7 @@ describe("prompt registry", () => {
     }
   });
 
-  it("matches the approved V1.10.0 prompt manifest", () => {
+  it("matches the approved V1.10.3 prompt manifest", () => {
     expect(createHash("sha256").update(JSON.stringify(PROMPT_REGISTRY)).digest("hex")).toBe(PROMPT_BASELINE.manifestHash);
   });
 });

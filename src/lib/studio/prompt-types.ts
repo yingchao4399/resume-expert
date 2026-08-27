@@ -1,6 +1,7 @@
 import type { WorkflowNodeId } from "@/lib/studio/trace-types";
 
 export const CALLABLE_PROMPT_IDS = [
+  "resume.jd-consolidation",
   "resume.deep-jd",
   "resume.job-overview",
   "resume.requirement-match",

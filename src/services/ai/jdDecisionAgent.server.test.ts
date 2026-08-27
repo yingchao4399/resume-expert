@@ -40,6 +40,10 @@ describe("JD decision map optional overview", () => {
           interviewFocus: "说明真实项目",
         })),
       })
+      .mockImplementationOnce(async (request: { user: string }) => {
+        const ids = [...request.user.matchAll(/"id":"(req-[^"]+)"/g)].map(match => match[1]);
+        return { merges: [], groups: [{ title: "核心任务", meaning: "测试", outcome: "信息不足", proof: "真实事实", memberIds: ids }] };
+      })
       .mockRejectedValueOnce(new Error("模型请求超时（60 秒）"));
 
     const progress: string[] = [];

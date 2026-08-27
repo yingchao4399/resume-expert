@@ -1,6 +1,6 @@
 import { interviewPrepareRequestSchema } from "@/lib/ai/schemas";
 import { parseAPIRequest, toAPIErrorResponse } from "@/lib/ai/api-response";
-import { AnalysisExecutionBudget } from "@/lib/ai/analysis-execution";
+import { createJDTaskBudget } from "@/lib/ai/jd-task-budget";
 import { AnalysisCancelledError, LLMError } from "@/lib/ai/errors";
 import { createInterviewProgressClock, type InterviewPreparationProgressEvent } from "@/lib/ai/interview-preparation";
 import { readWorkflowExecution } from "@/lib/studio/execution";
@@ -20,9 +20,10 @@ export async function POST(request: Request) {
   const taskController = new AbortController();
   const abortTask = () => taskController.abort();
   request.signal.addEventListener("abort", abortTask, { once: true });
+  if (request.signal.aborted) abortTask();
   const startedAt = Date.now();
-  const budget = new AnalysisExecutionBudget({ signal: taskController.signal, startedAt, deadlineAt: startedAt + 180_000 });
-  const clock = createInterviewProgressClock(startedAt, budget.requestId);
+  const budget = createJDTaskBudget(Math.max(1, Math.ceil((payload.analysisResult.jdAnalysis.requirements?.length ?? 0) / 5)), taskController.signal);
+  const clock = createInterviewProgressClock(startedAt, budget.requestId, budget.deadlineAt);
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -45,10 +46,13 @@ export async function POST(request: Request) {
         const execution = { ...baseExecution, signal: taskController.signal, analysisBudget: budget };
         send(clock.event({ type: "started", message: "开始生成面试策略" }));
         try {
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          budget.assertActive();
           const { interviewPrep, mode } = await prepareInterviewServer(payload.input, payload.jobTargetContext, payload.analysisResult, execution, (progress) => {
             currentBatch = { index: progress.batchIndex, count: progress.batchCount };
             send(clock.event({ type: "batch-progress", batchIndex: progress.batchIndex, batchCount: progress.batchCount, batchStatus: progress.status, message: `${progress.status === "completed" ? "已完成" : progress.status === "split" ? "截断后拆分" : "正在处理"}第 ${progress.batchIndex}/${progress.batchCount} 批` }));
           });
+          budget.assertActive();
           send(clock.event({ type: "completed", interviewPrep, mode, promptSnapshots: execution.capture?.snapshots }));
         } catch (error) {
           if (error instanceof AnalysisCancelledError || taskController.signal.aborted) send(clock.event({ type: "cancelled", message: "面试策略生成已取消，已有内容未改变。", promptSnapshots: execution.capture?.snapshots }));

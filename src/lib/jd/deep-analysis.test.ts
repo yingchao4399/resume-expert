@@ -25,10 +25,10 @@ describe("deep JD analysis primitives", () => {
     expect(requirements.map((item) => item.anchorStatus)).toEqual(["validated", "needs-review"]);
   });
 
-  it("rejects more than 40 atomic requirements", () => {
+  it("rejects more than 120 atomic requirements", () => {
     const source = splitJDSourceItems("负责产品规划");
     const draft = { sourceItemId: source[0].id, sourceQuote: source[0].text, requirement: "产品规划", category: "responsibility" as const, priority: "must" as const, keywords: ["产品"], interviewFocus: "案例" };
-    expect(() => assembleRequirements(source, Array.from({ length: 41 }, () => draft))).toThrow("超过 40 条");
+    expect(() => assembleRequirements(source, Array.from({ length: 121 }, () => draft))).toThrow("超过 120 条");
   });
 
   it("ranks only related confirmed structured facts and caps at 12", () => {

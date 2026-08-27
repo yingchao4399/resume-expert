@@ -1,6 +1,8 @@
 "use client";
 
 import { create } from "zustand";
+import { applyConsolidation, restorePreviousMap, migrateJDMap, validReferences } from "@/lib/jd/consolidation";
+import { jdAnalysisDocumentSchema } from "@/lib/jd/schemas";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { CareerEvidence, FinalResume, ImportedResumeProfile, ResumeDocument, ResumeLibraryState } from "@/types/resume";
 import { WORKFLOW_STAGES } from "@/config/workflow";
@@ -56,7 +58,7 @@ function confirmUnsavedChanges(state: ResumeStore): boolean {
     if (!window.confirm("深度分析仍在进行，离开会取消本次分析且不会写入半成品。是否继续？")) return false;
   }
   if (!state.dirtyScope || typeof window === "undefined") return true;
-  const label = state.dirtyScope === "resume" ? "简历内容" : state.dirtyScope === "layout" ? "排版设置" : "经历资料";
+  const label = state.dirtyScope === "resume" ? "简历内容" : state.dirtyScope === "layout" ? "排版设置" : state.dirtyScope === "jd" ? "需求地图" : "经历资料";
   return window.confirm(`${label}还有未保存修改，离开后将丢失。是否继续？`);
 }
 
@@ -289,8 +291,8 @@ export const useResumeStore = create<ResumeStore>()(
             ? parsed.state?.activeDocumentId as string
             : recoveredDocuments[0].id;
           const recoveredValue = JSON.stringify({
-            state: { schemaVersion: 12, documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
-            version: 12,
+            state: { schemaVersion: 13, documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
+            version: 13,
           });
           validatePersistedLibrary(recoveredValue);
           unlockStorageWrites();
@@ -605,6 +607,8 @@ export const useResumeStore = create<ResumeStore>()(
       setAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
 
       setJDAnalysisDocument: (document, expectedMaterialRevision) => {
+        const parsed = jdAnalysisDocumentSchema.safeParse(document);
+        if (!parsed.success) { set({ analysisError: parsed.error.issues[0]?.message ?? "需求地图结构无效，旧地图未改变。" }); return false; }
         let accepted = false;
         set((state) => {
           if (state.materialRevision !== expectedMaterialRevision || document.materialRevision !== expectedMaterialRevision) {
@@ -613,7 +617,7 @@ export const useResumeStore = create<ResumeStore>()(
           accepted = true;
           return {
             ...updateActiveDocument(state, {
-              jdAnalysisDocument: document,
+              jdAnalysisDocument: migrateJDMap(parsed.data),
               analysisRevision: null,
               analysisBasis: null,
               finalResumeStatus: state.analysisResult ? "stale" : "draft",
@@ -640,13 +644,11 @@ export const useResumeStore = create<ResumeStore>()(
           finalResumeStatus: state.analysisResult ? "stale" : "draft",
         }) : state),
 
-      confirmJDRequirement: (requirementId) =>
-        set((state) => state.jdAnalysisDocument ? updateActiveDocument(state, {
-          jdAnalysisDocument: confirmDecisionRequirement(state.jdAnalysisDocument, requirementId),
-          analysisRevision: null,
-          analysisBasis: null,
-          finalResumeStatus: state.analysisResult ? "stale" : "draft",
-        }) : state),
+      confirmJDRequirement: (requirementId) => set(state => {
+        if (!state.jdAnalysisDocument) return state;
+        try { return updateActiveDocument(state, { jdAnalysisDocument: confirmDecisionRequirement(state.jdAnalysisDocument, requirementId), analysisRevision: null, analysisBasis: null, finalResumeStatus: state.analysisResult ? "stale" : "draft" }); }
+        catch (error) { return { analysisError: error instanceof Error ? error.message : "要求无法确认" }; }
+      }),
 
       rejectJDRequirement: (requirementId) =>
         set((state) => state.jdAnalysisDocument ? updateActiveDocument(state, {
@@ -670,6 +672,38 @@ export const useResumeStore = create<ResumeStore>()(
         });
         return confirmed;
       },
+
+      applyJDConsolidation: (proposal, selectedIds, expectedDocumentId) => {
+        let applied = false;
+        set(state => {
+          if (!state.jdAnalysisDocument || state.activeDocumentId !== expectedDocumentId || state.materialRevision !== proposal.materialRevision) return { analysisError: "岗位版本或材料已变化，整理结果未应用。" };
+          try {
+            const next = jdAnalysisDocumentSchema.parse(applyConsolidation(state.jdAnalysisDocument, proposal, selectedIds));
+            applied = true;
+            return { ...updateActiveDocument(state, { jdAnalysisDocument: next, analysisRevision: null, analysisBasis: null, finalResumeStatus: state.analysisResult ? "stale" : "draft" }), dirtyScope: null };
+          } catch (error) { return { analysisError: error instanceof Error ? error.message : "整理结果未应用。" }; }
+        });
+        return applied;
+      },
+      restoreJDMap: () => {
+        let restored = false;
+        set(state => {
+          if (!state.jdAnalysisDocument) return state;
+          try {
+            const next = restorePreviousMap(state.jdAnalysisDocument);
+            restored = true;
+            return { ...updateActiveDocument(state, { jdAnalysisDocument: next, analysisRevision: null, analysisBasis: null, finalResumeStatus: state.analysisResult ? "stale" : "draft" }), dirtyScope: null };
+          } catch (error) { return { analysisError: error instanceof Error ? error.message : "恢复失败" }; }
+        });
+        return restored;
+      },
+      confirmJDGroup: groupId => set(state => {
+        const map = state.jdAnalysisDocument;
+        if (!map) return state;
+        const ids = new Set(map.groups?.find(group => group.id === groupId)?.requirementIds ?? []);
+        const next = { ...map, revision: map.revision + 1, status: "draft" as const, confirmedRevision: null, updatedAt: nowISO(), requirements: map.requirements.map(item => ids.has(item.id) && item.reviewStatus === "auto-validated" && item.anchorStatus === "validated" && validReferences(map, item) && !item.reviewWarnings?.length ? { ...item, reviewStatus: "confirmed" as const } : item) };
+        return updateActiveDocument(state, { jdAnalysisDocument: next, analysisRevision: null, analysisBasis: null, finalResumeStatus: state.analysisResult ? "stale" : "draft" });
+      }),
 
       setAnalysisResult: (result, expectedMaterialRevision, expectedJDRevision) => {
         let accepted = false;
@@ -853,11 +887,11 @@ export const useResumeStore = create<ResumeStore>()(
     }),
     {
       name: RESUME_STORAGE_KEY,
-       version: 12,
+       version: 13,
       skipHydration: true,
       storage: createJSONStorage<ResumeLibraryState>(() => safeLocalStorage),
       partialize: (state) => ({
-        schemaVersion: 12,
+        schemaVersion: 13,
         documents: state.documents,
         activeDocumentId: state.activeDocumentId,
         // Schema 8 将事实主数据迁入 IndexedDB；此字段仅用于首次迁移和旧组件兼容。
@@ -873,7 +907,7 @@ export const useResumeStore = create<ResumeStore>()(
           ? persisted.documents.map((document) => migrateDocument(document))
           : [];
         return {
-           schemaVersion: 12,
+           schemaVersion: 13,
           documents,
           activeDocumentId: persisted.activeDocumentId ?? documents[0]?.id ?? "",
           careerEvidence: Array.isArray(persisted.careerEvidence)

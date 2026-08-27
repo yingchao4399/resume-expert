@@ -493,7 +493,7 @@ function _buildInterviewPrep() {
 
 function buildDeepMockAnalysis(input: UserInput, context: JobTargetContext, careerClaims: CareerAnalysisClaim[]): AnalysisResult {
   const sourceItems = splitJDSourceItems(input.jobDescription);
-  const requirements = assembleRequirements(sourceItems, sourceItems.filter((item) => item.classification === "requirement").slice(0, 40).map((source) => ({
+  const requirements = assembleRequirements(sourceItems, sourceItems.filter((item) => item.classification === "requirement").map((source) => ({
     sourceItemId: source.id,
     sourceQuote: source.text,
     requirement: cleanRequirementText(source.text),

@@ -15,6 +15,12 @@ import type { AnalysisResult, EvidenceStrength, JobRequirement, JobRoleInference
 import type { JDAnalysisDocument, JDRequirementAtom, JDRequirementAtomDraft, RoleHypothesis } from "@/types/jd-analysis";
 import type { AIMode } from "@/lib/ai/types";
 import { AnalysisCancelledError } from "@/lib/ai/errors";
+import { createJDTaskBudget } from "@/lib/ai/jd-task-budget";
+import { JD_MAX_REQUIREMENTS, JD_CAPACITY_MESSAGE, JD_BATCH_SIZE, MATCH_BATCH_SIZE } from "@/lib/jd/limits";
+import { applyConsolidation, mockConsolidation } from "@/lib/jd/consolidation";
+import { jdAnalysisDocumentSchema } from "@/lib/jd/schemas";
+import { persistedAnalysisResultSchema } from "@/lib/ai/schemas";
+import { consolidateJDServer } from "./jdConsolidation.server";
 
 type Progress = (event: {
   type: "stage-started" | "batch-progress" | "stage-completed";
@@ -47,13 +53,8 @@ function modeFor(execution: WorkflowExecutionOptions): AIMode {
   return execution.forceMock ? "mock" : getAIConfig().mode;
 }
 
-function decisionBudget(execution: Execution): AnalysisExecutionBudget {
-  return execution.analysisBudget ?? new AnalysisExecutionBudget({
-    signal: execution.signal,
-    deadlineAt: Date.now() + 120_000,
-    maxProviderRequests: 6,
-    providerTimeoutMs: 60_000,
-  });
+function decisionBudget(execution: Execution, expectedRequests: number): AnalysisExecutionBudget {
+  return execution.analysisBudget ?? createJDTaskBudget(expectedRequests, execution.signal);
 }
 
 function deterministicQualityFindings(document: JDAnalysisDocument): JDAnalysisDocument["qualityFindings"] {
@@ -125,7 +126,7 @@ function unknownOverviewHypotheses(): RoleHypothesis[] {
 
 function mockJDDocument(input: UserInput, materialRevision: number): JDAnalysisDocument {
   const spans = parseJDSourceSpans(input.jobDescription);
-  const drafts: JDRequirementAtomDraft[] = spans.filter((span) => span.role === "requirement").slice(0, 40).map((span) => ({
+  const drafts: JDRequirementAtomDraft[] = spans.filter((span) => span.role === "requirement").map((span) => ({
     sourceSpanId: span.id,
     sourceQuote: span.text,
     normalizedText: span.text.replace(/^\s*(?:[-*•·▪◦]|\d+[.)、])\s*/, ""),
@@ -135,7 +136,8 @@ function mockJDDocument(input: UserInput, materialRevision: number): JDAnalysisD
     priorityBasis: ["Mock 仅按原文显式词拆分"],
     keywords: [],
   }));
-  const document = buildJDAnalysisDocument({ sourceText: input.jobDescription, materialRevision, spans, drafts });
+  const draft = buildJDAnalysisDocument({ sourceText: input.jobDescription, materialRevision, spans, drafts });
+  const document = applyConsolidation(draft, mockConsolidation(draft), undefined, false);
   return { ...document, qualityFindings: deterministicQualityFindings(document) };
 }
 
@@ -154,9 +156,9 @@ export async function analyzeJDDecisionMapServer(
     return { document, mode };
   }
 
-  const budget = decisionBudget(execution);
-  const executor = new StructuredAnalysisExecutor(undefined, budget);
   const spans = parseJDSourceSpans(input.jobDescription);
+  const budget = decisionBudget(execution, Math.ceil(spans.filter(span => span.role !== "heading").length / JD_BATCH_SIZE) + 2);
+  const executor = new StructuredAnalysisExecutor(undefined, budget);
   if (!spans.some((span) => span.role === "requirement")) throw new Error("JD 中没有可分析的岗位要求。");
   execution.onDecisionProgress?.({ type: "stage-started", stage: "jd-draft", message: "正在拆分 JD 原子要求" });
   const sourceItems = spans.filter((span) => span.role !== "heading").map((span) => ({
@@ -166,7 +168,7 @@ export async function analyzeJDDecisionMapServer(
   const results = await executor.executeBatched({
     stage: "JD 需求解析",
     items: sourceItems,
-    batchSize: 16,
+    batchSize: JD_BATCH_SIZE,
     createRequest: (items, signal) => ({
       promptId: "resume.deep-jd", system: RESUME_AGENT_SYSTEM_PROMPT, user: buildDeepJDPrompt(input, jobTargetContext, items),
       schema: createCompactJDModelResultSchema(items.map((item) => item.id)), schemaName: "jd_decision_map_draft",
@@ -195,6 +197,10 @@ export async function analyzeJDDecisionMapServer(
     keywords: item.keywords,
   }));
   let document = buildJDAnalysisDocument({ sourceText: input.jobDescription, materialRevision, spans: classifiedSpans, drafts });
+  execution.onDecisionProgress?.({ type: "batch-progress", stage: "jd-draft", message: "正在进行全局语义归并" });
+  const proposal = await consolidateJDServer(document, { ...execution, analysisBudget: budget });
+  execution.onDecisionProgress?.({ type: "batch-progress", stage: "jd-draft", message: "正在整理核心要求与独立细则" });
+  document = applyConsolidation(document, proposal, undefined, false);
   const legacyRequirements = document.requirements.filter((item) => item.anchorStatus === "validated").map(toLegacyRequirement);
   if (legacyRequirements.length) {
     execution.onDecisionProgress?.({ type: "batch-progress", stage: "jd-draft", message: "正在生成岗位画像", batchIndex: 1, batchCount: 1 });
@@ -213,6 +219,8 @@ export async function analyzeJDDecisionMapServer(
     }
   }
   document = { ...document, qualityFindings: deterministicQualityFindings(document) };
+  budget.assertActive();
+  jdAnalysisDocumentSchema.parse(document);
   execution.onDecisionProgress?.({ type: "stage-completed", stage: "jd-draft", message: "JD 草稿已生成，等待人工确认" });
   return { document, mode };
 }
@@ -280,6 +288,8 @@ export async function matchConfirmedJDServer(
   execution: Execution = { forceMock: false },
 ): Promise<{ result: AnalysisResult; mode: AIMode }> {
   if (document.status !== "confirmed" || document.confirmedRevision !== document.revision) throw new Error("请先确认当前 JD 需求地图，再运行事实匹配。");
+  if (document.requirements.length > JD_MAX_REQUIREMENTS) throw new Error(JD_CAPACITY_MESSAGE);
+  jdAnalysisDocumentSchema.parse(document);
   const mode = modeFor(execution);
   const atoms = document.requirements.filter((item) => item.reviewStatus === "confirmed" && item.modality !== "negated");
   if (!atoms.length) throw new Error("当前需求地图中没有已确认的有效岗位要求。");
@@ -289,10 +299,10 @@ export async function matchConfirmedJDServer(
 
   let modelMatches: AnalysisResult["matchItems"] = [];
   if (mode === "llm") {
-    const budget = decisionBudget(execution);
+    const budget = decisionBudget(execution, Math.ceil(requirements.length / MATCH_BATCH_SIZE));
     const executor = new StructuredAnalysisExecutor(undefined, budget);
     const response = await executor.executeBatched({
-      stage: "要求—事实匹配", items: requirements, batchSize: 12,
+      stage: "要求—事实匹配", items: requirements, batchSize: MATCH_BATCH_SIZE,
       createRequest: (batch, signal) => {
         const allowed = [...new Map(batch.flatMap((item) => claimsByRequirement.get(item.id) ?? []).map((claim) => [claim.id, claim])).values()];
         const annotatedClaims = allowed.map((claim) => ({
@@ -312,6 +322,7 @@ export async function matchConfirmedJDServer(
       onProgress: (progress) => execution.onDecisionProgress?.({ type: "batch-progress", stage: "fact-match", message: `匹配第 ${progress.batchIndex}/${progress.batchCount} 批`, batchIndex: progress.batchIndex, batchCount: progress.batchCount }),
     });
     modelMatches = response.matchItems;
+    budget.assertActive();
   } else {
     modelMatches = requirements.map((requirement) => ({
       requirementId: requirement.id, jdRequirement: requirement.requirement,
@@ -390,5 +401,6 @@ export async function matchConfirmedJDServer(
     jobReadiness: readiness,
   };
   execution.onDecisionProgress?.({ type: "stage-completed", stage: "fact-match", message: "事实匹配与岗位准备度已完成" });
-  return { result: normalizeAnalysisResult(raw, input), mode };
+  if (execution.signal?.aborted) throw new AnalysisCancelledError();
+  return { result: persistedAnalysisResultSchema.parse(normalizeAnalysisResult(raw, input)), mode };
 }

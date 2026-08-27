@@ -11,6 +11,8 @@ const missingDefinitions = callableIds.filter((id) => !registryIds.has(id));
 if (missingDefinitions.length) throw new Error(`缺少提示词注册：${missingDefinitions.join(", ")}`);
 
 const sourceFiles = [
+  "src/services/ai/jdDecisionAgent.server.ts",
+  "src/services/ai/jdConsolidation.server.ts",
   "src/services/ai/resumeAgent.llm.ts",
   "src/services/ai/interviewAgent.llm.ts",
   "src/services/ai/importResume.server.ts",

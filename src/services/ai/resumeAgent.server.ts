@@ -95,6 +95,17 @@ export async function prepareInterviewServer(
   if (mode === "llm") {
     return { interviewPrep: await runLLMInterviewPreparation(input, jobTargetContext, analysisResult, execution, onBatchProgress), mode };
   }
+  const requirements = analysisResult.jdAnalysis.requirements ?? [];
+  if (execution.signal?.aborted) throw new Error("面试策略已取消");
+  if (requirements.length) return { mode, interviewPrep: {
+    likelyQuestions: Array.from({ length: Math.min(10, Math.max(5, requirements.length)) }, (_, index) => {
+      const item = requirements[index % requirements.length];
+      return { requirementId: item.id, question: `请用真实经历说明：${item.requirement}`, evidenceNeeded: ["准备已确认事实与指标口径"], suggestedAnswer: "如实说明背景、个人行动和可验证结果；无相关经历请直说。" };
+    }),
+    evidenceToPrepare: requirements.map(item => item.requirement), possibleExaggerations: ["不要将 JD 要求当作自己已经取得的成果。"], dataToSupplement: [], selfIntroduction: "",
+    requirementStrategies: requirements.map(item => ({ requirementId: item.id, validationApproaches: ["说明真实经历"], demonstrationPoints: [item.requirement], answerStructure: ["场景", "个人行动", "结果"], evidenceNeeded: ["已确认事实"], metricsNeeded: ["如有指标请说明口径"], exaggerationRisks: ["不得编造经历"] })),
+    reverseQuestions: [],
+  } };
   return { interviewPrep: await runMockInterviewPreparation(input, jobTargetContext, [], execution.signal), mode };
 }
 

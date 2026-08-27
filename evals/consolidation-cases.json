@@ -1,0 +1,14 @@
+[
+  { "id": "duplicate-zh", "kind": "skill", "texts": ["必须具备跨团队沟通能力", "必须具备跨团队沟通能力"], "mockMerge": true, "semanticMerge": true },
+  { "id": "duplicate-spacing", "kind": "tool", "texts": ["熟悉 SQL 查询", "熟悉SQL查询"], "mockMerge": true, "semanticMerge": true },
+  { "id": "synonym-delivery", "kind": "task", "texts": ["负责协调跨部门项目交付", "协调多个部门共同完成项目交付"], "mockMerge": false, "semanticMerge": true },
+  { "id": "synonym-research", "kind": "task", "texts": ["通过用户访谈识别需求", "访谈用户以了解其需求"], "mockMerge": false, "semanticMerge": true },
+  { "id": "years", "kind": "experience", "texts": ["至少3年经验", "至少5年经验"], "mockMerge": false, "semanticMerge": false },
+  { "id": "tools", "kind": "tool", "texts": ["熟悉 SQL", "熟悉 Python"], "mockMerge": false, "semanticMerge": false },
+  { "id": "education", "kind": "education", "texts": ["本科以上学历", "硕士以上学历"], "mockMerge": false, "semanticMerge": false },
+  { "id": "modality", "kind": "skill", "texts": ["必须具备项目管理经验", "项目管理经验优先"], "mockMerge": false, "semanticMerge": false },
+  { "id": "negation", "kind": "experience", "texts": ["必须具备管理经验", "不要求管理经验"], "mockMerge": false, "semanticMerge": false },
+  { "id": "different-task", "kind": "task", "texts": ["负责需求分析", "负责上线验收"], "mockMerge": false, "semanticMerge": false },
+  { "id": "task-and-metric", "kind": "task", "texts": ["负责销售线索分配", "将线索转化率提升至20%"], "mockMerge": false, "semanticMerge": false },
+  { "id": "seniority", "kind": "skill", "texts": ["了解用户研究方法", "能够独立主导用户研究"], "mockMerge": false, "semanticMerge": false }
+]

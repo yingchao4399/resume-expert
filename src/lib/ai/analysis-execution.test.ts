@@ -27,6 +27,6 @@ describe("analysis execution budget", () => {
     expect(() => cancelled.assertActive()).toThrow(/分析已取消/);
 
     const expired = new AnalysisExecutionBudget({ startedAt: 0, deadlineAt: 10, now: () => 10 });
-    expect(() => expired.assertActive()).toThrow(/3 分钟上限/);
+    expect(() => expired.assertActive()).toThrow(/分钟上限/);
   });
 });

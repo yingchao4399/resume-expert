@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { JD_MAX_REQUIREMENTS, JD_CAPACITY_MESSAGE } from "@/lib/jd/limits";
 import { jdAnalysisDocumentSchema, jobReadinessAssessmentSchema } from "@/lib/jd/schemas";
 import type { MindMapNode } from "@/types/interview";
 
@@ -72,7 +73,7 @@ export const jdAnalysisSchema = z.object({
   idealCandidate: z.string(),
   coreCompetencies: z.array(coreCompetencySchema),
   sourceItems: z.array(jdSourceItemSchema).optional().default([]),
-  requirements: z.array(jobRequirementSchema).max(40).optional().default([]),
+  requirements: z.array(jobRequirementSchema).max(JD_MAX_REQUIREMENTS, JD_CAPACITY_MESSAGE).optional().default([]),
   roleInference: z.object({ items: z.array(roleInferenceItemSchema) }).optional().default({ items: [] }),
   clarificationNeeds: z.array(clarificationNeedSchema).optional().default([]),
 });
@@ -95,7 +96,7 @@ const sourceClassificationSchema = z.object({
 export function createDeepJDModelResultSchema(sourceItemIds: string[]) {
   const allowed = new Set(sourceItemIds);
   return z.object({
-    sourceClassifications: z.array(sourceClassificationSchema).max(80),
+    sourceClassifications: z.array(sourceClassificationSchema).max(sourceItemIds.length),
     requirements: z.array(jdRequirementDraftSchema).max(40),
     responsibilities: z.array(conciseText).max(12), hardRequirements: z.array(conciseText).max(12), implicitRequirements: z.array(conciseText).max(12),
     keywords: z.array(z.string().max(80)).max(30), idealCandidate: z.string().max(1000), coreCompetencies: z.array(coreCompetencySchema).max(12),
@@ -120,7 +121,7 @@ export function createDeepJDModelResultSchema(sourceItemIds: string[]) {
 export function createCompactJDModelResultSchema(sourceItemIds: string[]) {
   const allowed = new Set(sourceItemIds);
   return z.object({
-    sourceClassifications: z.array(sourceClassificationSchema).max(40),
+    sourceClassifications: z.array(sourceClassificationSchema).max(sourceItemIds.length),
     requirements: z.array(jdRequirementDraftSchema).max(40),
   }).superRefine((value, context) => {
     const returned = value.sourceClassifications.map((item) => item.sourceItemId);
@@ -337,7 +338,7 @@ export const persistedInterviewPrepSchema = z.object({
   possibleExaggerations: z.array(z.string()),
   dataToSupplement: z.array(z.string()),
   selfIntroduction: z.string(),
-  requirementStrategies: z.array(requirementInterviewStrategySchema).optional().default([]),
+  requirementStrategies: z.array(requirementInterviewStrategySchema).max(JD_MAX_REQUIREMENTS, JD_CAPACITY_MESSAGE).optional().default([]),
   reverseQuestions: z.array(reverseInterviewQuestionSchema).optional().default([]),
 });
 
@@ -348,7 +349,7 @@ export const interviewPrepSchema = persistedInterviewPrepSchema.extend({
 export const persistedAnalysisResultSchema = z.object({
   jdAnalysis: jdAnalysisSchema,
   diagnosis: resumeDiagnosisSchema,
-  matchItems: z.array(matchItemSchema),
+  matchItems: z.array(matchItemSchema).max(JD_MAX_REQUIREMENTS, JD_CAPACITY_MESSAGE),
   followUpQuestions: z.array(followUpQuestionSchema),
   optimizedItems: z.array(optimizedItemSchema),
   finalResume: finalResumeSchema,
@@ -357,7 +358,7 @@ export const persistedAnalysisResultSchema = z.object({
 });
 
 export const analysisResultSchema = persistedAnalysisResultSchema.extend({
-  matchItems: z.array(matchItemSchema).min(1).max(40),
+  matchItems: z.array(matchItemSchema).min(1).max(JD_MAX_REQUIREMENTS, JD_CAPACITY_MESSAGE),
   followUpQuestions: z.array(followUpQuestionSchema).max(10),
   optimizedItems: z.array(optimizedItemSchema).max(12),
   interviewPrep: interviewPrepSchema,
@@ -386,7 +387,7 @@ export function createDiagnosisMatchResultSchema(requirementIds: string[], allow
   const claimSet = new Set(allowedClaimIds);
   return z.object({
     diagnosis: resumeDiagnosisSchema,
-    matchItems: z.array(matchItemSchema).max(40),
+    matchItems: z.array(matchItemSchema).length(requirementIds.length),
     followUpQuestions: z.array(followUpQuestionSchema).max(10),
   }).superRefine((result, context) => {
     const returned = result.matchItems.map((item) => item.requirementId);
@@ -405,7 +406,7 @@ export function createDiagnosisMatchCoreResultSchema(requirementIds: string[], a
   const claimSet = new Set(allowedClaimIds);
   return z.object({
     diagnosis: resumeDiagnosisSchema,
-    matchItems: z.array(matchItemSchema).max(40),
+    matchItems: z.array(matchItemSchema).length(requirementIds.length),
   }).superRefine((result, context) => {
     const returned = result.matchItems.map((item) => item.requirementId);
     for (const id of requirementIds) if (!returned.includes(id)) context.addIssue({ code: "custom", path: ["matchItems"], message: `缺少岗位要求 ${id} 的匹配结果` });
@@ -431,6 +432,7 @@ export function createInterviewPrepResultSchema(requirementIds: string[], clarif
   return z.object({ interviewPrep: persistedInterviewPrepSchema }).superRefine((result, context) => {
     if (result.interviewPrep.likelyQuestions.length < 5 || result.interviewPrep.likelyQuestions.length > 10) context.addIssue({ code: "custom", path: ["interviewPrep", "likelyQuestions"], message: "面试准备必须包含 5-10 题" });
     const strategyIds = result.interviewPrep.requirementStrategies.map((item) => item.requirementId);
+    if (strategyIds.length !== requirementIds.length || new Set(strategyIds).size !== strategyIds.length) context.addIssue({ code: "custom", path: ["interviewPrep", "requirementStrategies"], message: "每条本批次岗位要求必须且只能对应一份面试策略" });
     for (const id of requirementIds) if (!strategyIds.includes(id)) context.addIssue({ code: "custom", path: ["interviewPrep", "requirementStrategies"], message: `缺少岗位要求 ${id} 的面试策略` });
     for (const item of result.interviewPrep.requirementStrategies) if (!requirementSet.has(item.requirementId)) context.addIssue({ code: "custom", path: ["interviewPrep"], message: `不存在的岗位要求 ${item.requirementId}` });
     for (const item of result.interviewPrep.reverseQuestions) {

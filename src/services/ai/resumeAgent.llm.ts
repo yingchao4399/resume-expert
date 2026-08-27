@@ -1,3 +1,4 @@
+import { createJDTaskBudget } from "@/lib/ai/jd-task-budget";
 import { chatCompletionJSON } from "@/lib/ai/client";
 import {
   createCompactJDModelResultSchema,
@@ -268,7 +269,7 @@ export async function runLLMInterviewPreparation(
 ): Promise<AnalysisResult["interviewPrep"]> {
   const requirements = (analysisResult.jdAnalysis.requirements ?? []).filter((item) => item.anchorStatus === "validated");
   if (!requirements.length) throw new Error("当前分析没有可校验的岗位要求，请重新分析后再生成面试策略。");
-  const budget = execution.analysisBudget ?? new AnalysisExecutionBudget({ signal: execution.signal });
+  const budget = execution.analysisBudget ?? createJDTaskBudget(Math.ceil(requirements.length / 5), execution.signal);
   const executor = new StructuredAnalysisExecutor(undefined, budget);
   const result = await executor.executeBatched({
     stage: "面试策略",

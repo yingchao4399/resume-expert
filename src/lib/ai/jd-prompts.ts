@@ -21,11 +21,11 @@ ${JSON.stringify(sourceItems.map(({ id, text }) => ({ id, text })), null, 2)}
 
 要求：
 1. sourceClassifications 必须逐条覆盖每个原始条目，分类只能是 requirement/background/benefit/irrelevant，不得遗漏。
-2. 一条原文包含多个能力或条件时拆成多个原子要求，但它们保留同一个 sourceItemId；最多 40 条。
+2. 一条原文包含多个能力或条件时拆成多个原子要求，但它们保留同一个 sourceItemId；每批最多 40 条候选，后续由独立全局归并阶段去重；不得为了条数合并不同要求。
 3. sourceQuote 必须逐字截取对应原始条目的连续片段。
 4. 每条要求提供类别、must/preferred/context 优先级、关键词及面试验证重点。
 5. 本次只返回 sourceClassifications 和 requirements，不生成岗位画像、概览、补证问题或面试策略。
-6. 所有描述保持简洁，单条尽量不超过 80 个汉字，避免重复原文。
+6. 规范表述应提炼任务、对象和明确的成果／条件，不仅换词复述；不得把推断成果变成岗位事实。单条尽量不超过 80 个汉字。
 
 只返回 JSON。`;
 }

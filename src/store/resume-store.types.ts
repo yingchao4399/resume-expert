@@ -16,9 +16,9 @@ import type {
 } from "@/types/resume";
 import type { AIMode } from "@/lib/ai/types";
 import type { InterviewReviewRecord } from "@/types/interview";
-import type { JDAnalysisDocument } from "@/types/jd-analysis";
+import type { JDAnalysisDocument, JDConsolidationProposal } from "@/types/jd-analysis";
 
-export type UnsavedScope = "resume" | "layout" | "career";
+export type UnsavedScope = "resume" | "layout" | "career" | "jd";
 
 export interface StorageRecoveryReport {
   documents: number;
@@ -103,6 +103,9 @@ export interface ResumeStore {
   confirmJDRequirement: (requirementId: string) => void;
   rejectJDRequirement: (requirementId: string) => void;
   confirmJDAnalysis: () => boolean;
+  applyJDConsolidation: (proposal: JDConsolidationProposal, selectedIds: string[], expectedDocumentId: string) => boolean;
+  restoreJDMap: () => boolean;
+  confirmJDGroup: (groupId: string) => void;
   setAnalysisResult: (result: AnalysisResult, expectedMaterialRevision: number, expectedJDRevision?: number) => boolean;
   setOptimizedItems: (items: AnalysisResult["optimizedItems"]) => void;
   setInterviewPrep: (prep: AnalysisResult["interviewPrep"], expectedMaterialRevision: number) => boolean;

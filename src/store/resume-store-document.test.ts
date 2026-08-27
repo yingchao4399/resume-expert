@@ -8,11 +8,11 @@ import {
 } from "@/store/resume-store-document";
 
 describe("resume document helpers", () => {
-  it("creates a schema 11 blank document with dual revision tracking", () => {
+  it("creates a schema 12 blank document with dual revision tracking", () => {
     const document = createEmptyDocument("document-1");
 
     expect(document).toMatchObject({
-      schemaVersion: 11,
+      schemaVersion: 12,
       customOptimizeInstruction: "",
       jobTargetContext: { companyName: "", notes: "", companySnapshotId: null },
       id: "document-1",

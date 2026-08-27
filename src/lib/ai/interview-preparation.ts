@@ -3,7 +3,7 @@ import type { AIMode } from "@/lib/ai/types";
 import type { PromptRuntimeSnapshot } from "@/lib/studio/prompt-types";
 import type { InterviewPrep } from "@/types/resume";
 
-export const INTERVIEW_PREPARATION_TIMEOUT_MS = 180_000;
+export const INTERVIEW_PREPARATION_TIMEOUT_MS = 360_000;
 
 interface BaseEvent {
   requestId: string;
@@ -20,8 +20,7 @@ export type InterviewPreparationProgressEvent =
 
 type InterviewPreparationProgressPayload<T = InterviewPreparationProgressEvent> = T extends BaseEvent ? Omit<T, keyof BaseEvent> : never;
 
-export function createInterviewProgressClock(startedAt = Date.now(), requestId: string = randomUUID()) {
-  const deadlineAt = startedAt + INTERVIEW_PREPARATION_TIMEOUT_MS;
+export function createInterviewProgressClock(startedAt = Date.now(), requestId: string = randomUUID(), deadlineAt = startedAt + INTERVIEW_PREPARATION_TIMEOUT_MS) {
   return {
     requestId,
     event(payload: InterviewPreparationProgressPayload): InterviewPreparationProgressEvent {

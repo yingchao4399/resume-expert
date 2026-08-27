@@ -47,6 +47,44 @@ export interface JDRequirementAtom extends JDRequirementAtomDraft {
   reviewStatus: JDReviewStatus;
   isHardGate: boolean;
   userEdited: boolean;
+  sourceReferences?: JDSourceReference[];
+  originalRequirementIds?: string[];
+  mergeReason?: string;
+  reviewWarnings?: string[];
+}
+
+export interface JDSourceReference {
+  sourceSpanId: string;
+  quote: string;
+  startOffset: number;
+  endOffset: number;
+}
+
+export interface JDRequirementGroup {
+  id: string;
+  title: string;
+  meaning: string;
+  outcome: string;
+  proof: string;
+  requirementIds: string[];
+}
+
+export interface JDConsolidationMerge {
+  id: string;
+  memberIds: string[];
+  text: string;
+  reason: string;
+}
+
+export interface JDConsolidationProposal {
+  materialRevision: number;
+  baseRevision: number;
+  baseFingerprint: string;
+  mode: "llm" | "mock";
+  merges: JDConsolidationMerge[];
+  groups: JDRequirementGroup[];
+  warnings: string[];
+  createdAt: string;
 }
 
 export interface RoleHypothesis {
@@ -70,7 +108,7 @@ export interface JDQualityFinding {
 }
 
 export interface JDAnalysisDocument {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   sourceText: string;
   materialRevision: number;
   revision: number;
@@ -82,6 +120,10 @@ export interface JDAnalysisDocument {
   qualityFindings: JDQualityFinding[];
   createdAt: string;
   updatedAt: string;
+  groups?: JDRequirementGroup[];
+  consolidationWarnings?: string[];
+  consolidationMode?: "llm" | "mock";
+  previousMap?: Omit<JDAnalysisDocument, "previousMap"> | null;
 }
 
 export type ApplicationRecommendation = "priority-apply" | "supplement-before-apply" | "cautious-apply";

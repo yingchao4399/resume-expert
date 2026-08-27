@@ -1,4 +1,13 @@
 import { z } from "zod";
+import { JD_MAX_REQUIREMENTS, JD_CAPACITY_MESSAGE } from "./limits";
+
+export const jdSourceReferenceSchema = z.object({ sourceSpanId: z.string(), quote: z.string(), startOffset: z.number().int().nonnegative(), endOffset: z.number().int().nonnegative() });
+export const jdRequirementGroupSchema = z.object({ id: z.string(), title: z.string(), meaning: z.string(), outcome: z.string(), proof: z.string(), requirementIds: z.array(z.string()) });
+export const jdConsolidationProposalSchema = z.object({
+  materialRevision: z.number().int().nonnegative(), baseRevision: z.number().int().positive(), baseFingerprint: z.string(), mode: z.enum(["llm", "mock"]),
+  merges: z.array(z.object({ id: z.string(), memberIds: z.array(z.string()).min(2), text: z.string(), reason: z.string() })),
+  groups: z.array(jdRequirementGroupSchema).max(12), warnings: z.array(z.string()), createdAt: z.string(),
+});
 
 export const jdSourceSpanSchema = z.object({
   id: z.string().min(1),
@@ -28,6 +37,10 @@ export const jdRequirementAtomSchema = z.object({
   reviewStatus: z.enum(["auto-validated", "needs-review", "confirmed", "rejected"]),
   isHardGate: z.boolean(),
   userEdited: z.boolean(),
+  sourceReferences: z.array(jdSourceReferenceSchema).optional(),
+  originalRequirementIds: z.array(z.string()).optional(),
+  mergeReason: z.string().optional(),
+  reviewWarnings: z.array(z.string()).optional(),
 });
 
 export const roleHypothesisSchema = z.object({
@@ -50,20 +63,35 @@ export const jdQualityFindingSchema = z.object({
   severity: z.enum(["high", "medium", "low"]),
 });
 
-export const jdAnalysisDocumentSchema = z.object({
-  schemaVersion: z.literal(1),
+const jdMapContentSchema = z.object({
+  schemaVersion: z.union([z.literal(1), z.literal(2)]),
   sourceText: z.string(),
   materialRevision: z.number().int().nonnegative(),
   revision: z.number().int().positive(),
   status: z.enum(["draft", "confirmed", "stale"]),
   confirmedRevision: z.number().int().positive().nullable(),
   sourceSpans: z.array(jdSourceSpanSchema),
-  requirements: z.array(jdRequirementAtomSchema).max(40),
+  requirements: z.array(jdRequirementAtomSchema).max(JD_MAX_REQUIREMENTS, JD_CAPACITY_MESSAGE),
   hypotheses: z.array(roleHypothesisSchema),
   qualityFindings: z.array(jdQualityFindingSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
+  groups: z.array(jdRequirementGroupSchema).max(12).optional(),
+  consolidationWarnings: z.array(z.string()).optional(),
+  consolidationMode: z.enum(["llm", "mock"]).optional(),
 });
+
+// Accept legacy maps (including previously persisted >40-item maps) before migrating.
+export const jdAnalysisDocumentSchema = jdMapContentSchema.extend({ previousMap: jdMapContentSchema.nullable().optional() })
+  .superRefine((value, context) => {
+    const ids = value.requirements.map(item => item.id);
+    if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", path: ["requirements"], message: "需求 ID 不能重复。" });
+    if (value.groups?.length) {
+      const grouped = value.groups.flatMap(group => group.requirementIds);
+      if (grouped.length !== ids.length || new Set(grouped).size !== ids.length || grouped.some(id => !ids.includes(id))) context.addIssue({ code: "custom", path: ["groups"], message: "核心分组必须完整且唯一覆盖全部细则。" });
+    }
+  })
+  .transform(value => ({ ...value, schemaVersion: 2 as const }));
 
 export const analysisBasisSchema = z.object({
   materialRevision: z.number().int().nonnegative(),

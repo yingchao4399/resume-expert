@@ -5,6 +5,8 @@ import type {
   JDSourceRole,
   JDSourceSpan,
 } from "@/types/jd-analysis";
+import { JD_MAX_CANDIDATES, JD_CANDIDATE_MESSAGE, JD_MAX_REQUIREMENTS, JD_CAPACITY_MESSAGE } from "./limits";
+import { validReferences } from "./consolidation";
 
 const HEADING_PATTERN = /^(?:#{1,6}\s*)?(岗位职责|工作职责|职责描述|职位描述|岗位要求|任职要求|职位要求|任职资格|加分项|优先条件|福利待遇|公司介绍|团队介绍)\s*[:：]?$/;
 const BULLET_PATTERN = /^(\s*)(?:[-*•·▪◦]|\d+[.)、]|[一二三四五六七八九十]+[、.)）])\s*/;
@@ -99,6 +101,7 @@ export function buildJDAnalysisDocument(input: {
   drafts: JDRequirementAtomDraft[];
   now?: string;
 }): JDAnalysisDocument {
+  if (input.drafts.length > JD_MAX_CANDIDATES) throw new Error(JD_CANDIDATE_MESSAGE);
   const spans = input.spans ?? parseJDSourceSpans(input.sourceText);
   const spanMap = new Map(spans.map((span) => [span.id, span]));
   const indexBySpan = new Map<string, number>();
@@ -131,7 +134,7 @@ export function buildJDAnalysisDocument(input: {
     });
   const now = input.now ?? new Date().toISOString();
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sourceText: input.sourceText,
     materialRevision: input.materialRevision,
     revision: 1,
@@ -159,13 +162,15 @@ function reviseDocument(document: JDAnalysisDocument, requirements: JDRequiremen
 
 export function confirmSafeRequirements(document: JDAnalysisDocument, now?: string): JDAnalysisDocument {
   return reviseDocument(document, document.requirements.map((requirement) =>
-    requirement.reviewStatus === "auto-validated"
+    requirement.reviewStatus === "auto-validated" && validReferences(document, requirement) && !requirement.reviewWarnings?.length
       ? { ...requirement, reviewStatus: "confirmed" }
       : requirement
   ), now);
 }
 
 export function confirmRequirement(document: JDAnalysisDocument, requirementId: string, now?: string): JDAnalysisDocument {
+  const selected = document.requirements.find(item => item.id === requirementId);
+  if (!selected || !validReferences(document, selected)) throw new Error("该要求缺少有效原文出处，不能确认；请拒绝此项或重新解析 JD。");
   return reviseDocument(document, document.requirements.map((requirement) =>
     requirement.id === requirementId
       ? { ...requirement, reviewStatus: "confirmed", anchorStatus: "validated" }
@@ -193,6 +198,8 @@ export function updateRequirementAtom(
 }
 
 export function confirmJDAnalysisDocument(document: JDAnalysisDocument, now?: string): JDAnalysisDocument {
+  if (document.requirements.length > JD_MAX_REQUIREMENTS) throw new Error(JD_CAPACITY_MESSAGE);
+  if (document.requirements.some(item => item.reviewStatus === "confirmed" && !validReferences(document, item))) throw new Error("已确认要求中存在无效原文引用，请重新核验。");
   const unresolved = document.requirements.filter((item) => item.reviewStatus !== "confirmed" && item.reviewStatus !== "rejected");
   if (unresolved.length) throw new Error(`仍有 ${unresolved.length} 条岗位要求待复核。`);
 

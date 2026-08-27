@@ -1,4 +1,5 @@
 import type { StateStorage } from "zustand/middleware";
+import { migrateJDMap } from "@/lib/jd/consolidation";
 import type { FinalResumeStatus, ImportedResumeProfile, ResumeDocument, ResumeLibraryState } from "@/types/resume";
 import { parseResumeBackup } from "@/lib/backup/resume-backup";
 import { normalizeFinalResumeBullets } from "@/lib/evidence/resume-evidence";
@@ -186,11 +187,11 @@ export function migrateDocument(document: LegacyResumeDocument): ResumeDocument 
   return {
     ...base,
     ...documentWithoutLegacyStatus,
-    schemaVersion: 11,
+    schemaVersion: 12,
     jobTargetContext: document.jobTargetContext ?? { companyName: "", notes: "", companySnapshotId: null },
     materialRevision: typeof document.materialRevision === "number" ? document.materialRevision : 0,
     analysisRevision: analysisResult && hasCurrentRequirementMap && typeof document.analysisRevision === "number" ? document.analysisRevision : null,
-    jdAnalysisDocument: hasCurrentRequirementMap ? document.jdAnalysisDocument ?? null : null,
+    jdAnalysisDocument: hasCurrentRequirementMap && document.jdAnalysisDocument ? migrateJDMap(document.jdAnalysisDocument) : null,
     analysisBasis: hasCurrentRequirementMap && document.analysisBasis ? document.analysisBasis : null,
     sourceResume,
     importedResume,

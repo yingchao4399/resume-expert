@@ -119,7 +119,7 @@ export class AnalysisExecutionBudget {
 
   assertActive(): void {
     if (this.signal?.aborted) throw new AnalysisCancelledError();
-    if (this.remainingMs() <= 0) throw new AnalysisDeadlineError();
+    if (this.remainingMs() <= 0) throw new AnalysisDeadlineError(this.deadlineAt - this.startedAt);
   }
 
   claimProviderRequest(requestedTimeoutMs?: number): number {
