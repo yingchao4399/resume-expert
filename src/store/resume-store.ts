@@ -662,6 +662,7 @@ export const useResumeStore = create<ResumeStore>()(
         let confirmed = false;
         set((state) => {
           if (!state.jdAnalysisDocument) return state;
+          if (state.materialRevision !== state.jdAnalysisDocument.materialRevision) return { analysisError: "材料已变化，请重新解析 JD。" };
           try {
             const jdAnalysisDocument = confirmDecisionMap(state.jdAnalysisDocument);
             confirmed = true;
@@ -689,6 +690,7 @@ export const useResumeStore = create<ResumeStore>()(
         let restored = false;
         set(state => {
           if (!state.jdAnalysisDocument) return state;
+          if (state.materialRevision !== state.jdAnalysisDocument.materialRevision || state.jdAnalysisDocument.status === "stale") return { analysisError: "材料已变化，不能恢复旧材料的地图；请重新解析 JD。" };
           try {
             const next = restorePreviousMap(state.jdAnalysisDocument);
             restored = true;
@@ -700,6 +702,7 @@ export const useResumeStore = create<ResumeStore>()(
       confirmJDGroup: groupId => set(state => {
         const map = state.jdAnalysisDocument;
         if (!map) return state;
+        if (map.status === "stale" || map.materialRevision !== state.materialRevision) return { analysisError: "材料已变化，请重新解析 JD。" };
         const ids = new Set(map.groups?.find(group => group.id === groupId)?.requirementIds ?? []);
         const next = { ...map, revision: map.revision + 1, status: "draft" as const, confirmedRevision: null, updatedAt: nowISO(), requirements: map.requirements.map(item => ids.has(item.id) && item.reviewStatus === "auto-validated" && item.anchorStatus === "validated" && validReferences(map, item) && !item.reviewWarnings?.length ? { ...item, reviewStatus: "confirmed" as const } : item) };
         return updateActiveDocument(state, { jdAnalysisDocument: next, analysisRevision: null, analysisBasis: null, finalResumeStatus: state.analysisResult ? "stale" : "draft" });

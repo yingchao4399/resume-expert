@@ -7,7 +7,7 @@ import { PROMPT_REGISTRY, registeredSourcePaths } from "@/lib/studio/prompt-regi
 import type { SourceCatalogContent, SourceCatalogEntry, SourceCatalogKind, SourceGitStatus } from "@/lib/studio/prompt-types";
 
 const execFileAsync = promisify(execFile);
-const EXCLUDED_DIRECTORIES = new Set([".git", ".next", "node_modules", "coverage", "playwright-report", "test-results", ".cache", ".flowise"]);
+const EXCLUDED_DIRECTORIES = new Set([".git", ".next", ".next-e2e", ".playwright-cli", "node_modules", "coverage", "playwright-report", "test-results", ".cache", ".flowise"]);
 const MAX_SOURCE_BYTES = 2_000_000;
 
 export async function listSourceCatalog(projectRoot = process.cwd()): Promise<SourceCatalogEntry[]> {
@@ -61,7 +61,8 @@ async function findMarkdownFiles(root: string): Promise<string[]> {
     for (const entry of entries) {
       if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) {
-        if (!EXCLUDED_DIRECTORIES.has(entry.name)) await visit(path.join(directory, entry.name));
+        const child = path.join(directory, entry.name);
+        if (!EXCLUDED_DIRECTORIES.has(entry.name) && normalizeRelative(path.relative(root, child)) !== "evals/results") await visit(child);
         continue;
       }
       if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {

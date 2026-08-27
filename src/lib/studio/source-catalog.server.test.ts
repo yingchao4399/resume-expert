@@ -17,12 +17,15 @@ describe("studio source catalog", () => {
     const root = await createRoot();
     await fs.mkdir(path.join(root, "prd"), { recursive: true });
     await fs.mkdir(path.join(root, "node_modules", "demo"), { recursive: true });
+    await fs.mkdir(path.join(root, ".next-e2e", "dev"), { recursive: true });
+    await fs.writeFile(path.join(root, ".next-e2e", "dev", "cache.md"), "not source", "utf8");
     await fs.writeFile(path.join(root, "README.md"), "# Read me", "utf8");
     await fs.writeFile(path.join(root, "prd", "draft.md"), "# Draft", "utf8");
     await fs.writeFile(path.join(root, "node_modules", "demo", "hidden.md"), "hidden", "utf8");
     const entries = await listSourceCatalog(root);
     expect(entries.map((entry) => entry.path)).toEqual(expect.arrayContaining(["README.md", "prd/draft.md"]));
     expect(entries.map((entry) => entry.path)).not.toContain("node_modules/demo/hidden.md");
+    expect(entries.map((entry) => entry.path)).not.toContain(".next-e2e/dev/cache.md");
   }, 15_000);
 
   it("returns source content and rejects traversal or non-catalog files", async () => {

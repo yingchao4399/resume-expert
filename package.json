@@ -1,6 +1,6 @@
 {
   "name": "resume-expert",
-  "version": "1.10.2",
+  "version": "1.10.3",
   "private": true,
   "engines": {
     "node": ">=24 <25"
@@ -20,6 +20,8 @@
     "eval:mock": "node evals/runner.mjs mock",
     "eval:career": "node evals/career-eval.mjs",
     "eval:jd": "vitest run src/lib/jd/jd-eval.test.ts src/lib/jd/deep-analysis.test.ts",
+    "eval:consolidation": "vitest run src/lib/jd/consolidation-eval.test.ts",
+    "eval:consolidation:ai": "node scripts/eval-consolidation-live.mjs",
     "eval:ai": "node evals/runner.mjs ai",
     "eval:compare": "node evals/runner.mjs compare",
     "eval:report": "node evals/runner.mjs report",

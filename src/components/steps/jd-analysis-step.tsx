@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, CircleStop, Loader2, Pencil, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,9 @@ import { useResumeStore } from "@/store/resume-store";
 import { useCareerDomain } from "@/hooks/use-career-domain";
 import { buildCareerAnalysisClaims } from "@/lib/career/career-context";
 import { ResumeAnalysisCancelledError, runRequirementMatchStreaming, type DecisionStreamEvent } from "@/services/ai/resumeAgent";
+import { JDConsolidationPanel } from "@/components/jd/consolidation-panel";
+import { defaultRequirementGroups, sourceReferences } from "@/lib/jd/consolidation";
+import { isAnalysisFresh } from "@/lib/analysis-revision";
 import type { JDRequirementAtom } from "@/types/jd-analysis";
 
 const KIND_LABEL: Record<JDRequirementAtom["kind"], string> = {
@@ -29,7 +32,7 @@ const REVIEW_LABEL: Record<JDRequirementAtom["reviewStatus"], string> = {
 export function JDAnalysisStep() {
   const { snapshot } = useCareerDomain();
   const {
-    jdAnalysisDocument, userInput, jobTargetContext, optimizeStyle, materialRevision, analysisResult,
+    activeDocumentId, setDirtyScope, confirmJDGroup, jdAnalysisDocument, userInput, jobTargetContext, optimizeStyle, materialRevision, analysisResult,
     isAnalyzing, analysisError, setAnalyzing, setAnalysisError, updateJDRequirement,
     confirmSafeJDRequirements, confirmJDRequirement, rejectJDRequirement, confirmJDAnalysis,
     setAnalysisResult, setCurrentStep, openFollowUpForRequirement,
@@ -43,7 +46,12 @@ export function JDAnalysisStep() {
   const [progress, setProgress] = useState<DecisionStreamEvent | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
 
+  useEffect(() => () => { if (controllerRef.current) { controllerRef.current.abort(); controllerRef.current = null; setAnalyzing(false); } }, [activeDocumentId, setAnalyzing]);
   const requirements = jdAnalysisDocument?.requirements ?? [];
+  const groups = jdAnalysisDocument?.groups?.length ? jdAnalysisDocument.groups : defaultRequirementGroups(requirements);
+  const mapStale = jdAnalysisDocument?.status === "stale" || jdAnalysisDocument?.materialRevision !== materialRevision;
+  const mergedCount = requirements.reduce((sum, item) => sum + Math.max(0, (item.originalRequirementIds?.length ?? 1) - 1), 0);
+  const analysisFresh = isAnalysisFresh(useResumeStore.getState());
   const unresolved = requirements.filter((item) => !["confirmed", "rejected"].includes(item.reviewStatus));
   const confirmed = requirements.filter((item) => item.reviewStatus === "confirmed");
   const coveredSpans = useMemo(() => new Set(confirmed.flatMap((item) => item.sourceSpanIds)), [confirmed]);
@@ -62,6 +70,8 @@ export function JDAnalysisStep() {
   }
 
   const beginEdit = (requirement: JDRequirementAtom) => {
+    if (editingId && !window.confirm("放弃当前未保存的要求修改？")) return;
+    setDirtyScope("jd");
     setEditingId(requirement.id);
     setEditText(requirement.normalizedText);
     setEditKind(requirement.kind);
@@ -73,6 +83,7 @@ export function JDAnalysisStep() {
     if (!editingId || !editText.trim()) return;
     updateJDRequirement(editingId, { normalizedText: editText.trim(), kind: editKind, modality: editModality, priority: editPriority, isHardGate: editHardGate, priorityBasis: ["用户人工复核"] });
     setEditingId(null);
+    setDirtyScope(null);
   };
   const confirmMap = () => {
     setAnalysisError(null);
@@ -94,12 +105,16 @@ export function JDAnalysisStep() {
         userInput, jobTargetContext, buildCareerAnalysisClaims(snapshot), jdAnalysisDocument, optimizeStyle,
         { signal: controller.signal, onProgress: setProgress },
       );
-      if (setAnalysisResult(result, materialRevision, expectedJDRevision)) setCurrentStep("diagnosis");
+      if (!controller.signal.aborted && useResumeStore.getState().activeDocumentId === activeDocumentId && setAnalysisResult(result, materialRevision, expectedJDRevision)) {
+        // Completion is not an in-flight navigation: clear the leave/cancel guard first.
+        controllerRef.current = null;
+        setAnalyzing(false);
+        setCurrentStep("diagnosis");
+      }
     } catch (error) {
       setAnalysisError(error instanceof ResumeAnalysisCancelledError ? error.message : error instanceof Error ? error.message : "事实匹配失败");
     } finally {
-      controllerRef.current = null;
-      setAnalyzing(false);
+      if (controllerRef.current === controller) { controllerRef.current = null; setAnalyzing(false); }
     }
   };
 
@@ -110,14 +125,18 @@ export function JDAnalysisStep() {
   return (
     <div>
       <SectionTitle title="JD 决策地图" description="先审核岗位要求，再用已确认要求匹配你的真实经历" />
+      <JDConsolidationPanel />
+      <p className="mb-3 text-sm" role="status">核心要求 {groups.length} 项 · 独立细则 {requirements.length} 条 · 已合并重复 {mergedCount} 条 · 待核验 {unresolved.length} 条</p>
+      {jdAnalysisDocument.consolidationMode === "mock" && <p className="mb-3 text-xs text-amber-700">Mock 仅做确定性去重和分类，不代表真实模型语义理解。</p>}
+      {jdAnalysisDocument.consolidationWarnings?.map((warning, index) => <p key={index} className="mb-2 text-xs text-amber-700">{warning}</p>)}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" onClick={confirmSafeJDRequirements} disabled={!requirements.some((item) => item.reviewStatus === "auto-validated")}>
+        <Button size="sm" variant="outline" onClick={confirmSafeJDRequirements} disabled={isAnalyzing || mapStale || !requirements.some((item) => item.reviewStatus === "auto-validated")}>
           <ShieldCheck className="h-4 w-4" />批量确认安全项
         </Button>
-        <Button size="sm" variant="outline" onClick={confirmMap} disabled={jdAnalysisDocument.status === "confirmed" || unresolved.length > 0}>
+        <Button size="sm" variant="outline" onClick={confirmMap} disabled={isAnalyzing || mapStale || jdAnalysisDocument.status === "confirmed" || unresolved.length > 0}>
           <Check className="h-4 w-4" />确认需求地图
         </Button>
-        <Button size="sm" onClick={runMatch} disabled={isAnalyzing || jdAnalysisDocument.status !== "confirmed"}>
+        <Button size="sm" onClick={runMatch} disabled={isAnalyzing || mapStale || jdAnalysisDocument.status !== "confirmed"}>
           {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
           {isAnalyzing ? "匹配中" : "匹配真实经历"}
         </Button>
@@ -128,7 +147,7 @@ export function JDAnalysisStep() {
       {analysisError && <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{analysisError}</div>}
       {jdAnalysisDocument.status === "stale" && <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">材料已变化，这张需求地图只能查看。请返回材料页重新解析。</div>}
 
-      <Tabs defaultValue="summary">
+      <Tabs defaultValue="requirements">
         <TabsList className="mb-4 grid h-auto w-full grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="summary">先看结论</TabsTrigger>
           <TabsTrigger value="requirements">逐条要求</TabsTrigger>
@@ -146,7 +165,11 @@ export function JDAnalysisStep() {
         </TabsContent>
 
         <TabsContent value="requirements" className="space-y-3">
-          {requirements.map((requirement) => (
+          {groups.map(group => <details key={group.id} className="rounded-lg border bg-white p-4" open={editingId && group.requirementIds.includes(editingId) ? true : undefined}>
+            <summary className="cursor-pointer font-semibold">{group.title} <span className="ml-2 text-xs font-normal text-neutral-500">{group.requirementIds.length} 条细则</span></summary>
+            <div className="my-3 space-y-1 text-sm"><p>岗位含义解释：{group.meaning}</p><p>明示成果／未知：{group.outcome}</p><p>证据准备建议：{group.proof}</p></div>
+            <Button size="sm" variant="outline" className="mb-3" disabled={isAnalyzing || mapStale || !requirements.some(item => group.requirementIds.includes(item.id) && item.reviewStatus === "auto-validated")} onClick={() => confirmJDGroup(group.id)}>确认本组安全项</Button>
+            {requirements.filter(item => group.requirementIds.includes(item.id)).map((requirement) => (
             <Card key={requirement.id} className={requirement.reviewStatus === "rejected" ? "opacity-60" : ""}>
               <CardContent className="p-4">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600">
@@ -163,21 +186,24 @@ export function JDAnalysisStep() {
                       <Select value={editModality} onValueChange={(value) => setEditModality(value as JDRequirementAtom["modality"])}><SelectTrigger aria-label="要求语气"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(MODALITY_LABEL).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
                     </div>
                     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editHardGate} onChange={(event) => setEditHardGate(event.target.checked)} />这是用户确认的硬门槛</label>
-                    <div className="flex gap-2"><Button size="sm" onClick={saveEdit}><Check className="h-4 w-4" />保存</Button><Button size="sm" variant="outline" onClick={() => setEditingId(null)}><X className="h-4 w-4" />取消</Button></div>
+                    <div className="flex gap-2"><Button size="sm" onClick={saveEdit}><Check className="h-4 w-4" />保存</Button><Button size="sm" variant="outline" onClick={() => { setEditingId(null); setDirtyScope(null); }}><X className="h-4 w-4" />取消</Button></div>
                   </div>
                 ) : <p className="mt-2 text-sm font-medium">{requirement.normalizedText}</p>}
-                <blockquote className="mt-2 border-l-2 pl-3 text-xs text-neutral-500">原文：{requirement.sourceQuote}</blockquote>
+                {(sourceReferences(jdAnalysisDocument, requirement).length ? sourceReferences(jdAnalysisDocument, requirement) : [{ sourceSpanId: requirement.sourceSpanId, quote: requirement.sourceQuote, startOffset: 0, endOffset: 0 }]).map((ref, index) => <blockquote key={index} className="mt-2 border-l-2 pl-3 text-xs text-neutral-500">原文出处 {index + 1}：{ref.quote}</blockquote>)}
+                {requirement.mergeReason && <p className="mt-2 text-xs text-blue-700">合并理由：{requirement.mergeReason}</p>}
+                {requirement.reviewStatus !== "confirmed" && requirement.reviewWarnings?.map((warning, index) => <p key={index} className="text-xs text-amber-700">{warning}</p>)}
                 <p className="mt-2 text-xs text-neutral-500">依据：{requirement.priorityBasis.join("；") || "待人工补充"}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" onClick={() => beginEdit(requirement)}><Pencil className="h-4 w-4" />编辑</Button>
-                  {requirement.reviewStatus !== "confirmed" && <Button size="sm" variant="outline" onClick={() => confirmJDRequirement(requirement.id)}><Check className="h-4 w-4" />确认</Button>}
-                  {requirement.reviewStatus !== "rejected" && <Button size="sm" variant="outline" onClick={() => rejectJDRequirement(requirement.id)}><X className="h-4 w-4" />拒绝</Button>}
-                  <Button size="sm" variant="outline" disabled={!analysisResult} onClick={() => openFollowUpForRequirement(requirement.id)}>补证</Button>
-                  <Button size="sm" variant="outline" disabled={!analysisResult} onClick={() => setCurrentStep("interview")}>准备面试</Button>
+                  <Button size="sm" variant="outline" disabled={isAnalyzing || mapStale} onClick={() => beginEdit(requirement)}><Pencil className="h-4 w-4" />编辑</Button>
+                  {requirement.reviewStatus !== "confirmed" && <Button size="sm" variant="outline" disabled={isAnalyzing || mapStale} onClick={() => confirmJDRequirement(requirement.id)}><Check className="h-4 w-4" />确认</Button>}
+                  {requirement.reviewStatus !== "rejected" && <Button size="sm" variant="outline" disabled={isAnalyzing || mapStale} onClick={() => rejectJDRequirement(requirement.id)}><X className="h-4 w-4" />拒绝</Button>}
+                  <Button size="sm" variant="outline" disabled={!analysisFresh || isAnalyzing} onClick={() => openFollowUpForRequirement(requirement.id)}>补证</Button>
+                  <Button size="sm" variant="outline" disabled={!analysisFresh || isAnalyzing} onClick={() => setCurrentStep("interview")}>准备面试</Button>
                 </div>
               </CardContent>
             </Card>
           ))}
+          </details>)}
         </TabsContent>
 
         <TabsContent value="hypotheses" className="space-y-3">

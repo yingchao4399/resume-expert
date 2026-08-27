@@ -198,6 +198,7 @@ export function updateRequirementAtom(
 }
 
 export function confirmJDAnalysisDocument(document: JDAnalysisDocument, now?: string): JDAnalysisDocument {
+  if (document.status === "stale") throw new Error("材料已变化，请重新解析 JD，不能重新确认旧地图。");
   if (document.requirements.length > JD_MAX_REQUIREMENTS) throw new Error(JD_CAPACITY_MESSAGE);
   if (document.requirements.some(item => item.reviewStatus === "confirmed" && !validReferences(document, item))) throw new Error("已确认要求中存在无效原文引用，请重新核验。");
   const unresolved = document.requirements.filter((item) => item.reviewStatus !== "confirmed" && item.reviewStatus !== "rejected");

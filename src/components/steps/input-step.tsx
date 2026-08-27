@@ -23,7 +23,7 @@ import { buildCareerAnalysisClaims } from "@/lib/career/career-context";
 import { useCareerDomain } from "@/hooks/use-career-domain";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 import { COMPANY_TYPES, isCompanyType, isJobStage, JOB_STAGES } from "@/config/job-options";
-const ANALYSIS_STAGES = ["拆分原子要求", "生成岗位画像"] as const;
+const ANALYSIS_STAGES = ["拆分原子要求", "全局语义归并", "整理核心要求", "生成岗位画像"] as const;
 
 
 export function InputStep() {
@@ -188,15 +188,15 @@ export function InputStep() {
               {analysisProgress && "message" in analysisProgress ? analysisProgress.message : "正在启动深度分析"}
             </p>
             <span className="text-xs text-blue-700">
-              已用 {elapsedSeconds}s · 最多剩余 {Math.max(0, 120 - elapsedSeconds)}s
+              已用 {elapsedSeconds}s · 最多剩余 {Math.max(0, 360 - elapsedSeconds)}s
             </span>
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {ANALYSIS_STAGES.map((stage, index) => {
               const progressMessage = analysisProgress && "message" in analysisProgress ? analysisProgress.message ?? "" : "";
-              const overviewActive = /岗位画像/.test(progressMessage);
-              const completed = analysisProgress?.type === "stage-completed" || (index === 0 && Boolean(overviewActive));
-              const active = !completed && (index === 0 ? !overviewActive : Boolean(overviewActive));
+              const currentStage = /岗位画像/.test(progressMessage) ? 3 : /核心要求/.test(progressMessage) ? 2 : /语义归并/.test(progressMessage) ? 1 : 0;
+              const completed = analysisProgress?.type === "stage-completed" || index < currentStage;
+              const active = !completed && index === currentStage;
               return (
                 <div key={stage} className={`flex items-center gap-2 rounded border px-3 py-2 text-xs ${completed ? "border-emerald-200 bg-emerald-50 text-emerald-800" : active ? "border-blue-300 bg-white text-blue-900" : "border-blue-100 text-blue-500"}`}>
                   {completed ? <CheckCircle2 className="h-3.5 w-3.5" /> : active ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span className="h-3.5 w-3.5 rounded-full border" />}
@@ -207,7 +207,7 @@ export function InputStep() {
           </div>
           {elapsedSeconds >= 30 && (
             <p className="mt-3 text-xs text-amber-700">
-              当前模型响应较慢。系统仍会继续执行，但快速分析达到 3 分钟后将自动停止，不会写入半成品。
+              当前模型响应较慢。正在分批解析并全局整理要求；任务最多 6 分钟，可随时取消，不会写入半成品。
             </p>
           )}
         </div>

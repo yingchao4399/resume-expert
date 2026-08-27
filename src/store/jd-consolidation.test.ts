@@ -56,8 +56,19 @@ describe("JD consolidation storage boundaries", () => {
     const draft = migrateJDMap(map());
     draft.requirements[0].sourceReferences![0].quote = "伪造引用";
     document.jdAnalysisDocument = draft;
+    document.materialRevision = 1;
     useResumeStore.setState({ documents: [document], activeDocumentId: document.id, ...workingStateFromDocument(document) });
     useResumeStore.getState().confirmJDGroup(draft.groups![0].id);
     expect(useResumeStore.getState().jdAnalysisDocument?.requirements[0].reviewStatus).not.toBe("confirmed");
+  });
+  it("refuses restoring or confirming a map after materials change", () => {
+    const document = createEmptyDocument("stale-map");
+    const before = confirmJDAnalysisDocument(confirmSafeRequirements(map()));
+    document.jdAnalysisDocument = { ...applyConsolidation(before, mockConsolidation(before)), status: "stale" };
+    document.materialRevision = 2;
+    useResumeStore.setState({ documents: [document], activeDocumentId: document.id, ...workingStateFromDocument(document) });
+    expect(useResumeStore.getState().restoreJDMap()).toBe(false);
+    expect(useResumeStore.getState().confirmJDAnalysis()).toBe(false);
+    expect(useResumeStore.getState().jdAnalysisDocument?.status).toBe("stale");
   });
 });

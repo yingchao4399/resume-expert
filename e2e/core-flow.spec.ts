@@ -155,9 +155,13 @@ test("audits prompt definitions, source files and full local runtime snapshots",
   await expect(page.getByText("深度 JD 解析", { exact: true }).first()).toBeVisible();
   await page.getByText("深度 JD 解析", { exact: true }).first().click();
   await expect(page.getByText("resume.deep-jd", { exact: true }).last()).toBeVisible();
+  const sourceLoaded = page.waitForResponse(response => response.url().includes("/api/studio/sources/content?") && response.url().includes("jd-prompts.ts"));
   await page.getByRole("button", { name: /src\/lib\/ai\/jd-prompts.ts/ }).click();
-  await expect(page.getByText("src/lib/ai/jd-prompts.ts", { exact: true })).toBeVisible();
+  expect((await sourceLoaded).ok()).toBe(true);
+  await expect(page.getByRole("heading", { name: "src/lib/ai/jd-prompts.ts", exact: true })).toBeVisible();
+  const markdownLoaded = page.waitForResponse(response => response.url().includes("/api/studio/sources/content?") && response.url().includes("README.md"));
   await page.getByRole("button", { name: /README.md/ }).first().click();
+  expect((await markdownLoaded).ok()).toBe(true);
   await expect(page.getByRole("heading", { name: "README.md" })).toBeVisible();
   await expect(page.getByRole("button", { name: "查看原文" })).toBeVisible();
   await page.getByRole("tab", { name: "运行快照" }).click();
@@ -335,6 +339,7 @@ test("stores target company context and shows the requirement map", async ({ pag
   await page.getByRole("button", { name: /JD 解析 2\.1/ }).click();
   await expect(page.getByRole("heading", { name: "JD 决策地图" })).toBeVisible();
   await expect(page.getByText(/材料已变化，这张需求地图只能查看/)).toBeVisible();
+  await page.locator("details").filter({ has: page.getByText("负责企业服务产品规划", { exact: true }) }).first().locator("summary").click();
   await expect(page.getByText("负责企业服务产品规划", { exact: true }).first()).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: /岗位与简历材料 1\.1/ }).click();

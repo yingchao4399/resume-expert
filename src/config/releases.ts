@@ -1,4 +1,5 @@
 export const RELEASE_RECORDS = [
+  { version: "1.10.3", goal: "JD 语义归并与需求地图修复", modules: ["全局语义归并与来源保留", "核心分组与可撤销对照", "120 条整图容量", "V9 备份与旧地图迁移", "按批次预算与取消"], tests: "220 Vitest / 41 Playwright / evals / 12 真实模型合成归并案例 / audit / build", status: "released" },
   { version: "1.10.2", goal: "结构化分析、Word 分页与回归环境收尾", modules: ["Qwen 非思考结构任务", "双阶段连接测试", "岗位画像降级", "DOCX 显式分页", "独立 E2E 构建目录"], tests: "182 Vitest / 39 Playwright / evals / audit / build", status: "released" },
   { version: "1.10.1", goal: "A4 分页统一与一页适配", modules: ["浏览器实测分页", "真实 A4 预览", "PDF/DOCX 统一换页", "一键适配一页", "溢出门禁"], tests: "177 Vitest / 38 Playwright / evals / audit / build", status: "released" },
   { version: "1.10.0", goal: "双模式 PDF、自定义优化风格与可选关键词增强", modules: ["ATS 文字 PDF", "视觉还原 PDF", "统一渲染模型", "自定义风格", "关键词核验与补正"], tests: "171 Vitest / 37 Playwright / evals / audit / build", status: "released" },
