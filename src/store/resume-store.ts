@@ -321,6 +321,11 @@ export const useResumeStore = create<ResumeStore>()(
         const recovery = readRecoveryRecord();
         if (!recovery) return null;
         try {
+          // Preserve the recovery copy durably before replacing the primary
+          // slot. An in-memory fallback alone would be lost on refresh.
+          if (!window.localStorage.getItem(RESUME_RECOVERY_KEY)) {
+            window.localStorage.setItem(RESUME_RECOVERY_KEY, JSON.stringify(recovery));
+          }
           const parsed = JSON.parse(recovery.raw) as { state?: Partial<ResumeLibraryState> };
           const candidates = Array.isArray(parsed.state?.documents) ? parsed.state.documents : [];
           const recoveredDocuments: ResumeDocument[] = [];

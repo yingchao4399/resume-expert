@@ -71,13 +71,13 @@ function emitStorageStatus(status: "saving" | "saved" | "error", savedAt?: strin
 export function readRecoveryRecord(): RecoveryRecord | null {
   try {
     const raw = window.localStorage.getItem(RESUME_RECOVERY_KEY);
-    if (!raw) return null;
+    if (!raw) return pendingRecovery;
     const parsed = JSON.parse(raw) as Partial<RecoveryRecord>;
     return typeof parsed.raw === "string" && typeof parsed.reason === "string"
       ? { raw: parsed.raw, reason: parsed.reason, capturedAt: parsed.capturedAt ?? nowISO() }
-      : null;
+      : pendingRecovery;
   } catch {
-    return null;
+    return pendingRecovery;
   }
 }
 
@@ -125,8 +125,15 @@ function preserveCorruptStorage(raw: string, error: unknown): RecoveryRecord {
     reason: error instanceof Error ? error.message : "本地数据结构无效",
     raw,
   };
-  window.localStorage.setItem(RESUME_RECOVERY_KEY, JSON.stringify(record));
   pendingRecovery = record;
+  try {
+    window.localStorage.setItem(RESUME_RECOVERY_KEY, JSON.stringify(record));
+  } catch {
+    // Keep the original slot locked even when duplicating it into the recovery
+    // slot fails. A smaller blank state must never replace that original.
+    record.reason += "；恢复槽空间不足，原始数据仍已锁定，请先下载异常数据。";
+    emitStorageStatus("error");
+  }
   return record;
 }
 

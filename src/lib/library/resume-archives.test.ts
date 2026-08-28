@@ -115,6 +115,20 @@ describe("immutable resume library archives", () => {
     expect(values.has(RESUME_RECOVERY_KEY)).toBe(true);
     expect(useResumeStore.getState().archives[0].finalResume).toMatchObject(archive.finalResume);
   });
+  it("never overwrites the original if the recovery slot itself exceeds storage quota", () => {
+    const document = syntheticLibraryDocument();
+    const raw = JSON.stringify({ version: 14, state: { documents: [document], archives: [{ id: "broken" }], activeDocumentId: document.id } });
+    values.set(RESUME_STORAGE_KEY, raw);
+    window.localStorage.setItem = (key, value) => {
+      if (key === RESUME_RECOVERY_KEY) throw new Error("quota while preserving recovery");
+      values.set(key, value);
+    };
+    safeLocalStorage.getItem(RESUME_STORAGE_KEY);
+    safeLocalStorage.setItem(RESUME_STORAGE_KEY, "unsafe replacement");
+    expect(values.get(RESUME_STORAGE_KEY)).toBe(raw);
+    expect(useResumeStore.getState().attemptStorageRecovery()).toBeNull();
+    expect(values.get(RESUME_STORAGE_KEY)).toBe(raw);
+  });
   it("supports V10 roundtrip, empty legacy archives, merge remapping and replacement", () => {
     const state = useResumeStore.getState();
     const document = state.documents[0];
