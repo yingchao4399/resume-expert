@@ -8,6 +8,7 @@ import { EmptyState, ListSection, SectionTitle } from "@/components/shared/ui-he
 import { useResumeStore } from "@/store/resume-store";
 import { prepareInterviewStreaming, ResumeAnalysisCancelledError } from "@/services/ai/resumeAgent";
 import type { InterviewPreparationProgressEvent } from "@/lib/ai/interview-preparation";
+import { useNavigationTaskGuard } from "@/hooks/use-navigation-task-guard";
 
 export function InterviewStep() {
   const { analysisResult, userInput, jobTargetContext, materialRevision, analysisRevision, setInterviewPrep, setCurrentStep } = useResumeStore();
@@ -16,6 +17,7 @@ export function InterviewStep() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  useNavigationTaskGuard(generating, () => abortRef.current?.abort());
   useEffect(() => () => abortRef.current?.abort(), []);
 
   if (!analysisResult) {
@@ -36,7 +38,7 @@ export function InterviewStep() {
     setGenerating(true); setError(null); setNotice(null); setProgress(null);
     try {
       const prep = await prepareInterviewStreaming(userInput, jobTargetContext, analysisResult, materialRevision, { signal: controller.signal, onProgress: setProgress });
-      if (!setInterviewPrep(prep, materialRevision)) setError("材料已在生成期间变化，迟到结果未保存。请重新分析后再生成。");
+      if (!controller.signal.aborted && !setInterviewPrep(prep, materialRevision)) setError("材料已在生成期间变化，迟到结果未保存。请重新分析后再生成。");
     } catch (next) {
       if (next instanceof ResumeAnalysisCancelledError) setNotice(next.message);
       else setError(next instanceof Error ? next.message : "面试策略生成失败");

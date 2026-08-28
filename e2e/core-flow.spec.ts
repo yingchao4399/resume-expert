@@ -71,7 +71,7 @@ function stateFor(templateId = "ats-classic", finalResumeStatus: "draft" | "conf
     finalResumeStatus,
     hasManualEdits: false,
   } as ResumeLibraryState["documents"][number];
-  return { state: { schemaVersion: 10, documents: [document], activeDocumentId: document.id, careerEvidence: [] as CareerEvidence[], jobApplications: [], interviewReviews: [] } satisfies ResumeLibraryState, version: 10 };
+  return { state: { schemaVersion: 10, documents: [document], archives: [], activeDocumentId: document.id, careerEvidence: [] as CareerEvidence[], jobApplications: [], interviewReviews: [] } satisfies ResumeLibraryState, version: 10 };
 }
 
 function paginationBoundaryState() {

@@ -1,7 +1,7 @@
 import type { StateStorage } from "zustand/middleware";
 import { migrateJDMap } from "@/lib/jd/consolidation";
 import type { FinalResumeStatus, ImportedResumeProfile, ResumeDocument, ResumeLibraryState } from "@/types/resume";
-import { parseResumeBackup } from "@/lib/backup/resume-backup";
+import { parseResumeBackup, resumeArchiveSchema } from "@/lib/backup/resume-backup";
 import { normalizeFinalResumeBullets } from "@/lib/evidence/resume-evidence";
 import { sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
 import { createEmptyDocument, createId, nowISO } from "@/store/resume-store-document";
@@ -20,6 +20,7 @@ export interface RecoveryRecord {
 let pendingRecovery: RecoveryRecord | null = null;
 let storageWriteUnlocked = false;
 let savedStatusTimer: ReturnType<typeof setTimeout> | null = null;
+let reportingStorageError = false;
 
 export function getPendingRecovery(): RecoveryRecord | null {
   return pendingRecovery;
@@ -51,14 +52,17 @@ export function downloadRecoveryData(): boolean {
 }
 
 export function emitStorageError(message: string) {
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent(RESUME_STORAGE_ERROR_EVENT, { detail: message })
-    );
-  }
+  // Recording the error in Zustand also invokes persist. Do not recursively
+  // report the resulting write failure when browser storage remains full.
+  if (typeof window === "undefined" || reportingStorageError) return;
+  reportingStorageError = true;
+  try {
+    window.dispatchEvent(new CustomEvent(RESUME_STORAGE_ERROR_EVENT, { detail: message }));
+  } finally { reportingStorageError = false; }
 }
 
 function emitStorageStatus(status: "saving" | "saved" | "error", savedAt?: string) {
+  if (status === "error" && savedStatusTimer) { clearTimeout(savedStatusTimer); savedStatusTimer = null; }
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(RESUME_STORAGE_STATUS_EVENT, { detail: { status, savedAt } }));
   }
@@ -86,10 +90,33 @@ export function validatePersistedLibrary(raw: string): void {
     backupVersion: 3,
     exportedAt: nowISO(),
     documents: parsed.state.documents,
+    archives: parsed.state.archives ?? [],
     careerEvidence: parsed.state.careerEvidence ?? [],
     jobApplications: parsed.state.jobApplications ?? [],
     interviewReviews: parsed.state.interviewReviews ?? [],
   });
+}
+
+/** Explicit library operations must fail before publishing optimistic state. */
+export function writeLibraryOrThrow(state: ResumeLibraryState): void {
+  if (typeof window === "undefined") return;
+  if (readRecoveryRecord()) throw new Error("恢复模式下禁止修改，请先确认恢复结果或导出异常数据。");
+  const value = JSON.stringify({ state, version: 14 });
+  validatePersistedLibrary(value);
+  try {
+    emitStorageStatus("saving");
+    window.localStorage.setItem(RESUME_STORAGE_KEY, value);
+    emitStorageStatus("saved", nowISO());
+  } catch {
+    const message = "本地保存失败，浏览器空间可能已满。此次操作未生效，请先导出完整备份。";
+    emitStorageError(message);
+    emitStorageStatus("error");
+    throw new Error(message);
+  }
+}
+
+export function librarySnapshot(state: Pick<ResumeLibraryState, "documents" | "archives" | "activeDocumentId" | "jobApplications" | "interviewReviews">): ResumeLibraryState {
+  return { schemaVersion: 14, documents: state.documents, archives: state.archives, activeDocumentId: state.activeDocumentId, careerEvidence: [], jobApplications: state.jobApplications, interviewReviews: state.interviewReviews };
 }
 
 function preserveCorruptStorage(raw: string, error: unknown): RecoveryRecord {
@@ -103,13 +130,28 @@ function preserveCorruptStorage(raw: string, error: unknown): RecoveryRecord {
   return record;
 }
 
+function readableLibraryWithIsolatedArchives(raw: string): string | null {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed.state || !Array.isArray(parsed.state.archives)) return null;
+    const valid = parsed.state.archives.filter((item: unknown) => resumeArchiveSchema.safeParse(item).success);
+    const isolated = JSON.stringify({ ...parsed, state: { ...parsed.state, archives: valid } });
+    validatePersistedLibrary(isolated);
+    return isolated;
+  } catch { return null; }
+}
+
 export const safeLocalStorage: StateStorage = {
   getItem(name) {
     try {
       const existingRecovery = readRecoveryRecord();
       if (existingRecovery) {
         pendingRecovery = existingRecovery;
-        return null;
+        const saved = window.localStorage.getItem(name);
+        if (saved) {
+          try { validatePersistedLibrary(saved); return saved; } catch { /* Keep the original recovery slot. */ }
+        }
+        return readableLibraryWithIsolatedArchives(existingRecovery.raw);
       }
       const value = window.localStorage.getItem(name);
       if (value) {
@@ -118,7 +160,7 @@ export const safeLocalStorage: StateStorage = {
         } catch (error) {
           preserveCorruptStorage(value, error);
           emitStorageError("检测到异常本地数据，已进入恢复模式并锁定自动覆盖。");
-          return null;
+          return readableLibraryWithIsolatedArchives(value);
         }
       }
       return value;

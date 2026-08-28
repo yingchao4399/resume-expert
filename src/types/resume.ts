@@ -503,12 +503,28 @@ export interface JobApplication {
 }
 
 export interface ResumeLibraryState {
-  schemaVersion: 10 | 11 | 12 | 13;
+  schemaVersion: 10 | 11 | 12 | 13 | 14;
   documents: ResumeDocument[];
+  archives: ResumeArchive[];
   activeDocumentId: string;
   careerEvidence: CareerEvidence[];
   jobApplications: JobApplication[];
   interviewReviews: import("@/types/interview").InterviewReviewRecord[];
+}
+
+/** A frozen deliverable, not a live analysis or a new source of trusted facts. */
+export interface ResumeArchive {
+  id: string;
+  title: string;
+  notes: string;
+  archivedAt: string;
+  sourceDocumentId: string | null;
+  sourceFingerprint: string;
+  contentFingerprint: string;
+  targetRole: string;
+  companyName: string;
+  finalResume: FinalResume;
+  layoutConfig: ResumeLayoutConfig;
 }
 
 export interface ATSAssessment {

@@ -12,6 +12,7 @@ const MM_TO_PT = 2.83465;
 const FONT_URL = "/fonts/NotoSansSC-Variable.ttf";
 
 export interface PdfGenerationOptions {
+  archivedAt?: string;
   fontBytes?: ArrayBuffer | Uint8Array;
   paginationPlan?: ResumePaginationPlan;
   onProgress?: (progress: PdfGenerationProgress) => void;
@@ -144,16 +145,16 @@ export async function generateVisualPdf(
 
 export async function downloadATSTextPdf(resume: FinalResume, targetRole: string, layoutConfig: ResumeLayoutConfig, options: PdfGenerationOptions = {}) {
   const bytes = await generateATSTextPdf(resume, layoutConfig, options);
-  downloadBytes(bytes, buildResumePdfFileName(resume, targetRole, "ATS"));
+  downloadBytes(bytes, buildResumePdfFileName(resume, targetRole, "ATS", options.archivedAt));
 }
 
-export async function downloadVisualPdf(pageElements: HTMLElement[], resume: FinalResume, targetRole: string, options: Pick<PdfGenerationOptions, "onProgress" | "paginationPlan"> = {}) {
+export async function downloadVisualPdf(pageElements: HTMLElement[], resume: FinalResume, targetRole: string, options: Pick<PdfGenerationOptions, "onProgress" | "paginationPlan" | "archivedAt"> = {}) {
   const bytes = await generateVisualPdf(pageElements, options);
-  downloadBytes(bytes, buildResumePdfFileName(resume, targetRole, "视觉版"));
+  downloadBytes(bytes, buildResumePdfFileName(resume, targetRole, "视觉版", options.archivedAt));
 }
 
-export function buildResumePdfFileName(resume: FinalResume, targetRole: string, suffix: "ATS" | "视觉版") {
-  return buildResumeFileName(resume, targetRole, "pdf").replace(/\.pdf$/, `-${suffix}.pdf`);
+export function buildResumePdfFileName(resume: FinalResume, targetRole: string, suffix: "ATS" | "视觉版", archivedAt?: string) {
+  return buildResumeFileName(resume, targetRole, "pdf", archivedAt).replace(/\.pdf$/, `-${suffix}.pdf`);
 }
 
 function downloadBytes(bytes: Uint8Array, fileName: string) {

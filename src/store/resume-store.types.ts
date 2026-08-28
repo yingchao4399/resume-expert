@@ -10,6 +10,7 @@ import type {
   ResumeImportMetadata,
   ResumeLayoutConfig,
   ResumeDocument,
+  ResumeArchive,
   StepId,
   StepStatus,
   UserInput,
@@ -22,6 +23,7 @@ export type UnsavedScope = "resume" | "layout" | "career" | "jd";
 
 export interface StorageRecoveryReport {
   documents: number;
+  archives: number;
   careerEvidence: number;
   jobApplications: number;
   interviewReviews: number;
@@ -31,6 +33,7 @@ export interface StorageRecoveryReport {
 
 export interface ResumeStore {
   documents: ResumeDocument[];
+  archives: ResumeArchive[];
   activeDocumentId: string;
   careerEvidence: CareerEvidence[];
   jobApplications: JobApplication[];
@@ -64,17 +67,22 @@ export interface ResumeStore {
   copied: boolean;
 
   createDocument: () => void;
-  duplicateDocument: () => void;
-  renameDocument: (title: string) => void;
+  duplicateDocument: (id?: string) => void;
+  renameDocument: (title: string, id?: string) => void;
   deleteDocument: (id?: string) => void;
   selectDocument: (id: string) => void;
+  prepareNavigation: () => boolean;
+  archiveDocument: (id: string, title: string, notes: string) => { id: string; duplicate: boolean };
+  updateArchive: (id: string, title: string, notes: string) => void;
+  deleteArchive: (id: string) => void;
+  copyArchiveToDraft: (id: string) => string;
   setStorageError: (error: string | null) => void;
   markHydrated: () => void;
   setDirtyScope: (scope: UnsavedScope | null) => void;
   attemptStorageRecovery: () => StorageRecoveryReport | null;
   confirmStorageRecovery: () => void;
   clearCorruptStorage: () => void;
-  importDocuments: (documents: ResumeDocument[], mode: "merge" | "replace", evidence?: CareerEvidence[], applications?: JobApplication[], reviews?: InterviewReviewRecord[], preserveEvidenceIds?: boolean) => void;
+  importDocuments: (documents: ResumeDocument[], mode: "merge" | "replace", evidence?: CareerEvidence[], applications?: JobApplication[], reviews?: InterviewReviewRecord[], preserveEvidenceIds?: boolean, archives?: ResumeArchive[]) => void;
   addCareerEvidence: (evidence: Omit<CareerEvidence, "id" | "createdAt" | "updatedAt">) => void;
   confirmCareerEvidence: (id: string) => void;
   updateCareerEvidence: (id: string, patch: Partial<CareerEvidence>) => void;

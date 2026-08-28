@@ -11,7 +11,7 @@ import {
   interviewAnalysisResultSchema,
   importedResumeProfileSchema,
 } from "@/lib/ai/schemas";
-import type { CareerEvidence, JobApplication, ResumeDocument } from "@/types/resume";
+import type { CareerEvidence, JobApplication, ResumeDocument, ResumeArchive } from "@/types/resume";
 import type { InterviewReviewRecord } from "@/types/interview";
 import type { CareerDomainSnapshot } from "@/types/career-domain";
 import { careerDomainSnapshotSchema } from "@/lib/career/schemas";
@@ -53,6 +53,13 @@ const layoutConfigSchema = z.object({
   bulletStyle: z.enum(["disc", "dash", "square"]),
   sectionOrder: z.array(z.enum(["jobIntent", "summary", "coreSkills", "workExperience", "projectExperience", "skillsAndTools", "education", "certifications", "languages", "awards", "links", "otherSections"])),
   hiddenSections: z.array(z.enum(["jobIntent", "summary", "coreSkills", "workExperience", "projectExperience", "skillsAndTools", "education", "certifications", "languages", "awards", "links", "otherSections"])),
+});
+
+export const resumeArchiveSchema = z.object({
+  id: z.string().min(1), title: z.string().trim().min(1).max(120), notes: z.string().max(1000),
+  archivedAt: z.string().datetime(), sourceDocumentId: z.string().nullable(),
+  sourceFingerprint: z.string(), contentFingerprint: z.string(),
+  targetRole: z.string(), companyName: z.string(), finalResume: finalResumeSchema, layoutConfig: layoutConfigSchema,
 });
 
 const documentSchema = z.object({
@@ -116,9 +123,10 @@ const interviewReviewSchema = z.object({
 });
 
 const backupSchema = z.object({
-  backupVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9)]),
+  backupVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10)]),
   exportedAt: z.string(),
   documents: z.array(documentSchema).min(1),
+  archives: z.array(resumeArchiveSchema).optional().default([]),
   careerEvidence: z.array(careerEvidenceSchema).optional().default([]),
   jobApplications: z.array(jobApplicationSchema).optional().default([]),
   interviewReviews: z.array(interviewReviewSchema).optional().default([]),
@@ -126,20 +134,22 @@ const backupSchema = z.object({
 });
 
 export interface ResumeBackup {
-  backupVersion: 9;
+  backupVersion: 10;
   exportedAt: string;
   documents: ResumeDocument[];
+  archives: ResumeArchive[];
   careerEvidence: CareerEvidence[];
   jobApplications: JobApplication[];
   interviewReviews: InterviewReviewRecord[];
   careerDomain: CareerDomainSnapshot;
 }
 
-export function createResumeBackup(documents: ResumeDocument[], careerEvidence: CareerEvidence[] = [], jobApplications: JobApplication[] = [], interviewReviews: InterviewReviewRecord[] = []): ResumeBackup {
+export function createResumeBackup(documents: ResumeDocument[], careerEvidence: CareerEvidence[] = [], jobApplications: JobApplication[] = [], interviewReviews: InterviewReviewRecord[] = [], archives: ResumeArchive[] = []): ResumeBackup {
   return {
-    backupVersion: 9,
+    backupVersion: 10,
     exportedAt: new Date().toISOString(),
     documents: structuredClone(documents),
+    archives: structuredClone(archives),
     careerEvidence: structuredClone(careerEvidence),
     jobApplications: structuredClone(jobApplications),
     interviewReviews: structuredClone(interviewReviews),
@@ -155,8 +165,9 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
     throw new Error(`备份文件结构无效（${path}）：${issue?.message ?? "未知错误"}`);
   }
   return {
-    backupVersion: 9,
+    backupVersion: 10,
     exportedAt: parsed.data.exportedAt,
+    archives: parsed.data.archives,
     documents: parsed.data.documents.map((document) => {
       const hasCurrentRequirementMap = document.schemaVersion >= 9 && Boolean(document.jdAnalysisDocument);
       const finalResumeStatus = document.analysisResult && !hasCurrentRequirementMap ? "stale" : document.finalResumeStatus ??
@@ -222,23 +233,25 @@ export function downloadResumeBackup(
 
 export async function createResumeBackupV4(
   documents: ResumeDocument[], careerEvidence: CareerEvidence[] = [], jobApplications: JobApplication[] = [],
-  interviewReviews: InterviewReviewRecord[] = [], scope: "all" | "current" = "all"
+  interviewReviews: InterviewReviewRecord[] = [], scope: "all" | "current" = "all", archives: ResumeArchive[] = []
 ): Promise<ResumeBackup> {
   const domain = await readCareerDomain();
   const careerDomain = scope === "current" ? selectCareerClosure(documents, domain) : domain;
-  return { ...createResumeBackup(documents, careerEvidence, jobApplications, interviewReviews), careerDomain };
+  const selectedArchives = scope === "current" ? archives.filter(item => documents.some(document => document.id === item.sourceDocumentId)) : archives;
+  return { ...createResumeBackup(documents, careerEvidence, jobApplications, interviewReviews, selectedArchives), careerDomain };
 }
 
 export const createResumeBackupV5 = createResumeBackupV4;
 export const createResumeBackupV6 = createResumeBackupV4;
 export const createResumeBackupV7 = createResumeBackupV4;
 export const createResumeBackupV8 = createResumeBackupV4;
+export const createResumeBackupV10 = createResumeBackupV4;
 
 export async function downloadResumeBackupV4(
   documents: ResumeDocument[], careerEvidence: CareerEvidence[] = [], jobApplications: JobApplication[] = [],
-  interviewReviews: InterviewReviewRecord[] = [], fileName = "resume-expert-backup.json", scope: "all" | "current" = "all"
+  interviewReviews: InterviewReviewRecord[] = [], fileName = "resume-expert-backup.json", scope: "all" | "current" = "all", archives: ResumeArchive[] = []
 ): Promise<void> {
-  const backup = await createResumeBackupV4(documents, careerEvidence, jobApplications, interviewReviews, scope);
+  const backup = await createResumeBackupV4(documents, careerEvidence, jobApplications, interviewReviews, scope, archives);
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob); const anchor = document.createElement("a");
   anchor.href = url; anchor.download = fileName; document.body.appendChild(anchor); anchor.click(); anchor.remove();
@@ -249,6 +262,7 @@ export const downloadResumeBackupV5 = downloadResumeBackupV4;
 export const downloadResumeBackupV6 = downloadResumeBackupV4;
 export const downloadResumeBackupV7 = downloadResumeBackupV4;
 export const downloadResumeBackupV8 = downloadResumeBackupV4;
+export const downloadResumeBackupV10 = downloadResumeBackupV4;
 
 function selectCareerClosure(documents: ResumeDocument[], domain: CareerDomainSnapshot): CareerDomainSnapshot {
   const referencedClaims = new Set<string>();

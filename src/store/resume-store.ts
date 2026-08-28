@@ -4,7 +4,8 @@ import { create } from "zustand";
 import { applyConsolidation, restorePreviousMap, migrateJDMap, validReferences } from "@/lib/jd/consolidation";
 import { jdAnalysisDocumentSchema } from "@/lib/jd/schemas";
 import { createJSONStorage, persist } from "zustand/middleware";
-import type { CareerEvidence, FinalResume, ImportedResumeProfile, ResumeDocument, ResumeLibraryState } from "@/types/resume";
+import type { CareerEvidence, FinalResume, ImportedResumeProfile, ResumeDocument, ResumeLibraryState, ResumeArchive } from "@/types/resume";
+import { archiveBlockedReason, createArchive, draftFromArchive, sameArchiveContent } from "@/lib/library/resume-archives";
 import { WORKFLOW_STAGES } from "@/config/workflow";
 import { sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
 import { buildEvidenceCandidates, evidenceSourceReference, mapResumeBullets, normalizeFinalResumeBullets } from "@/lib/evidence/resume-evidence";
@@ -41,6 +42,8 @@ import {
   safeLocalStorage,
   unlockStorageWrites,
   validatePersistedLibrary,
+  writeLibraryOrThrow,
+  librarySnapshot,
 } from "@/store/resume-store-persistence";
 
 export { defaultUserInput } from "@/store/resume-store-example";
@@ -60,6 +63,11 @@ function confirmUnsavedChanges(state: ResumeStore): boolean {
   if (!state.dirtyScope || typeof window === "undefined") return true;
   const label = state.dirtyScope === "resume" ? "简历内容" : state.dirtyScope === "layout" ? "排版设置" : state.dirtyScope === "jd" ? "需求地图" : "经历资料";
   return window.confirm(`${label}还有未保存修改，离开后将丢失。是否继续？`);
+}
+
+function confirmDocumentNavigation(state: ResumeStore): boolean {
+  if (typeof window !== "undefined" && !window.dispatchEvent(new Event("resume-expert-before-navigate", { cancelable: true }))) return false;
+  return confirmUnsavedChanges(state);
 }
 
 const ANALYSIS_STEPS = new Set(WORKFLOW_STAGES.slice(1).flatMap((stage) => stage.steps.map((step) => step.id)));
@@ -131,6 +139,7 @@ export const useResumeStore = create<ResumeStore>()(
   persist<ResumeStore, [], [], ResumeLibraryState>(
     (set, get) => ({
       documents: [initialDocument],
+      archives: [],
       activeDocumentId: initialDocument.id,
       careerEvidence: [],
       jobApplications: [],
@@ -149,7 +158,7 @@ export const useResumeStore = create<ResumeStore>()(
 
       createDocument: () =>
         set((state) => {
-          if (!confirmUnsavedChanges(state)) return state;
+          if (!confirmDocumentNavigation(state)) return state;
           const document = createEmptyDocument();
           return {
             documents: [...state.documents, document],
@@ -159,10 +168,11 @@ export const useResumeStore = create<ResumeStore>()(
           };
         }),
 
-      duplicateDocument: () =>
+      duplicateDocument: (id) =>
         set((state) => {
-          if (!confirmUnsavedChanges(state)) return state;
-          const source = getActiveDocument(state);
+          if (id === undefined && !confirmDocumentNavigation(state)) return state;
+          const source = id === undefined ? getActiveDocument(state) : state.documents.find(item => item.id === id);
+          if (!source) throw new Error("指定的岗位版本不存在。");
           const timestamp = nowISO();
           const document: ResumeDocument = {
             ...structuredClone(source),
@@ -171,24 +181,29 @@ export const useResumeStore = create<ResumeStore>()(
             createdAt: timestamp,
             updatedAt: timestamp,
           };
-          return {
+          const next = {
             documents: [...state.documents, document],
-            activeDocumentId: document.id,
-            dirtyScope: null,
-            ...workingStateFromDocument(document),
+            ...(id === undefined ? { activeDocumentId: document.id, dirtyScope: null, ...workingStateFromDocument(document) } : {}),
           };
+          writeLibraryOrThrow(librarySnapshot({ ...state, ...next }));
+          return next;
         }),
 
-      renameDocument: (title) =>
+      renameDocument: (title, id) =>
         set((state) => {
           const normalized = title.trim();
           if (!normalized) return state;
-          return updateActiveDocument(state, { title: normalized });
+          const targetId = id ?? state.activeDocumentId;
+          if (!state.documents.some(item => item.id === targetId)) throw new Error("指定的岗位版本不存在。");
+          const next = { documents: state.documents.map(item => item.id === targetId ? { ...item, title: normalized, updatedAt: nowISO() } : item) };
+          writeLibraryOrThrow(librarySnapshot({ ...state, ...next }));
+          return next;
         }),
 
       deleteDocument: (id) =>
         set((state) => {
           const targetId = id ?? state.activeDocumentId;
+          if (targetId === state.activeDocumentId && !confirmDocumentNavigation(state)) return state;
           const remaining = state.documents.filter(
             (document) => document.id !== targetId
           );
@@ -205,13 +220,16 @@ export const useResumeStore = create<ResumeStore>()(
 
           if (remaining.length === 0) {
             const document = createEmptyDocument();
-            return {
+            const next = {
               documents: [document],
               activeDocumentId: document.id,
+              dirtyScope: null,
               jobApplications,
               interviewReviews,
               ...workingStateFromDocument(document),
             };
+            writeLibraryOrThrow(librarySnapshot({ ...state, ...next }));
+            return next;
           }
 
           const nextActiveId =
@@ -222,26 +240,71 @@ export const useResumeStore = create<ResumeStore>()(
             remaining.find((document) => document.id === nextActiveId) ??
             remaining[0];
 
-          return {
+          const next = {
             documents: remaining,
             activeDocumentId: nextActive.id,
             jobApplications,
             interviewReviews,
-            ...workingStateFromDocument(nextActive),
+            ...(targetId === state.activeDocumentId ? { dirtyScope: null, ...workingStateFromDocument(nextActive) } : {}),
           };
+          writeLibraryOrThrow(librarySnapshot({ ...state, ...next }));
+          return next;
         }),
 
       selectDocument: (id) =>
         set((state) => {
           const document = state.documents.find((item) => item.id === id);
           if (!document || document.id === state.activeDocumentId) return state;
-          if (!confirmUnsavedChanges(state)) return state;
+          if (!confirmDocumentNavigation(state)) return state;
           return {
             activeDocumentId: document.id,
             dirtyScope: null,
             ...workingStateFromDocument(document),
           };
         }),
+
+      prepareNavigation: () => {
+        if (!confirmDocumentNavigation(get())) return false;
+        set({ dirtyScope: null });
+        return true;
+      },
+      archiveDocument: (id, title, notes) => {
+        const state = get();
+        const document = state.documents.find(item => item.id === id);
+        const blocked = archiveBlockedReason(document, Boolean(state.dirtyScope), state.isAnalyzing);
+        if (blocked) throw new Error(blocked);
+        const archive = createArchive(document!, title, notes);
+        const existing = state.archives.find(item => sameArchiveContent(item, archive));
+        if (existing) return { id: existing.id, duplicate: true };
+        const archives = [...state.archives, archive];
+        writeLibraryOrThrow(librarySnapshot({ ...state, archives }));
+        set({ archives });
+        return { id: archive.id, duplicate: false };
+      },
+      updateArchive: (id, title, notes) => {
+        if (!title.trim() || title.trim().length > 120 || notes.length > 1000) throw new Error("名称须为 1–120 字，备注最多 1000 字。");
+        const state = get();
+        if (!state.archives.some(item => item.id === id)) throw new Error("存档不存在。");
+        const archives = state.archives.map(item => item.id === id ? { ...item, title: title.trim(), notes: notes.trim() } : item);
+        writeLibraryOrThrow(librarySnapshot({ ...state, archives }));
+        set({ archives });
+      },
+      deleteArchive: id => {
+        const state = get();
+        const archives = state.archives.filter(item => item.id !== id);
+        writeLibraryOrThrow(librarySnapshot({ ...state, archives }));
+        set({ archives });
+      },
+      copyArchiveToDraft: id => {
+        const state = get();
+        const archive = state.archives.find(item => item.id === id);
+        if (!archive) throw new Error("存档不存在。");
+        const document = draftFromArchive(archive);
+        const documents = [...state.documents, document];
+        writeLibraryOrThrow(librarySnapshot({ ...state, documents }));
+        set({ documents });
+        return document.id;
+      },
 
       setStorageError: (error) => set({ storageError: error }),
       markHydrated: () => {
@@ -270,7 +333,7 @@ export const useResumeStore = create<ResumeStore>()(
               skipped += 1;
             }
           }
-          const recoverCollection = <T,>(values: unknown, key: "careerEvidence" | "jobApplications" | "interviewReviews"): T[] => {
+          const recoverCollection = <T,>(values: unknown, key: "careerEvidence" | "jobApplications" | "interviewReviews" | "archives"): T[] => {
             if (!Array.isArray(values)) return [];
             const recovered: T[] = [];
             for (const value of values) {
@@ -285,24 +348,25 @@ export const useResumeStore = create<ResumeStore>()(
           const careerEvidence = recoverCollection<CareerEvidence>(parsed.state?.careerEvidence, "careerEvidence");
           const jobApplications = recoverCollection<ResumeLibraryState["jobApplications"][number]>(parsed.state?.jobApplications, "jobApplications");
           const interviewReviews = recoverCollection<ResumeLibraryState["interviewReviews"][number]>(parsed.state?.interviewReviews, "interviewReviews");
-          if (recoveredDocuments.length === 0 && careerEvidence.length === 0 && jobApplications.length === 0 && interviewReviews.length === 0) return null;
+          const archives = recoverCollection<ResumeArchive>(parsed.state?.archives, "archives");
+          if (recoveredDocuments.length === 0 && careerEvidence.length === 0 && jobApplications.length === 0 && interviewReviews.length === 0 && archives.length === 0) return null;
           if (recoveredDocuments.length === 0) recoveredDocuments.push(createEmptyDocument());
           const activeDocumentId = recoveredDocuments.some((item) => item.id === parsed.state?.activeDocumentId)
             ? parsed.state?.activeDocumentId as string
             : recoveredDocuments[0].id;
           const recoveredValue = JSON.stringify({
-            state: { schemaVersion: 13, documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
-            version: 13,
+            state: { schemaVersion: 14, documents: recoveredDocuments, archives, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
+            version: 14,
           });
           validatePersistedLibrary(recoveredValue);
           unlockStorageWrites();
           window.localStorage.setItem(RESUME_STORAGE_KEY, recoveredValue);
           lockStorageWrites();
           const warnings = skipped ? [`${skipped} 项损坏数据无法恢复，已跳过。`] : [];
-          const report = { documents: recoveredDocuments.length, careerEvidence: careerEvidence.length, jobApplications: jobApplications.length, interviewReviews: interviewReviews.length, skipped, warnings };
+          const report = { documents: recoveredDocuments.length, archives: archives.length, careerEvidence: careerEvidence.length, jobApplications: jobApplications.length, interviewReviews: interviewReviews.length, skipped, warnings };
           const active = recoveredDocuments.find((item) => item.id === activeDocumentId) ?? recoveredDocuments[0];
           set({
-            documents: recoveredDocuments, activeDocumentId, careerEvidence, jobApplications, interviewReviews,
+            documents: recoveredDocuments, archives, activeDocumentId, careerEvidence, jobApplications, interviewReviews,
             recoveryReport: report, storageError: null, ...workingStateFromDocument(active),
           });
           return report;
@@ -325,14 +389,14 @@ export const useResumeStore = create<ResumeStore>()(
         clearPendingRecovery();
         const document = createEmptyDocument();
         set({
-          documents: [document], activeDocumentId: document.id, recoveryAvailable: false,
+          documents: [document], archives: [], activeDocumentId: document.id, recoveryAvailable: false,
           recoveryReason: null, recoveryReport: null, storageError: null, dirtyScope: null,
           ...workingStateFromDocument(document),
         });
         lockStorageWrites();
       },
 
-      importDocuments: (documents, mode, evidence = [], applications = [], reviews = [], preserveEvidenceIds = false) =>
+      importDocuments: (documents, mode, evidence = [], applications = [], reviews = [], preserveEvidenceIds = false, archives = []) =>
         set((state) => {
           if (documents.length === 0) return state;
           const idMap = new Map<string, string>();
@@ -375,14 +439,25 @@ export const useResumeStore = create<ResumeStore>()(
             updatedAt: nowISO(),
           }));
           const active = imported[0];
-          return {
+          const importedArchives = archives.map(archive => ({ ...structuredClone(archive),
+            id: mode === "merge" ? createId() : archive.id,
+            sourceDocumentId: archive.sourceDocumentId ? idMap.get(archive.sourceDocumentId) ?? null : null,
+            finalResume: mapResumeBullets(archive.finalResume, bullet => {
+              const evidenceLinks = bullet.evidenceLinks.map(link => ({ ...link, evidenceId: evidenceIdMap.get(link.evidenceId) ?? link.evidenceId }));
+              return { ...bullet, evidenceLinks, evidenceIds: evidenceLinks.map(link => link.evidenceId) };
+            }),
+          }));
+          const next = {
             documents: mode === "replace" ? imported : [...state.documents, ...imported],
+            archives: mode === "replace" ? importedArchives : [...state.archives, ...importedArchives],
             careerEvidence: mode === "replace" ? importedEvidence : [...state.careerEvidence, ...importedEvidence],
             jobApplications: mode === "replace" ? importedApplications : [...state.jobApplications, ...importedApplications],
             interviewReviews: mode === "replace" ? importedReviews : [...state.interviewReviews, ...importedReviews],
             activeDocumentId: active.id,
             ...workingStateFromDocument(active),
           };
+          writeLibraryOrThrow(librarySnapshot({ ...state, ...next }));
+          return next;
         }),
 
       addCareerEvidence: (evidence) =>
@@ -890,18 +965,10 @@ export const useResumeStore = create<ResumeStore>()(
     }),
     {
       name: RESUME_STORAGE_KEY,
-       version: 13,
+       version: 14,
       skipHydration: true,
       storage: createJSONStorage<ResumeLibraryState>(() => safeLocalStorage),
-      partialize: (state) => ({
-        schemaVersion: 13,
-        documents: state.documents,
-        activeDocumentId: state.activeDocumentId,
-        // Schema 8 将事实主数据迁入 IndexedDB；此字段仅用于首次迁移和旧组件兼容。
-        careerEvidence: [],
-        jobApplications: state.jobApplications,
-        interviewReviews: state.interviewReviews,
-      }),
+      partialize: librarySnapshot,
       migrate: (persistedState) => {
         const persisted = persistedState as Partial<ResumeLibraryState> & {
           documents?: LegacyResumeDocument[];
@@ -910,8 +977,9 @@ export const useResumeStore = create<ResumeStore>()(
           ? persisted.documents.map((document) => migrateDocument(document))
           : [];
         return {
-           schemaVersion: 13,
+           schemaVersion: 14,
           documents,
+          archives: Array.isArray(persisted.archives) ? persisted.archives : [],
           activeDocumentId: persisted.activeDocumentId ?? documents[0]?.id ?? "",
           careerEvidence: Array.isArray(persisted.careerEvidence)
             ? persisted.careerEvidence.map(migrateEvidence)
@@ -936,6 +1004,7 @@ export const useResumeStore = create<ResumeStore>()(
         return {
           ...currentState,
           documents,
+          archives: Array.isArray(persisted.archives) ? persisted.archives : [],
           careerEvidence: (() => {
             const projected = Array.isArray(persisted.careerEvidence) ? persisted.careerEvidence.map(migrateEvidence) : [];
             // React Strict Mode may invoke rehydrate twice. A second pass can

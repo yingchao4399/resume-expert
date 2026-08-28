@@ -159,13 +159,14 @@ export function buildResumeDocument(
 export function buildResumeFileName(
   resume: FinalResume,
   targetRole: string,
-  extension: "docx" | "pdf"
+  extension: "docx" | "pdf",
+  at?: string,
 ): string {
   const base = [resume.personalInfo.name, targetRole]
     .map((value) => value.trim())
     .filter(Boolean)
     .join("-");
-  const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  const date = (at ?? new Date().toISOString()).slice(0, 10).replaceAll("-", "");
   const safe = (base || "简历")
     .replace(/[\\/:*?"<>|]/g, "-")
     .replace(/\s+/g, " ")
@@ -178,12 +179,13 @@ export async function downloadResumeDocx(
   targetRole: string,
   layoutConfig: ResumeLayoutConfig = getDefaultLayoutConfig(),
   paginationPlan?: ResumePaginationPlan,
+  archivedAt?: string,
 ): Promise<void> {
   const blob = await Packer.toBlob(buildResumeDocument(resume, layoutConfig, paginationPlan));
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = buildResumeFileName(resume, targetRole, "docx");
+  anchor.download = buildResumeFileName(resume, targetRole, "docx", archivedAt);
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();

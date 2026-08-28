@@ -10,6 +10,7 @@ import { ResumeDocumentView } from "@/components/resume/resume-document-view";
 import { ResumeEditor } from "@/components/resume/resume-editor";
 import { ResumeTemplateStudio } from "@/components/resume/resume-template-studio";
 import { ResumeSourceTrace } from "@/components/resume/resume-source-trace";
+import { ArchiveResumeButton } from "@/components/documents/archive-resume-dialog";
 import { useResumeStore } from "@/store/resume-store";
 import type { FinalResume, ResumeBulletValue } from "@/types/resume";
 import { getBulletText, normalizeResumeBullet } from "@/lib/evidence/resume-evidence";
@@ -146,6 +147,7 @@ export function FinalResumeStep() {
         />
         {!editing && (
           <div className="flex gap-2">
+            <ArchiveResumeButton documentId={activeDocumentId} />
             <Button variant="outline" size="sm" onClick={() => setTemplateOpen(true)}>
               <Palette className="h-3.5 w-3.5" />
               模板与排版

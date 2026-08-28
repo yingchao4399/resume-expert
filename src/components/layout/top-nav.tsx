@@ -101,6 +101,7 @@ export function TopNav() {
           )}
         </div>
         <div className="flex items-center gap-2">
+        <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs"><Link href="/library" onNavigate={event => { if (!useResumeStore.getState().prepareNavigation()) event.preventDefault(); }}>我的简历库</Link></Button>
         {studioEnabled && <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs"><Link href="/studio"><FlaskConical className="h-3.5 w-3.5" />开发者工作台</Link></Button>}
         <Button
           variant="outline"

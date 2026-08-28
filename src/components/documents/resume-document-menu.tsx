@@ -42,8 +42,8 @@ export function ResumeDocumentMenu() {
 
   const handleRename = () => {
     if (!title.trim()) return;
-    renameDocument(title);
-    setRenameOpen(false);
+    try { renameDocument(title); setRenameOpen(false); }
+    catch (error) { useResumeStore.getState().setStorageError(error instanceof Error ? error.message : "重命名失败"); }
   };
 
   return (
@@ -80,7 +80,7 @@ export function ResumeDocumentMenu() {
           className="hidden h-8 w-8 p-0 sm:inline-flex"
           title="复制当前版本"
           aria-label="复制当前版本"
-          onClick={duplicateDocument}
+          onClick={() => { try { duplicateDocument(); } catch (error) { useResumeStore.getState().setStorageError(error instanceof Error ? error.message : "复制失败"); } }}
         >
           <CopyPlus className="h-3.5 w-3.5" />
         </Button>
@@ -163,8 +163,8 @@ export function ResumeDocumentMenu() {
             <Button
               variant="destructive"
               onClick={() => {
-                deleteDocument();
-                setDeleteOpen(false);
+                try { deleteDocument(); setDeleteOpen(false); }
+                catch (error) { useResumeStore.getState().setStorageError(error instanceof Error ? error.message : "删除失败"); }
               }}
             >
               确认删除

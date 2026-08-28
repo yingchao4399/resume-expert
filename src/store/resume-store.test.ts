@@ -184,7 +184,7 @@ describe("resume document library", () => {
     useResumeStore.getState().markHydrated();
     expect(useResumeStore.getState().recoveryAvailable).toBe(true);
     expect(values.get(RESUME_RECOVERY_KEY)).toContain("{broken-json");
-    useResumeStore.getState().renameDocument("不应覆盖异常数据");
+    expect(() => useResumeStore.getState().renameDocument("不应覆盖异常数据")).toThrow("恢复模式下禁止修改");
     expect(values.get(RESUME_STORAGE_KEY)).toBe("{broken-json");
     useResumeStore.getState().clearCorruptStorage();
     Reflect.deleteProperty(globalThis, "window");

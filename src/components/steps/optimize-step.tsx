@@ -15,6 +15,7 @@ import type { OptimizeStyle, OptimizedItem } from "@/types/resume";
 import { cn } from "@/lib/utils";
 import { careerClaimsPrompt, selectRelevantClaims } from "@/lib/career/career-context";
 import { useCareerDomain } from "@/hooks/use-career-domain";
+import { useNavigationTaskGuard } from "@/hooks/use-navigation-task-guard";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 import { findCoveredKeywords, getConfirmedJDKeywords, getMissingKeywordCandidates, normalizeKeyword, splitTextByKeywords } from "@/lib/optimize/keyword-enhancement";
 
@@ -35,6 +36,7 @@ export function OptimizeStep() {
   const [selected, setSelected] = useState<Record<string, string[]>>({});
   const [verifyItemId, setVerifyItemId] = useState<string | null>(null);
   const [correctItemId, setCorrectItemId] = useState<string | null>(null);
+  useNavigationTaskGuard(regenerating || enhancing || finalizing);
   useEffect(() => { setCustomDraft(customOptimizeInstruction); setSelected({}); }, [activeDocumentId, customOptimizeInstruction]);
 
   const confirmedKeywords = useMemo(() => getConfirmedJDKeywords(jdAnalysisDocument), [jdAnalysisDocument]);

@@ -21,7 +21,7 @@ describe("resume backup", () => {
     expect(parsed.documents[0].id).toBe("backup-test");
     expect(parsed.documents[0].schemaVersion).toBe(12);
     expect(parsed.documents[0].sourceResume).toBeNull();
-    expect(parsed.backupVersion).toBe(9);
+    expect(parsed.backupVersion).toBe(10);
     expect(parsed.jobApplications[0]).toMatchObject({ id: "application-1", resumeDocumentId: "backup-test" });
   });
 
