@@ -1,4 +1,5 @@
 import type { ResumeRenderModel } from "@/lib/export/resume-render-model";
+import { getTypographyConfig } from "@/lib/templates/resume-templates";
 import type {
   ResumeLayoutConfig,
   ResumePaginationPage,
@@ -94,8 +95,14 @@ export function buildOnePageFitCandidates(layout: ResumeLayoutConfig): ResumeLay
   for (let value = roundStep(current.lineHeight - 0.05, 0.05); value >= 1.15 - Number.EPSILON; value = roundStep(value - 0.05, 0.05)) {
     add({ lineHeight: Math.max(1.15, value) });
   }
-  for (let value = roundStep(current.baseFontSize - 0.5, 0.5); value >= 8.5 - Number.EPSILON; value = roundStep(value - 0.5, 0.5)) {
-    add({ baseFontSize: Math.max(8.5, value) });
+  const initialTypography = getTypographyConfig(current);
+  for (let value = roundStep(initialTypography.body.fontSize - 0.5, 0.5); value >= 8.5 - Number.EPSILON; value = roundStep(value - 0.5, 0.5)) {
+    const delta = initialTypography.body.fontSize - value;
+    const typography = Object.fromEntries(Object.entries(initialTypography).map(([level, config]) => [level, {
+      ...config,
+      fontSize: Math.max(level === "body" ? 8.5 : 8, config.fontSize - delta),
+    }]));
+    add({ baseFontSize: Math.max(8.5, value), typography });
   }
   return candidates;
 }

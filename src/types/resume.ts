@@ -268,6 +268,16 @@ export interface ResumeFormattedText {
   hangingIndent: number;
 }
 
+export type ResumeEditableTarget =
+  | { kind: "summary" }
+  | { kind: "bullet"; bulletId: string; textOffset?: number };
+
+export interface ResumeEditorSelection {
+  target: ResumeEditableTarget;
+  start: number;
+  end: number;
+}
+
 /** String values are accepted only while migrating V1/V2 persisted and AI data. */
 export type ResumeBulletValue = string | ResumeBullet;
 
@@ -379,6 +389,7 @@ export interface ResumeImportMetadata {
 export type ResumeTemplateId = "ats-classic" | "modern-clean" | "compact-professional";
 export type ResumeFontFamily = "microsoft-yahei" | "songti" | "arial" | "calibri";
 export type ResumeTypographyLevel = "body" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "h7";
+export type TypographyRole = ResumeTypographyLevel;
 export interface ResumeTypographyLevelConfig { fontFamily: ResumeFontFamily; fontSize: number; color: string; }
 export type ResumeTypographyConfig = Partial<Record<ResumeTypographyLevel, ResumeTypographyLevelConfig>>;
 export type ResumeSectionId =

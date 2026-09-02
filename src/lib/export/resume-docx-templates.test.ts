@@ -70,4 +70,32 @@ describe("template DOCX export", () => {
     };
     expect(() => buildResumeDocument(resume, layout, plan)).toThrow(/无法安全分页/);
   });
+
+  it("keeps typography roles and selected paragraph formatting in editable Word", async () => {
+    const layout = {
+      ...getDefaultLayoutConfig("ats-classic"),
+      typography: {
+        h1: { fontFamily: "songti" as const, fontSize: 23, color: "#123456" },
+        h4: { fontFamily: "arial" as const, fontSize: 12, color: "#234567" },
+        body: { fontFamily: "calibri" as const, fontSize: 10, color: "#345678" },
+      },
+    };
+    const formattedResume: FinalResume = {
+      ...resume,
+      workExperience: [{ ...resume.workExperience[0], bullets: [{
+        id: "bullet-format", text: "完成产品迭代", sourceType: "manual", evidenceIds: [], evidenceLinks: [], originalText: "", aiText: "", manualText: "完成产品迭代",
+        richText: { runs: [{ text: "完成", bold: true, italic: true, underline: true }, { text: "产品迭代" }], alignment: "right", firstLineIndent: 0.5, hangingIndent: 1 },
+      }] }],
+    };
+    const buffer = await Packer.toBuffer(buildResumeDocument(formattedResume, layout));
+    const archive = await JSZip.loadAsync(buffer);
+    const xml = await archive.file("word/document.xml")!.async("string");
+    expect(xml).toContain('w:val="right"');
+    expect(xml).toContain("<w:b/>");
+    expect(xml).toContain("<w:i/>");
+    expect(xml).toContain("<w:u");
+    expect(xml).toContain('w:val="123456"');
+    expect(xml).toContain('w:val="234567"');
+    expect(xml).toContain("SimSun");
+  });
 });

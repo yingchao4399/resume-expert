@@ -3,7 +3,7 @@ import { PDFDocument, rgb, type PDFFont } from "pdf-lib";
 import { buildResumeFileName } from "@/lib/export/resume-docx";
 import { buildResumeRenderModel } from "@/lib/export/resume-render-model";
 import { isPaginationPlanCurrent } from "@/lib/export/resume-pagination";
-import { getDefaultLayoutConfig, getTypographyConfig } from "@/lib/templates/resume-templates";
+import { getDefaultLayoutConfig, getTypographyConfig, resolveTypographyStyle } from "@/lib/templates/resume-templates";
 import type { FinalResume, PdfGenerationProgress, ResumeLayoutConfig, ResumePaginationPlan } from "@/types/resume";
 
 const A4_WIDTH = 595.28;
@@ -59,12 +59,12 @@ export async function generateATSTextPdf(
     addPage();
   };
 
-  const nameSize = model.tokens.nameFontSizePt;
+  const nameSize = typography.h1.fontSize;
   const nameWidth = font.widthOfTextAtSize(model.name, nameSize);
-  page.drawText(model.name, { x: model.layout.templateId === "modern-clean" ? margin : (A4_WIDTH - nameWidth) / 2, y: y - nameSize, size: nameSize, font, color: model.layout.templateId === "modern-clean" ? accent : rgb(0.1, 0.1, 0.1) });
+  page.drawText(model.name, { x: model.layout.templateId === "modern-clean" ? margin : (A4_WIDTH - nameWidth) / 2, y: y - nameSize, size: nameSize, font, color: parseHex(typography.h1.color) });
   y -= nameSize + 8;
   if (model.contactLine) {
-    const contactSize = model.tokens.contactFontSizePt;
+    const contactSize = typography.body.fontSize;
     const contactWidth = font.widthOfTextAtSize(model.contactLine, contactSize);
     page.drawText(model.contactLine, { x: model.layout.templateId === "modern-clean" ? margin : Math.max(margin, (A4_WIDTH - contactWidth) / 2), y: y - contactSize, size: contactSize, font, color: rgb(0.35, 0.35, 0.35) });
     y -= contactSize + 10;
@@ -102,15 +102,28 @@ export async function generateATSTextPdf(
       y -= typography.h3.fontSize * model.layout.lineHeight + model.tokens.experienceAfterPt;
       continue;
     }
-    const prefix = block.kind === "bullet" ? `${model.layout.bulletStyle === "dash" ? "-" : model.layout.bulletStyle === "square" ? "▪" : "•"} ` : block.kind === "ordered-item" ? `${block.ordinal ?? 1}. ` : "";
-    const indent = block.kind === "bullet" || block.kind === "ordered-item" ? 18 : 0;
-    const lines = wrapText(block.text, font, typography.body.fontSize, width - indent);
-    requireSpace(lines.length * lineHeight + 4);
+    const level = resolveTypographyStyle(model.layout, block.typographyLevel);
+    const prefix = block.kind === "bullet" ? `${model.layout.bulletStyle === "dash" ? "-" : model.layout.bulletStyle === "square" ? "▪" : "•"}` : block.kind === "ordered-item" ? `${block.ordinal ?? 1}.` : "";
+    const markerWidth = prefix ? 18 : 0;
+    const hanging = Math.max(0, block.formattedText?.hangingIndent ?? 0) * level.fontSize;
+    const firstLine = (block.formattedText?.firstLineIndent ?? 0) * level.fontSize;
+    const textWidth = width - markerWidth - hanging;
+    const lines = wrapText(block.text, font, level.fontSize, textWidth);
+    const blockLineHeight = Math.max(lineHeight, level.fontSize * model.layout.lineHeight);
+    requireSpace(lines.length * blockLineHeight + 4);
     lines.forEach((line, lineIndex) => {
-      requireSpace(lineHeight + 3);
-      const text = `${lineIndex === 0 ? prefix : ""}${line}`;
-      page.drawText(text, { x: margin + (lineIndex === 0 ? 0 : indent), y: y - typography.body.fontSize, size: typography.body.fontSize, font, color: parseHex(typography.body.color) });
-      y -= lineHeight;
+      requireSpace(blockLineHeight + 3);
+      if (lineIndex === 0 && prefix) page.drawText(prefix, { x: margin, y: y - level.fontSize, size: level.fontSize, font, color: parseHex(level.color) });
+      const naturalX = margin + markerWidth + hanging + (lineIndex === 0 ? firstLine : 0);
+      const available = Math.max(0, textWidth - (lineIndex === 0 ? firstLine : 0));
+      const lineWidth = font.widthOfTextAtSize(line, level.fontSize);
+      const alignment = block.formattedText?.alignment ?? "left";
+      const x = alignment === "center" ? naturalX + Math.max(0, (available - lineWidth) / 2)
+        : alignment === "right" ? naturalX + Math.max(0, available - lineWidth)
+        : naturalX;
+      page.drawText(line, { x, y: y - level.fontSize, size: level.fontSize, font, color: parseHex(level.color) });
+      if (block.formattedText?.runs.some((run) => run.underline)) page.drawLine({ start: { x, y: y - level.fontSize - 1 }, end: { x: x + lineWidth, y: y - level.fontSize - 1 }, thickness: 0.5, color: parseHex(level.color) });
+      y -= blockLineHeight;
     });
     y -= block.kind === "bullet" ? model.tokens.bulletAfterPt : model.tokens.paragraphAfterPt;
   }

@@ -108,4 +108,15 @@ describe("resume pagination public interface", () => {
     expect(blocks.filter((block) => block.kind === "ordered-item").map((block) => block.ordinal)).toEqual([1, 2, 3]);
     expect(blocks.find((block) => block.kind === "paragraph")?.text).toContain("心研智能学习助手");
   });
+
+  it("assigns one typography level to every real resume role", () => {
+    const model = buildResumeRenderModel(resume, getDefaultLayoutConfig("ats-classic"));
+    const levelFor = (sectionId: string, kind: string) => model.blocks.find((block) => block.sectionId === sectionId && block.kind === kind)?.typographyLevel;
+    expect(levelFor("jobIntent", "paragraph")).toBe("h4");
+    expect(levelFor("summary", "paragraph")).toBe("h5");
+    expect(levelFor("coreSkills", "paragraph")).toBe("h6");
+    expect(levelFor("education", "paragraph")).toBe("h7");
+    expect(levelFor("workExperience", "experience-heading")).toBe("h3");
+    expect(levelFor("workExperience", "bullet")).toBe("body");
+  });
 });

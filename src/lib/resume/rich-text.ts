@@ -45,6 +45,71 @@ export function richTextToSafeHtml(value: ResumeFormattedText | null | undefined
   }).join("");
 }
 
+export type ResumeInlineMark = "bold" | "italic" | "underline";
+
+/** Apply or remove one supported inline mark without changing the paragraph text. */
+export function applyInlineFormat(
+  value: ResumeFormattedText,
+  start: number,
+  end: number,
+  mark: ResumeInlineMark,
+  enabled = true,
+): ResumeFormattedText {
+  const normalized = normalizeRichText(value);
+  const textLength = richTextToPlainText(normalized).length;
+  const from = Math.max(0, Math.min(textLength, Math.min(start, end)));
+  const to = Math.max(from, Math.min(textLength, Math.max(start, end)));
+  if (from === to) return normalized;
+  const runs: ResumeTextRun[] = [];
+  let offset = 0;
+  for (const run of normalized.runs) {
+    const runStart = offset;
+    const runEnd = offset + run.text.length;
+    offset = runEnd;
+    if (runEnd <= from || runStart >= to) {
+      runs.push({ ...run });
+      continue;
+    }
+    const localStart = Math.max(0, from - runStart);
+    const localEnd = Math.min(run.text.length, to - runStart);
+    if (localStart > 0) runs.push({ ...run, text: run.text.slice(0, localStart) });
+    const selected = { ...run, text: run.text.slice(localStart, localEnd) };
+    if (enabled) selected[mark] = true;
+    else delete selected[mark];
+    if (selected.text) runs.push(selected);
+    if (localEnd < run.text.length) runs.push({ ...run, text: run.text.slice(localEnd) });
+  }
+  return normalizeRichText({ ...normalized, runs });
+}
+
+export function setParagraphLayout(
+  value: ResumeFormattedText,
+  patch: Partial<Pick<ResumeFormattedText, "alignment" | "firstLineIndent" | "hangingIndent">>,
+): ResumeFormattedText {
+  return normalizeRichText({ ...normalizeRichText(value), ...patch });
+}
+
+export function clearRichTextFormatting(value: ResumeFormattedText): ResumeFormattedText {
+  return plainTextToRichText(richTextToPlainText(value));
+}
+
+/** Keep inline marks when a numbered source bullet is split into render blocks. */
+export function sliceRichText(value: ResumeFormattedText | undefined, start: number, end: number, fallbackText: string): ResumeFormattedText | undefined {
+  if (!value) return undefined;
+  const normalized = normalizeRichText(value, fallbackText);
+  const runs: ResumeTextRun[] = [];
+  let offset = 0;
+  for (const run of normalized.runs) {
+    const runStart = offset;
+    const runEnd = offset + run.text.length;
+    offset = runEnd;
+    if (runEnd <= start || runStart >= end) continue;
+    const text = run.text.slice(Math.max(0, start - runStart), Math.min(run.text.length, end - runStart));
+    if (text) runs.push({ ...run, text });
+  }
+  return normalizeRichText({ ...normalized, runs }, fallbackText);
+}
+
 /** Serialize only the small, safe formatting subset exposed by the editor toolbar. */
 export function serializeEditableElement(element: HTMLElement): ResumeFormattedText {
   const runs: ResumeTextRun[] = [];

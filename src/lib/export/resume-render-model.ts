@@ -1,6 +1,8 @@
 import { getBulletText } from "@/lib/evidence/resume-evidence";
 import { getDefaultLayoutConfig, getTypographyConfig, RESUME_SECTION_LABELS, sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
 import type { FinalResume, ResumeBulletValue, ResumeFormattedText, ResumeLayoutConfig, ResumeSectionId } from "@/types/resume";
+import type { ResumeEditableTarget, ResumeTypographyLevel } from "@/types/resume";
+import { sliceRichText } from "@/lib/resume/rich-text";
 
 export type ResumeRenderBlockKind = "section-heading" | "paragraph" | "experience-heading" | "bullet" | "ordered-item";
 
@@ -12,6 +14,8 @@ export interface ResumeRenderBlock {
   secondaryText?: string;
   formattedText?: ResumeFormattedText;
   ordinal?: number;
+  typographyLevel: ResumeTypographyLevel;
+  editableTarget?: ResumeEditableTarget;
 }
 
 export interface ResumeRenderModel {
@@ -49,7 +53,7 @@ export function buildResumeRenderModel(
     if (layout.hiddenSections.includes(sectionId)) continue;
     const content = sectionBlocks(sectionId, resume);
     if (!content.length) continue;
-    blocks.push({ id: `${sectionId}-heading`, sectionId, kind: "section-heading", text: RESUME_SECTION_LABELS[sectionId] }, ...content);
+    blocks.push({ id: `${sectionId}-heading`, sectionId, kind: "section-heading", text: RESUME_SECTION_LABELS[sectionId], typographyLevel: "h2" }, ...content);
   }
   return {
     name: resume.personalInfo.name || "姓名",
@@ -62,7 +66,7 @@ export function buildResumeRenderModel(
 }
 
 export function buildResumeTypographyTokens(layout: ResumeLayoutConfig): ResumeTypographyTokens {
-  const base = layout.baseFontSize;
+  const base = getTypographyConfig(layout).body.fontSize;
   return {
     bodyFontSizePt: base,
     lineHeightPt: base * layout.lineHeight,
@@ -80,9 +84,19 @@ export function buildResumeTypographyTokens(layout: ResumeLayoutConfig): ResumeT
   };
 }
 
+export function resolveTypographyLevel(kind: ResumeRenderBlockKind, sectionId: ResumeSectionId): ResumeTypographyLevel {
+  if (kind === "section-heading") return "h2";
+  if (kind === "experience-heading") return "h3";
+  if (sectionId === "jobIntent") return "h4";
+  if (sectionId === "summary") return "h5";
+  if (sectionId === "coreSkills") return "h6";
+  if (["education", "certifications", "languages", "awards", "links", "otherSections", "skillsAndTools"].includes(sectionId) && kind === "paragraph") return "h7";
+  return "body";
+}
+
 function sectionBlocks(sectionId: ResumeSectionId, resume: FinalResume): ResumeRenderBlock[] {
   const paragraph = (text: string, id: string = sectionId, formattedText?: ResumeFormattedText): ResumeRenderBlock[] => text.trim()
-    ? [{ id, sectionId, kind: "paragraph", text: text.trim(), formattedText }]
+    ? [{ id, sectionId, kind: "paragraph", text: text.trim(), formattedText, typographyLevel: resolveTypographyLevel("paragraph", sectionId), ...(sectionId === "summary" ? { editableTarget: { kind: "summary" } as const } : {}) }]
     : [];
   const itemList = (values: Array<{ text: string }> | undefined) => (values ?? []).flatMap((item, index) => paragraph(item.text, `${sectionId}-${index}`));
   switch (sectionId) {
@@ -107,7 +121,7 @@ function sectionBlocks(sectionId: ResumeSectionId, resume: FinalResume): ResumeR
 }
 
 function experienceBlocks(sectionId: ResumeSectionId, id: string, title: string, period: string, bullets: ResumeBulletValue[]): ResumeRenderBlock[] {
-  const result: ResumeRenderBlock[] = [{ id: `${id}-heading`, sectionId, kind: "experience-heading", text: title, secondaryText: period }];
+  const result: ResumeRenderBlock[] = [{ id: `${id}-heading`, sectionId, kind: "experience-heading", text: title, secondaryText: period, typographyLevel: "h3" }];
   result.push(...bullets.filter((value) => getBulletText(value).trim()).flatMap((value, index) => numberedBulletBlocks(sectionId, id, value, index)));
   return result;
 }
@@ -115,23 +129,25 @@ function experienceBlocks(sectionId: ResumeSectionId, id: string, title: string,
 function numberedBulletBlocks(sectionId: ResumeSectionId, id: string, value: ResumeBulletValue, index: number): ResumeRenderBlock[] {
   const text = getBulletText(value);
   const formattedText = typeof value === "string" ? undefined : value.richText;
+  const bulletId = typeof value === "string" ? `${id}-bullet-${index}` : value.id;
+  const editableTarget = { kind: "bullet", bulletId } as const;
   // Treat numbered sub-items as their own blocks.  The delimiter also
   // includes a Chinese/ASCII colon so strings such as “项目：1. … 2. …”
   // do not leave the first number embedded in the label.
   const markers = [...text.matchAll(/(?:^|[\s：:；;])(\d{1,2})[.、)]\s*/g)];
-  if (markers.length < 2) return [{ id: `${id}-bullet-${index}`, sectionId, kind: "bullet", text, formattedText }];
+  if (markers.length < 2) return [{ id: `${id}-bullet-${index}`, sectionId, kind: "bullet", text, formattedText, typographyLevel: "body", editableTarget }];
   const blocks: ResumeRenderBlock[] = [];
   const firstMarker = markers[0];
   const firstIndex = firstMarker.index ?? 0;
   const numberOffset = firstMarker[0].search(/\d/);
   const prefixEnd = firstIndex + Math.max(0, numberOffset);
   const prefix = text.slice(0, prefixEnd).trim();
-  if (prefix) blocks.push({ id: `${id}-bullet-${index}-label`, sectionId, kind: "paragraph", text: prefix });
+  if (prefix) blocks.push({ id: `${id}-bullet-${index}-label`, sectionId, kind: "paragraph", text: prefix, formattedText: sliceRichText(formattedText, 0, prefixEnd, prefix), typographyLevel: "body", editableTarget: { ...editableTarget, textOffset: 0 } });
   markers.forEach((marker, markerIndex) => {
     const start = (marker.index ?? 0) + marker[0].length;
     const end = markers[markerIndex + 1]?.index ?? text.length;
     const itemText = text.slice(start, end).trim();
-    if (itemText) blocks.push({ id: `${id}-ordered-${index}-${markerIndex}`, sectionId, kind: "ordered-item", ordinal: Number(marker[1]), text: itemText });
+    if (itemText) blocks.push({ id: `${id}-ordered-${index}-${markerIndex}`, sectionId, kind: "ordered-item", ordinal: Number(marker[1]), text: itemText, formattedText: sliceRichText(formattedText, start, end, itemText), typographyLevel: "body", editableTarget: { ...editableTarget, textOffset: start } });
   });
-  return blocks.length ? blocks : [{ id: `${id}-bullet-${index}`, sectionId, kind: "bullet", text, formattedText }];
+  return blocks.length ? blocks : [{ id: `${id}-bullet-${index}`, sectionId, kind: "bullet", text, formattedText, typographyLevel: "body", editableTarget }];
 }

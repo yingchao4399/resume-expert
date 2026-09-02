@@ -3,6 +3,7 @@ import type {
   ResumeSectionId,
   ResumeTypographyConfig,
   ResumeTypographyLevel,
+  TypographyRole,
   ResumeTemplateId,
 } from "@/types/resume";
 
@@ -135,6 +136,11 @@ export function sanitizeLayoutConfig(value?: Partial<ResumeLayoutConfig> | null)
 export function getTypographyConfig(layout: ResumeLayoutConfig): Required<ResumeTypographyConfig> {
   const defaults = defaultTypography(layout.baseFontSize, layout.accentColor, layout.fontFamily);
   return { ...defaults, ...sanitizeTypographyConfig(layout.typography, defaults) } as Required<ResumeTypographyConfig>;
+}
+
+/** Single typography resolver used by preview and export renderers. */
+export function resolveTypographyStyle(layout: ResumeLayoutConfig, role: TypographyRole) {
+  return getTypographyConfig(layout)[role];
 }
 
 export function getFontStack(font: ResumeLayoutConfig["fontFamily"]): string {

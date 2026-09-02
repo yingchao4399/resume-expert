@@ -507,12 +507,58 @@ test("asks before leaving a manually edited resume draft", async ({ page }) => {
   await seed(page);
   await page.goto("/");
   await page.getByRole("button", { name: "编辑简历" }).click();
+  await page.getByRole("tab", { name: "内容字段编辑" }).click();
   await page.getByLabel("姓名").fill("未保存姓名");
   let dialogMessage = "";
   page.once("dialog", async (dialog) => { dialogMessage = dialog.message(); await dialog.dismiss(); });
   await page.getByRole("button", { name: /面试准备/ }).click();
   await expect(page.getByRole("heading", { name: "最终简历" })).toBeVisible();
   expect(dialogMessage).toContain("未保存修改");
+});
+
+test("formats the real A4 paragraph and accepts a cleared font-size input", async ({ page }) => {
+  await seed(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "编辑简历" }).click();
+  await expect(page.getByRole("tab", { name: "A4 格式编辑" })).toHaveAttribute("aria-selected", "true");
+  const bullet = page.locator('.a4-resume-page:not([aria-hidden="true"]) [data-resume-editable-kind="bullet"]').first();
+  await expect(bullet).toBeVisible();
+  await bullet.locator("[data-resume-text-content]").evaluate((element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const textNode = walker.nextNode();
+    if (!textNode) throw new Error("missing bullet text");
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, Math.min(2, textNode.textContent?.length ?? 0));
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
+  await page.getByRole("button", { name: "加粗" }).click();
+  await page.getByRole("button", { name: "斜体" }).click();
+  await page.getByRole("button", { name: "下划线" }).click();
+  await page.getByRole("button", { name: "居中" }).click();
+  await page.getByRole("button", { name: "增加首行缩进" }).click();
+  await page.getByRole("button", { name: "增加悬挂缩进" }).click();
+  await expect(bullet.locator("[data-resume-text-content]")).toHaveCSS("text-align", "center");
+  await expect(bullet.locator("[data-resume-text-content]")).toHaveAttribute("style", /padding-left: 0\.5em; text-indent: 0em/);
+  const marked = bullet.locator(".font-bold");
+  await expect(marked).toHaveText("主导");
+  await expect(marked).toHaveCSS("font-style", "italic");
+  await expect(marked).toHaveCSS("text-decoration-line", "underline");
+  await page.getByRole("button", { name: "保存修改" }).click();
+
+  await page.getByRole("button", { name: "模板与排版" }).click();
+  const studio = page.getByRole("dialog", { name: "模板与统一排版" });
+  const size = studio.getByRole("textbox", { name: "H4：求职意向字号", exact: true });
+  await size.fill("");
+  await size.fill("12");
+  await size.press("Enter");
+  await expect(size).toHaveValue("12");
+  await studio.getByRole("button", { name: "保存排版" }).click();
+  await page.reload();
+  await expect(page.locator('.a4-resume-page:not([aria-hidden="true"]) [data-resume-editable-kind="bullet"] [data-resume-text-content]').first()).toHaveCSS("text-align", "center");
 });
 
 for (const fixture of ["chinese-cid-resume.pdf", "chinese-ttf-resume.pdf", "chinese-resume.docx", "multi-page-resume.pdf"]) {

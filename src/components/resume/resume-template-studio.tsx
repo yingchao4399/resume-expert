@@ -18,7 +18,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, RotateCcw } from "lucide-react";
+import { GripVertical, Minus, Plus, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -63,6 +63,7 @@ export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave
   const [paginationStatus, setPaginationStatus] = useState<ResumePaginationStatus>("measuring");
   const [fitSession, setFitSession] = useState<{ candidates: ResumeLayoutConfig[]; index: number; initial: ResumeLayoutConfig } | null>(null);
   const [fitResult, setFitResult] = useState<ResumeFitResult | null>(null);
+  const [allFont, setAllFont] = useState<ResumeLayoutConfig["fontFamily"]>(value.fontFamily);
   const { dirtyScope, setDirtyScope } = useResumeStore();
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -74,6 +75,7 @@ export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave
       setDraft(structuredClone(value));
       setFitSession(null);
       setFitResult(null);
+      setAllFont(value.fontFamily);
     }
   }, [open, value]);
 
@@ -196,23 +198,28 @@ export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave
                 </div>
                 {fitResult && fitResult.status !== "running" && <p className={cn("mt-2 text-xs", fitResult.status === "cannot-fit" ? "text-amber-700" : "text-emerald-700")}>{fitResult.message}</p>}
               </div>
-              <label className="grid gap-1 text-xs">
-                字体
-                <select className="h-9 rounded-md border bg-white px-2 text-sm" value={draft.fontFamily} onChange={(event) => update({ fontFamily: event.target.value as ResumeLayoutConfig["fontFamily"] })}>
+              <div className="grid gap-1 text-xs">
+                <span>全部层级字体</span>
+                <div className="flex gap-2">
+                <select className="h-9 min-w-0 flex-1 rounded-md border bg-white px-2 text-sm" value={allFont} onChange={(event) => setAllFont(event.target.value as ResumeLayoutConfig["fontFamily"])}>
                   <option value="microsoft-yahei">微软雅黑</option>
                   <option value="songti">宋体</option>
                   <option value="arial">Arial</option>
                   <option value="calibri">Calibri</option>
                 </select>
-              </label>
-              <RangeField label="正文字号" value={draft.baseFontSize} min={8.5} max={12} step={0.5} suffix="pt" onChange={(baseFontSize) => update({ baseFontSize })} />
+                <Button type="button" size="sm" variant="outline" onClick={() => {
+                  const typography = getTypographyConfig(safeDraft);
+                  update({ fontFamily: allFont, typography: Object.fromEntries(Object.entries(typography).map(([key, item]) => [key, { ...item, fontFamily: allFont }])) });
+                }}>全部应用</Button>
+                </div>
+              </div>
               <div className="rounded-md border bg-neutral-50 p-3">
-                <p className="mb-2 text-xs font-medium">正文与标题层级</p>
-                <p className="mb-3 text-[11px] text-neutral-500">每一级可独立设置字体、字号和颜色；旧文档会自动使用模板默认值。</p>
+                <div className="mb-2 flex items-center justify-between gap-2"><p className="text-xs font-medium">正文与标题层级</p><Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => update({ typography: getTypographyConfig(getDefaultLayoutConfig(draft.templateId)) })}><RotateCcw className="h-3 w-3" />恢复模板默认层级</Button></div>
+                <p className="mb-3 text-[11px] text-neutral-500">字号可直接输入、用加减按钮或拖动滑杆；输入框允许临时清空，失焦或按 Enter 后才校验。</p>
                 <div className="space-y-2">
                   {TYPOGRAPHY_LEVELS.map((level) => {
                     const typography = getTypographyConfig(safeDraft)[level.id];
-                    return <TypographyField key={level.id} label={level.label} value={typography} onChange={(next) => update({ typography: { ...getTypographyConfig(safeDraft), [level.id]: next } })} />;
+                    return <TypographyField key={level.id} label={level.label} value={typography} onChange={(next) => update({ ...(level.id === "body" ? { baseFontSize: next.fontSize } : {}), typography: { ...getTypographyConfig(safeDraft), [level.id]: next } })} />;
                   })}
                 </div>
               </div>
@@ -335,16 +342,36 @@ function RangeField({
 }
 
 const TYPOGRAPHY_LEVELS = [
-  { id: "body", label: "正文" }, { id: "h1", label: "一级标题（姓名）" }, { id: "h2", label: "二级标题（区块）" },
-  { id: "h3", label: "三级标题（经历）" }, { id: "h4", label: "四级标题" }, { id: "h5", label: "五级标题" },
-  { id: "h6", label: "六级标题" }, { id: "h7", label: "七级标题" },
+  { id: "body", label: "正文：Bullet、编号项与普通正文" }, { id: "h1", label: "H1：姓名" }, { id: "h2", label: "H2：工作经历、项目经历等区块标题" },
+  { id: "h3", label: "H3：公司/岗位、项目/角色标题" }, { id: "h4", label: "H4：求职意向" }, { id: "h5", label: "H5：职业摘要" },
+  { id: "h6", label: "H6：核心能力" }, { id: "h7", label: "H7：教育、证书、语言及其他信息" },
 ] as const;
 
 function TypographyField({ label, value, onChange }: { label: string; value: { fontFamily: ResumeLayoutConfig["fontFamily"]; fontSize: number; color: string }; onChange: (value: { fontFamily: ResumeLayoutConfig["fontFamily"]; fontSize: number; color: string }) => void }) {
-  return <div className="grid grid-cols-[1fr_88px_42px] items-center gap-2">
-    <label className="text-[11px]">{label}<select className="mt-1 h-7 w-full rounded border bg-white px-1 text-xs" value={value.fontFamily} onChange={(event) => onChange({ ...value, fontFamily: event.target.value as ResumeLayoutConfig["fontFamily"] })}><option value="microsoft-yahei">微软雅黑</option><option value="songti">宋体</option><option value="arial">Arial</option><option value="calibri">Calibri</option></select></label>
-    <label className="text-[11px]">字号<input className="mt-1 h-7 w-full rounded border bg-white px-1 text-xs" type="number" min={8} max={36} step={0.5} value={value.fontSize} onChange={(event) => onChange({ ...value, fontSize: Number(event.target.value) })} /></label>
-    <label className="text-[11px]">颜色<input className="mt-1 h-7 w-10 rounded border bg-white p-0.5" type="color" value={value.color} onChange={(event) => onChange({ ...value, color: event.target.value })} /></label>
+  const [fontSizeInput, setFontSizeInput] = useState(String(value.fontSize));
+  const [error, setError] = useState("");
+  useEffect(() => setFontSizeInput(String(value.fontSize)), [value.fontSize]);
+  const min = label.startsWith("正文") ? 8.5 : 8;
+  const max = label.startsWith("H1") ? 36 : 24;
+  const commit = () => {
+    const parsed = Number(fontSizeInput);
+    if (!Number.isFinite(parsed) || parsed < min || parsed > max) { setError(`请输入 ${min}–${max} pt`); return; }
+    setError(""); onChange({ ...value, fontSize: Math.round(parsed * 2) / 2 });
+  };
+  const step = (delta: number) => { const next = Math.min(max, Math.max(min, value.fontSize + delta)); setFontSizeInput(String(next)); setError(""); onChange({ ...value, fontSize: next }); };
+  return <div className="rounded-md border bg-white p-2">
+    <p className="mb-2 text-[11px] font-medium">{label}</p>
+    <div className="grid grid-cols-[minmax(0,1fr)_42px] gap-2">
+      <select aria-label={`${label}字体`} className="h-8 w-full rounded border bg-white px-1 text-xs" value={value.fontFamily} onChange={(event) => onChange({ ...value, fontFamily: event.target.value as ResumeLayoutConfig["fontFamily"] })}><option value="microsoft-yahei">微软雅黑</option><option value="songti">宋体</option><option value="arial">Arial</option><option value="calibri">Calibri</option></select>
+      <input aria-label={`${label}颜色`} className="h-8 w-10 rounded border bg-white p-0.5" type="color" value={value.color} onChange={(event) => onChange({ ...value, color: event.target.value })} />
+    </div>
+    <div className="mt-2 grid grid-cols-[32px_64px_32px_minmax(0,1fr)] items-center gap-1">
+      <Button type="button" variant="outline" size="sm" className="h-8 w-8 p-0" aria-label={`${label}减小字号`} onClick={() => step(-0.5)}><Minus className="h-3 w-3" /></Button>
+      <input aria-label={`${label}字号`} className="h-8 w-full rounded border bg-white px-2 text-center text-xs" inputMode="decimal" value={fontSizeInput} onChange={(event) => setFontSizeInput(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commit(); } }} />
+      <Button type="button" variant="outline" size="sm" className="h-8 w-8 p-0" aria-label={`${label}增大字号`} onClick={() => step(0.5)}><Plus className="h-3 w-3" /></Button>
+      <input aria-label={`${label}字号滑杆`} type="range" min={min} max={max} step={0.5} value={value.fontSize} onChange={(event) => { const next = Number(event.target.value); setFontSizeInput(String(next)); onChange({ ...value, fontSize: next }); }} />
+    </div>
+    {error && <p className="mt-1 text-[11px] text-red-600" role="alert">{error}</p>}
   </div>;
 }
 

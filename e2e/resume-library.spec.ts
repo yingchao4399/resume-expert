@@ -90,6 +90,7 @@ test("downloads immutable A4 archives after source deletion, including dated PDF
 test("protects unsaved final edits when entering the library", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "编辑简历", exact: true }).click();
+  await page.getByRole("tab", { name: "内容字段编辑" }).click();
   const nameInput = page.getByLabel("姓名", { exact: true });
   await nameInput.fill("未保存合成人名");
   page.once("dialog", dialog => dialog.dismiss());

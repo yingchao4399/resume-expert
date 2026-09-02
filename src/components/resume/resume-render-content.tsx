@@ -1,14 +1,14 @@
 import { cn } from "@/lib/utils";
 import type { ResumeRenderBlock, ResumeRenderModel, ResumeTypographyTokens } from "@/lib/export/resume-render-model";
 import type { ResumeFormattedText, ResumeLayoutConfig } from "@/types/resume";
-import { getFontStack, getTypographyConfig } from "@/lib/templates/resume-templates";
+import { getFontStack, resolveTypographyStyle } from "@/lib/templates/resume-templates";
 
 export function ResumeRenderHeader({ model }: { model: ResumeRenderModel }) {
   const nameStyle = model.typography.h1;
   const contactStyle = model.typography.body;
   return <div data-resume-header>
     <header className={model.layout.templateId === "modern-clean" ? "resume-header text-left" : "resume-header text-center"}>
-      <h2 className="font-semibold" style={{ fontFamily: getFontStack(nameStyle.fontFamily), fontSize: `${nameStyle.fontSize}pt`, color: model.layout.templateId === "modern-clean" ? nameStyle.color : undefined }}>{model.name}</h2>
+      <h2 className="font-semibold" style={{ fontFamily: getFontStack(nameStyle.fontFamily), fontSize: `${nameStyle.fontSize}pt`, color: nameStyle.color }}>{model.name}</h2>
       {model.contactLine && <p className="mt-1" style={{ fontFamily: getFontStack(contactStyle.fontFamily), fontSize: `${contactStyle.fontSize}pt`, color: contactStyle.color }}>{model.contactLine}</p>}
     </header>
     <div className="resume-header-rule h-px" style={{ marginTop: `${model.tokens.headerRuleBeforePt}pt`, backgroundColor: model.layout.accentColor }} />
@@ -32,9 +32,14 @@ export function ResumeRenderBlocks({ blocks, layout, tokens, withTopSpacing = tr
 }
 
 function ResumeRenderBlockView({ block, layout, tokens }: { block: ResumeRenderBlock; layout: ResumeLayoutConfig; tokens: ResumeTypographyTokens }) {
-  const typography = getTypographyConfig(layout);
-  const level = block.kind === "section-heading" ? typography.h2 : block.kind === "experience-heading" ? typography.h3 : block.sectionId === "jobIntent" ? typography.h4 : block.sectionId === "summary" ? typography.h5 : block.sectionId === "coreSkills" ? typography.h6 : block.kind === "paragraph" ? typography.h7 : typography.body;
+  const level = resolveTypographyStyle(layout, block.typographyLevel);
   const textStyle = { fontFamily: getFontStack(level.fontFamily), fontSize: `${level.fontSize}pt`, color: level.color };
+  const editable = block.editableTarget ? {
+    "data-resume-editable-kind": block.editableTarget.kind,
+    "data-resume-editable-id": block.editableTarget.kind === "bullet" ? block.editableTarget.bulletId : "summary",
+    "data-resume-text-offset": block.editableTarget.kind === "bullet" ? block.editableTarget.textOffset ?? 0 : 0,
+    tabIndex: 0,
+  } : {};
   if (block.kind === "section-heading") return <div data-resume-block-id={block.id} data-resume-block-kind={block.kind} style={{ paddingTop: `${tokens.sectionSpacingPt}pt`, paddingBottom: `${tokens.headingAfterPt}pt` }}>
     <h3
       className={cn("font-semibold", layout.templateId === "modern-clean" ? "border-l-[3px] pl-2 text-[1.05em]" : "border-b pb-1 text-[0.95em] tracking-wide")}
@@ -50,13 +55,23 @@ function ResumeRenderBlockView({ block, layout, tokens }: { block: ResumeRenderB
     const bullet = layout.bulletStyle === "dash" ? "-" : layout.bulletStyle === "square" ? "▪" : "•";
     const formatting = block.formattedText;
     return <div data-resume-block-id={block.id} data-resume-block-kind={block.kind} style={{ paddingBottom: `${tokens.bulletAfterPt}pt` }}>
-      <p className="flex gap-2" style={{ ...textStyle, textAlign: formatting?.alignment, textIndent: `${formatting?.firstLineIndent ?? 0}em`, paddingLeft: `${formatting?.hangingIndent ?? 0}em` }}><span aria-hidden="true">{bullet}</span><span>{formattedRuns(formatting, block.text)}</span></p>
+      <p className="grid grid-cols-[1.25em_minmax(0,1fr)] gap-1" {...editable} style={textStyle}><span aria-hidden="true">{bullet}</span><span data-resume-text-content className="min-w-0 w-full" style={paragraphLayoutStyle(formatting)}>{formattedRuns(formatting, block.text)}</span></p>
     </div>;
   }
   if (block.kind === "ordered-item") return <div data-resume-block-id={block.id} data-resume-block-kind={block.kind} style={{ paddingBottom: `${tokens.bulletAfterPt}pt` }}>
-    <p className="grid grid-cols-[1.5rem_minmax(0,1fr)]" style={textStyle}><span className="text-right font-medium" aria-hidden="true">{block.ordinal}.</span><span className="pl-2">{formattedRuns(block.formattedText, block.text)}</span></p>
+    <p className="grid grid-cols-[1.5rem_minmax(0,1fr)]" {...editable} style={textStyle}><span className="text-right font-medium" aria-hidden="true">{block.ordinal}.</span><span data-resume-text-content className="min-w-0 w-full pl-2" style={paragraphLayoutStyle(block.formattedText)}>{formattedRuns(block.formattedText, block.text)}</span></p>
   </div>;
   return <div data-resume-block-id={block.id} data-resume-block-kind={block.kind} style={{ paddingBottom: `${tokens.paragraphAfterPt}pt` }}>
-    <p style={{ ...textStyle, textAlign: block.formattedText?.alignment, textIndent: `${block.formattedText?.firstLineIndent ?? 0}em`, paddingLeft: `${block.formattedText?.hangingIndent ?? 0}em` }}>{formattedRuns(block.formattedText, block.text)}</p>
+    <p {...editable} style={{ ...textStyle, ...paragraphLayoutStyle(block.formattedText) }}><span data-resume-text-content>{formattedRuns(block.formattedText, block.text)}</span></p>
   </div>;
+}
+
+function paragraphLayoutStyle(formatting?: ResumeFormattedText) {
+  const hanging = formatting?.hangingIndent ?? 0;
+  const firstLine = formatting?.firstLineIndent ?? 0;
+  return {
+    textAlign: formatting?.alignment ?? "left",
+    paddingLeft: `${Math.max(0, hanging)}em`,
+    textIndent: `${firstLine - Math.max(0, hanging)}em`,
+  } as const;
 }

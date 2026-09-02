@@ -8,12 +8,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState, SectionTitle } from "@/components/shared/ui-helpers";
 import { ResumeDocumentView } from "@/components/resume/resume-document-view";
 import { ResumeEditor } from "@/components/resume/resume-editor";
+import { ResumeA4FormatEditor } from "@/components/resume/resume-a4-format-editor";
 import { ResumeTemplateStudio } from "@/components/resume/resume-template-studio";
 import { ResumeSourceTrace } from "@/components/resume/resume-source-trace";
 import { ArchiveResumeButton } from "@/components/documents/archive-resume-dialog";
 import { useResumeStore } from "@/store/resume-store";
 import type { FinalResume, ResumeBulletValue } from "@/types/resume";
-import { getBulletText, normalizeResumeBullet } from "@/lib/evidence/resume-evidence";
+import { getBulletText, normalizeFinalResumeBullets, normalizeResumeBullet } from "@/lib/evidence/resume-evidence";
 import { normalizeRichText } from "@/lib/resume/rich-text";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 
@@ -105,6 +106,7 @@ export function FinalResumeStep() {
   } = useResumeStore();
   const finalResume = analysisResult?.finalResume ?? null;
   const [editing, setEditing] = useState(false);
+  const [editorPanel, setEditorPanel] = useState<"format" | "content">("format");
   const [templateOpen, setTemplateOpen] = useState(false);
   const [draft, setDraft] = useState<FinalResume | null>(
     finalResume ? cloneResume(finalResume) : null
@@ -126,7 +128,8 @@ export function FinalResumeStep() {
   }
 
   const beginEditing = () => {
-    setDraft(cloneResume(finalResume));
+    setDraft(normalizeFinalResumeBullets(cloneResume(finalResume)));
+    setEditorPanel("format");
     setEditing(true);
   };
 
@@ -178,7 +181,13 @@ export function FinalResumeStep() {
         <>
           <Card className="mb-6">
             <CardContent className="p-6">
-              <ResumeEditor value={draft} onChange={(resume) => { setDraft(resume); setDirtyScope("resume"); }} />
+              <div className="mb-4 flex gap-2" role="tablist" aria-label="简历编辑方式">
+                <Button type="button" size="sm" variant={editorPanel === "format" ? "default" : "outline"} role="tab" aria-selected={editorPanel === "format"} onClick={() => setEditorPanel("format")}>A4 格式编辑</Button>
+                <Button type="button" size="sm" variant={editorPanel === "content" ? "default" : "outline"} role="tab" aria-selected={editorPanel === "content"} onClick={() => setEditorPanel("content")}>内容字段编辑</Button>
+              </div>
+              {editorPanel === "format"
+                ? <ResumeA4FormatEditor resume={draft} layoutConfig={layoutConfig} onChange={(resume) => { setDraft(resume); setDirtyScope("resume"); }} />
+                : <ResumeEditor value={draft} onChange={(resume) => { setDraft(resume); setDirtyScope("resume"); }} />}
             </CardContent>
           </Card>
           <div className="flex justify-end gap-2">
