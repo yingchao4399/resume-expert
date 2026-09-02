@@ -17,6 +17,7 @@ import {
 } from "@/lib/backup/resume-backup";
 import { prepareCareerBackupImport } from "@/lib/career/backup-import";
 import { useResumeStore } from "@/store/resume-store";
+import { hasRunningTask } from "@/lib/tasks/task-runtime";
 
 interface ResumeBackupDialogProps {
   open: boolean;
@@ -46,7 +47,7 @@ export function ResumeBackupDialog({ open, onOpenChange }: ResumeBackupDialogPro
   const finishImport = async (mode: "merge" | "replace") => {
     if (!pending) return;
     if (mode === "replace" && !window.confirm(`将替换当前 ${documents.length} 个岗位版本及 ${archives.length} 份存档。备份包含 ${pending.documents.length} 个版本、${pending.archives.length} 份存档。请先备份，确认替换？`)) return;
-    if (useResumeStore.getState().isAnalyzing) { setError("任务仍在进行，请先取消或等待完成后导入备份。"); return; }
+    if (hasRunningTask()) { setError("任务仍在进行，请先取消或等待完成后导入备份。"); return; }
     if (!useResumeStore.getState().prepareNavigation()) return;
     setError(null);
     try {

@@ -1,25 +1,11 @@
 import { createInitialWorkflowWorkspace, type WorkflowWorkspace } from "@/lib/studio/workflow-release";
 import type { WorkflowDraft } from "@/lib/studio/workflow-types";
+import { openStudioDB, STUDIO_WORKFLOW_STORE as STORE_NAME } from "@/lib/studio/studio-db";
 
-const DB_NAME = "resume-expert-studio";
-const STORE_NAME = "workflow-workspace";
-const TRACE_STORE_NAME = "traces";
 const KEY = "current";
 
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 2);
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE_NAME)) request.result.createObjectStore(STORE_NAME);
-      if (!request.result.objectStoreNames.contains(TRACE_STORE_NAME)) request.result.createObjectStore(TRACE_STORE_NAME, { keyPath: "id" });
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
 export async function loadWorkflowWorkspace(): Promise<WorkflowWorkspace> {
-  const db = await openDB();
+  const db = await openStudioDB();
   const value = await requestValue(db.transaction(STORE_NAME).objectStore(STORE_NAME).get(KEY)) as WorkflowWorkspace | undefined;
   db.close();
   if (value?.schemaVersion === 1 && Array.isArray(value.versions)) return value;
@@ -27,7 +13,7 @@ export async function loadWorkflowWorkspace(): Promise<WorkflowWorkspace> {
 }
 
 export async function saveWorkflowWorkspace(value: WorkflowWorkspace): Promise<void> {
-  const db = await openDB(); const tx = db.transaction(STORE_NAME, "readwrite"); tx.objectStore(STORE_NAME).put(value, KEY);
+  const db = await openStudioDB(); const tx = db.transaction(STORE_NAME, "readwrite"); tx.objectStore(STORE_NAME).put(value, KEY);
   await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); }); db.close();
 }
 

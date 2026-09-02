@@ -6,9 +6,14 @@ import { useResumeStore } from "@/store/resume-store";
 import { runJDConsolidationStreaming } from "@/services/ai/resumeAgent";
 import { applyConsolidation, mapFingerprint } from "@/lib/jd/consolidation";
 import type { JDConsolidationProposal } from "@/types/jd-analysis";
+import { beginTask, cancelTask, completeTask, failTask, updateTask } from "@/lib/tasks/task-runtime";
+import { taskErrorPayload } from "@/lib/errors/app-error";
+import { useTaskRun } from "@/hooks/use-task-run";
 
 export function JDConsolidationPanel() {
-  const { activeDocumentId, jdAnalysisDocument: document, isAnalyzing, setAnalyzing, applyJDConsolidation, restoreJDMap, setDirtyScope } = useResumeStore();
+  const { activeDocumentId, jdAnalysisDocument: document, applyJDConsolidation, restoreJDMap, setDirtyScope } = useResumeStore();
+  const task = useTaskRun(activeDocumentId, "jd-consolidation");
+  const isAnalyzing = task.status === "running";
   const [proposal, setProposal] = useState<JDConsolidationProposal | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [message, setMessage] = useState("");
@@ -18,24 +23,28 @@ export function JDConsolidationPanel() {
   const errorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     setProposal(null); setSelected([]); setError(""); setMessage(""); setRunning(false);
-    return () => { if (controller.current) { controller.current.abort(); controller.current = null; setAnalyzing(false); } };
-  }, [activeDocumentId, setAnalyzing]);
+    return () => { if (controller.current) { controller.current.abort(); controller.current = null; cancelTask(activeDocumentId, "jd-consolidation"); } };
+  }, [activeDocumentId]);
   useEffect(() => { if (error) errorRef.current?.focus(); }, [error]);
   if (!document) return null;
 
   const run = async () => {
     if (proposal && !window.confirm("放弃尚未应用的整理提案，重新生成吗？")) return;
-    setError(""); setMessage("正在整理需求…"); setAnalyzing(true); setRunning(true);
+    setError(""); setMessage("正在整理需求…"); beginTask(activeDocumentId, "jd-consolidation", "正在整理需求"); setRunning(true);
     const abort = new AbortController(); controller.current = abort;
     const fingerprint = mapFingerprint(document);
     try {
-      const result = await runJDConsolidationStreaming(document, { signal: abort.signal, onProgress: event => { if ("message" in event) setMessage(event.message ?? "正在整理"); } });
+      const result = await runJDConsolidationStreaming(document, { signal: abort.signal, onProgress: event => { if ("message" in event) { setMessage(event.message ?? "正在整理"); updateTask(activeDocumentId, "jd-consolidation", { message: event.message ?? null }); } } });
       const current = useResumeStore.getState();
-      if (abort.signal.aborted || current.activeDocumentId !== activeDocumentId || !current.jdAnalysisDocument || mapFingerprint(current.jdAnalysisDocument) !== fingerprint) return;
+      if (abort.signal.aborted || current.activeDocumentId !== activeDocumentId || !current.jdAnalysisDocument || mapFingerprint(current.jdAnalysisDocument) !== fingerprint) {
+        cancelTask(activeDocumentId, "jd-consolidation", "材料或需求地图已变化，迟到结果未保存。");
+        return;
+      }
       setProposal(result); setSelected(result.merges.map(item => item.id)); setDirtyScope("jd");
+      completeTask(activeDocumentId, "jd-consolidation", "整理提案已生成");
       setMessage("整理提案已生成，尚未覆盖原地图。请核对每项合并。");
-    } catch (cause) { if (!abort.signal.aborted) setError(cause instanceof Error ? cause.message : "整理失败，原地图未改变。"); else setMessage("整理已取消，原地图未改变。"); }
-    finally { if (controller.current === abort) { controller.current = null; setAnalyzing(false); setRunning(false); } }
+    } catch (cause) { if (!abort.signal.aborted) { const payload = taskErrorPayload(cause, "整理失败，原地图未改变。"); failTask(activeDocumentId, "jd-consolidation", payload); setError(payload.userMessage); } else { cancelTask(activeDocumentId, "jd-consolidation"); setMessage("整理已取消，原地图未改变。"); } }
+    finally { if (controller.current === abort) { controller.current = null; setRunning(false); } }
   };
   let afterCount = document.requirements.length;
   let previewError = "";

@@ -28,11 +28,12 @@ import { isStudioEnabled } from "@/lib/studio/settings";
 import type { PromptRuntimeSnapshot } from "@/lib/studio/prompt-types";
 import type { InterviewPreparationProgressEvent } from "@/lib/ai/interview-preparation";
 import type { JDAnalysisDocument } from "@/types/jd-analysis";
+import { isAppErrorPayload, type AppErrorPayload } from "@/lib/errors/app-error";
 
 export { STYLE_LABELS } from "@/lib/ai/types";
 
 class ResumeAgentClientError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly payload?: AppErrorPayload) {
     super(message);
     this.name = "ResumeAgentClientError";
   }
@@ -42,8 +43,9 @@ async function responseError(response: Response, fallback: string): Promise<Resu
   const raw = await response.text().catch(() => "");
   let message = "";
   try {
-    const data = JSON.parse(raw) as { error?: string };
+    const data = JSON.parse(raw) as { error?: string; appError?: unknown };
     message = data.error ?? "";
+    if (isAppErrorPayload(data.appError)) return new ResumeAgentClientError(message.trim() || `${fallback} (${response.status})`, data.appError);
   } catch {
     message = raw;
   }
@@ -77,7 +79,7 @@ export async function postWorkflowJSON<T>(url: string, body: unknown): Promise<T
     body: JSON.stringify(body),
   });
 
-  const rawData = (await response.json().catch(() => ({}))) as T & { error?: string; __studio?: { promptSnapshots?: PromptRuntimeSnapshot[] } };
+  const rawData = (await response.json().catch(() => ({}))) as T & { error?: string; appError?: unknown; __studio?: { promptSnapshots?: PromptRuntimeSnapshot[] } };
   const promptSnapshots = rawData.__studio?.promptSnapshots ?? [];
   if (rawData && typeof rawData === "object") delete rawData.__studio;
   const data = rawData as T & { error?: string };
@@ -86,7 +88,7 @@ export async function postWorkflowJSON<T>(url: string, body: unknown): Promise<T
   const nodeId = nodeIdForURL(url);
   const status = response.ok ? "success" : "error";
   void saveTraceSpan({ id: traceId, nodeId, label: labelForNode(nodeId), status, mode: (response.headers.get("X-AI-Mode") as "mock" | "llm" | "flowise" | null) ?? undefined, provider: response.headers.get("X-AI-Provider") ?? undefined, model: response.headers.get("X-AI-Model") ?? undefined, startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(), latencyMs: finishedAt.getTime() - startedAt.getTime(), input: body, output: response.ok ? data : undefined, error: response.ok ? undefined : data.error || `HTTP ${response.status}`, promptSnapshots }).catch(reportTraceStorageError);
-  if (!response.ok) throw new ResumeAgentClientError(data.error || `请求失败 (${response.status})`);
+  if (!response.ok) throw new ResumeAgentClientError(data.error || `请求失败 (${response.status})`, isAppErrorPayload(rawData.appError) ? rawData.appError : undefined);
 
   return data;
 }

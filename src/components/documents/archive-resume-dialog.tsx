@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useResumeStore } from "@/store/resume-store";
+import { hasRunningTask } from "@/lib/tasks/task-runtime";
 import { archiveBlockedReason } from "@/lib/library/resume-archives";
 
 export function ArchiveResumeButton({ documentId, onArchived }: { documentId: string; onArchived?: (id: string) => void }) {
@@ -17,7 +18,7 @@ export function ArchiveResumeButton({ documentId, onArchived }: { documentId: st
   const [result, setResult] = useState<{ id: string; duplicate: boolean } | null>(null);
   const [changed, setChanged] = useState(false);
   const uid = useId();
-  const blocked = archiveBlockedReason(document, !!state.dirtyScope, state.isAnalyzing);
+  const blocked = archiveBlockedReason(document, !!state.dirtyScope, hasRunningTask(documentId));
   useEffect(() => {
     const unload = (event: BeforeUnloadEvent) => { if (open && changed && !result) { event.preventDefault(); event.returnValue = ""; } };
     window.addEventListener("beforeunload", unload);

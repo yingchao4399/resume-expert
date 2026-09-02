@@ -18,6 +18,8 @@ import { useCareerDomain } from "@/hooks/use-career-domain";
 import { useNavigationTaskGuard } from "@/hooks/use-navigation-task-guard";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 import { findCoveredKeywords, getConfirmedJDKeywords, getMissingKeywordCandidates, normalizeKeyword, splitTextByKeywords } from "@/lib/optimize/keyword-enhancement";
+import { beginTask, completeTask, failTask } from "@/lib/tasks/task-runtime";
+import { taskErrorPayload } from "@/lib/errors/app-error";
 
 const STYLE_OPTIONS: { value: Exclude<OptimizeStyle, "custom">; label: string }[] = [
   { value: "concise", label: "更简洁" }, { value: "reduce-exaggeration", label: "降低夸张" },
@@ -46,11 +48,12 @@ export function OptimizeStep() {
   const evidencePrompt = careerClaimsPrompt(careerDomain, selectRelevantClaims(careerDomain, userInput.targetRole, userInput.jobDescription));
   const updateItems = (mapper: (items: OptimizedItem[]) => OptimizedItem[]) => store.setOptimizedItems(mapper(useResumeStore.getState().analysisResult?.optimizedItems ?? []));
   const generateOptimizedItems = async (style: OptimizeStyle, instruction = customOptimizeInstruction) => {
+    beginTask(activeDocumentId, "optimize", "正在生成优化方案");
     setRegenerating(true); setOptimizeError(null);
     try {
       const items = await regenerateOptimizedItems({ ...userInput, additionalInfo: [userInput.additionalInfo, evidencePrompt].filter(Boolean).join("\n\n") }, style, instruction);
-      store.setOptimizedItems(items); setSelected({});
-    } catch (error) { setOptimizeError(error instanceof Error ? error.message : "优化生成失败"); }
+      store.setOptimizedItems(items); setSelected({}); completeTask(activeDocumentId, "optimize", "优化方案已生成");
+    } catch (error) { const payload = taskErrorPayload(error, "优化生成失败"); failTask(activeDocumentId, "optimize", payload); setOptimizeError(payload.userMessage); }
     finally { setRegenerating(false); }
   };
   const handleStyleChange = async (style: Exclude<OptimizeStyle, "custom">) => { store.setOptimizeStyle(style); await generateOptimizedItems(style); };
@@ -70,12 +73,12 @@ export function OptimizeStep() {
       return [{ itemId: item.id, section: item.section, currentText: item.after, selectedKeywords, evidence }];
     });
     if (!requestItems.length) { setOptimizeError("请先勾选需要增强的缺失关键词。"); return; }
-    setEnhancing(true); setOptimizeError(null);
+    beginTask(activeDocumentId, "optimize", "正在增强缺失关键词"); setEnhancing(true); setOptimizeError(null);
     try {
       const enhancements = await enhanceMissingKeywords({ input: userInput, items: requestItems, allowedKeywords: confirmedKeywords, customInstruction: optimizeStyle === "custom" ? customOptimizeInstruction : "" });
       const byId = new Map(enhancements.map((draft) => [draft.itemId, draft]));
-      updateItems((items) => items.map((item) => byId.has(item.id) ? { ...item, keywordEnhancement: byId.get(item.id)! } : item));
-    } catch (error) { setOptimizeError(error instanceof Error ? error.message : "关键词增强失败"); }
+      updateItems((items) => items.map((item) => byId.has(item.id) ? { ...item, keywordEnhancement: byId.get(item.id)! } : item)); completeTask(activeDocumentId, "optimize", "关键词增强稿已生成");
+    } catch (error) { const payload = taskErrorPayload(error, "关键词增强失败"); failTask(activeDocumentId, "optimize", payload); setOptimizeError(payload.userMessage); }
     finally { setEnhancing(false); }
   };
 
@@ -111,13 +114,13 @@ export function OptimizeStep() {
     if (!currentResult?.optimizedItems.length) { setOptimizeError("请先生成优化方案，再生成最终简历。"); return; }
     if (finalResumeStatus === "confirmed") { store.setCurrentStep("final-resume"); return; }
     if (hasManualEdits && !window.confirm("重新生成会覆盖你在最终简历中的人工修改，是否继续？")) return;
-    setFinalizing(true); setOptimizeError(null);
+    beginTask(activeDocumentId, "finalize", "正在生成最终简历"); setFinalizing(true); setOptimizeError(null);
     try {
       const latestResult = useResumeStore.getState().analysisResult;
       if (!latestResult) return;
       const resume = await finalizeResume({ ...userInput, additionalInfo: [userInput.additionalInfo, evidencePrompt].filter(Boolean).join("\n\n") }, optimizeStyle, latestResult.optimizedItems, latestResult.followUpQuestions, optimizeStyle === "custom" ? customOptimizeInstruction : "");
-      store.setFinalResume(resume); store.setCurrentStep("final-resume");
-    } catch (error) { setOptimizeError(error instanceof Error ? error.message : "最终简历生成失败"); }
+      store.setFinalResume(resume); completeTask(activeDocumentId, "finalize", "最终简历已生成"); store.setCurrentStep("final-resume");
+    } catch (error) { const payload = taskErrorPayload(error, "最终简历生成失败"); failTask(activeDocumentId, "finalize", payload); setOptimizeError(payload.userMessage); }
     finally { setFinalizing(false); }
   };
 

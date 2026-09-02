@@ -36,6 +36,8 @@ import { downloadATSTextPdf, downloadVisualPdf } from "@/lib/export/resume-pdf";
 import { copyToClipboard, formatResumeAsText } from "@/lib/utils";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 import type { ResumePaginationPlan, ResumePaginationStatus } from "@/types/resume";
+import { beginTask, completeTask, failTask } from "@/lib/tasks/task-runtime";
+import { taskErrorPayload } from "@/lib/errors/app-error";
 
 export function ExportStep() {
   const {
@@ -94,14 +96,16 @@ export function ExportStep() {
 
   const handleDocx = async () => {
     if (exportBlocked || paginationBlocked || !paginationPlan) return;
+    beginTask(activeDocumentId, "export", "正在生成 Word");
     setExporting(true);
     setExportError(null);
     try {
       await downloadResumeDocx(finalResume, userInput.targetRole, layoutConfig, paginationPlan);
+      completeTask(activeDocumentId, "export", "Word 已下载");
     } catch (error) {
-      setExportError(
-        error instanceof Error ? error.message : "Word 文件生成失败"
-      );
+      const payload = taskErrorPayload(error, "Word 文件生成失败");
+      failTask(activeDocumentId, "export", payload);
+      setExportError(payload.userMessage);
     } finally {
       setExporting(false);
     }
@@ -117,6 +121,7 @@ export function ExportStep() {
 
   const handlePdf = async (mode: "ats-text" | "visual") => {
     if (exportBlocked || paginationBlocked || !paginationPlan) return;
+    beginTask(activeDocumentId, "export", mode === "ats-text" ? "正在生成 ATS PDF" : "正在生成视觉 PDF");
     setPdfExport(mode); setExportError(null);
     try {
       if (mode === "ats-text") await downloadATSTextPdf(finalResume, userInput.targetRole, layoutConfig, { paginationPlan });
@@ -124,8 +129,11 @@ export function ExportStep() {
         const pages = Array.from(visualPagesRef.current?.querySelectorAll<HTMLElement>("[data-pdf-page]") ?? []);
         await downloadVisualPdf(pages, finalResume, userInput.targetRole, { paginationPlan });
       }
+      completeTask(activeDocumentId, "export", "PDF 已下载");
     } catch (error) {
-      setExportError(error instanceof Error ? error.message : "PDF 生成失败，请稍后重试。");
+      const payload = taskErrorPayload(error, "PDF 生成失败，请稍后重试。");
+      failTask(activeDocumentId, "export", payload);
+      setExportError(payload.userMessage);
     } finally { setPdfExport(null); }
   };
 

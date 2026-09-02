@@ -6,6 +6,7 @@ import { StepSidebar } from "@/components/layout/step-sidebar";
 import { TopNav } from "@/components/layout/top-nav";
 import { StepContent } from "@/components/steps/step-content";
 import { Button } from "@/components/ui/button";
+import { StepErrorBoundary } from "@/components/shared/step-error-boundary";
 import { migrateCareerEvidenceOnce, replaceCareerDomain } from "@/lib/career/career-db";
 import { projectClaimsToLegacyEvidence } from "@/lib/career/career-context";
 import { mergeCareerSnapshots, migrateLegacyEvidence } from "@/lib/career/migration";
@@ -16,7 +17,7 @@ import {
 } from "@/store/resume-store";
 
 export function AppShell({ children }: { children?: React.ReactNode }) {
-  const { storageError, setStorageError, recoveryAvailable, recoveryReason, recoveryReport, attemptStorageRecovery, confirmStorageRecovery, clearCorruptStorage, dirtyScope } = useResumeStore();
+  const { storageError, setStorageError, recoveryAvailable, recoveryReason, recoveryReport, attemptStorageRecovery, confirmStorageRecovery, clearCorruptStorage, dirtyScope, activeDocumentId, currentStep } = useResumeStore();
   const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -105,7 +106,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
         {!children && <StepSidebar />}
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-5xl p-6">
-            {children ?? <StepContent />}
+            {children ?? <StepErrorBoundary resetKey={`${activeDocumentId}:${currentStep}`}><StepContent /></StepErrorBoundary>}
           </div>
         </main>
       </div>

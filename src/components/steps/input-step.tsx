@@ -23,6 +23,9 @@ import { buildCareerAnalysisClaims } from "@/lib/career/career-context";
 import { useCareerDomain } from "@/hooks/use-career-domain";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 import { COMPANY_TYPES, isCompanyType, isJobStage, JOB_STAGES } from "@/config/job-options";
+import { beginTask, cancelTask, completeTask, failTask, updateTask } from "@/lib/tasks/task-runtime";
+import { taskErrorPayload } from "@/lib/errors/app-error";
+import { useTaskRun } from "@/hooks/use-task-run";
 const ANALYSIS_STAGES = ["拆分原子要求", "全局语义归并", "整理核心要求", "生成岗位画像"] as const;
 
 
@@ -37,9 +40,8 @@ export function InputStep() {
     setUserInput,
     setImportedResume,
     loadExampleData,
-    isAnalyzing,
+    activeDocumentId,
     analysisError,
-    setAnalyzing,
     setJDAnalysisDocument,
     setAnalysisError,
     setCurrentStep,
@@ -48,6 +50,8 @@ export function InputStep() {
     analysisResult,
     aiMode,
   } = useResumeStore();
+  const analysisTask = useTaskRun(activeDocumentId, "jd-analysis");
+  const isAnalyzing = analysisTask.status === "running";
   const [showValidation, setShowValidation] = useState(false);
   const [exampleLoaded, setExampleLoaded] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -77,7 +81,12 @@ export function InputStep() {
     return () => window.clearInterval(timer);
   }, [isAnalyzing]);
 
-  useEffect(() => () => abortControllerRef.current?.abort(), []);
+  useEffect(() => () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      cancelTask(activeDocumentId, "jd-analysis");
+    }
+  }, [activeDocumentId]);
 
   useEffect(() => {
     if (!isAnalyzing) return;
@@ -102,7 +111,7 @@ export function InputStep() {
       return;
     }
     setShowValidation(false);
-    setAnalyzing(true);
+    beginTask(activeDocumentId, "jd-analysis", "正在启动 JD 解析");
     setAnalysisError(null);
     setAnalysisNotice(null);
     setAnalysisProgress(null);
@@ -115,22 +124,29 @@ export function InputStep() {
         jobTargetContext,
         buildCareerAnalysisClaims(careerDomain),
         optimizeStyle,
-        { signal: controller.signal, onProgress: setAnalysisProgress, materialRevision: requestedRevision },
+        { signal: controller.signal, onProgress: event => {
+          setAnalysisProgress(event);
+          updateTask(activeDocumentId, "jd-analysis", { message: "message" in event ? event.message ?? null : null });
+        }, materialRevision: requestedRevision },
       );
       if (setJDAnalysisDocument(document, requestedRevision)) {
         abortControllerRef.current = null;
-        setAnalyzing(false);
+        completeTask(activeDocumentId, "jd-analysis", "JD 需求地图已生成");
         setCurrentStep("jd-analysis");
+      } else {
+        cancelTask(activeDocumentId, "jd-analysis", "材料已变化，迟到结果未保存。");
       }
     } catch (error) {
       if (error instanceof ResumeAnalysisCancelledError) {
         setAnalysisNotice(error.message);
+        cancelTask(activeDocumentId, "jd-analysis", error.message);
       } else {
-        setAnalysisError(error instanceof Error ? error.message : "分析失败，请稍后重试");
+        const payload = taskErrorPayload(error, "分析失败，请稍后重试");
+        failTask(activeDocumentId, "jd-analysis", payload);
+        setAnalysisError(payload.userMessage);
       }
     } finally {
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
-      setAnalyzing(false);
     }
   };
 

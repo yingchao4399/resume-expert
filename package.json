@@ -1,12 +1,14 @@
 {
   "name": "resume-expert",
-  "version": "1.11.0",
+  "version": "1.11.1",
   "private": true,
   "engines": {
     "node": ">=24 <25"
   },
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
+    "app:local": "node scripts/start-local.mjs",
+    "doctor": "node scripts/doctor.mjs",
     "dev:e2e": "node scripts/start-e2e-server.mjs",
     "build": "next build",
     "start": "next start",

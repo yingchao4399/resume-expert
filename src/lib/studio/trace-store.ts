@@ -1,26 +1,12 @@
 import type { WorkflowSpan, WorkflowTrace } from "@/lib/studio/trace-types";
+import { openStudioDB, STUDIO_TRACE_STORE as STORE_NAME } from "@/lib/studio/studio-db";
 
-const DB_NAME = "resume-expert-studio";
-const STORE_NAME = "traces";
-const WORKFLOW_STORE_NAME = "workflow-workspace";
 const MAX_TRACES = 50;
 const MAX_TOTAL_BYTES = 50_000_000;
 const MAX_AGE = 30 * 24 * 60 * 60 * 1000;
 const MAX_SPAN_BYTES = 900_000;
 export const TRACE_STORAGE_ERROR_EVENT = "resume-expert-trace-storage-error";
 const TRACE_STORAGE_ERROR_KEY = "resume-expert-trace-storage-error";
-
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 2);
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE_NAME)) request.result.createObjectStore(STORE_NAME, { keyPath: "id" });
-      if (!request.result.objectStoreNames.contains(WORKFLOW_STORE_NAME)) request.result.createObjectStore(WORKFLOW_STORE_NAME);
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
 
 function requestValue<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -46,7 +32,7 @@ function compactSpan(span: WorkflowSpan): WorkflowSpan {
 }
 
 export async function saveTraceSpan(span: WorkflowSpan, documentId?: string): Promise<void> {
-  const db = await openDB();
+  const db = await openStudioDB();
   const transaction = db.transaction(STORE_NAME, "readwrite");
   const store = transaction.objectStore(STORE_NAME);
   const trace: WorkflowTrace = {
@@ -80,14 +66,14 @@ export function clearTraceStorageError(): void {
 }
 
 export async function listTraces(): Promise<WorkflowTrace[]> {
-  const db = await openDB();
+  const db = await openStudioDB();
   const values = await requestValue(db.transaction(STORE_NAME).objectStore(STORE_NAME).getAll()) as WorkflowTrace[];
   db.close();
   return values.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function clearTraces(): Promise<void> {
-  const db = await openDB();
+  const db = await openStudioDB();
   await requestValue(db.transaction(STORE_NAME, "readwrite").objectStore(STORE_NAME).clear());
   db.close();
 }
@@ -103,7 +89,7 @@ async function pruneTraces(): Promise<void> {
     return shouldRemove;
   });
   if (!remove.length) return;
-  const db = await openDB();
+  const db = await openStudioDB();
   const tx = db.transaction(STORE_NAME, "readwrite");
   for (const trace of remove) tx.objectStore(STORE_NAME).delete(trace.id);
   await new Promise<void>((resolve) => { tx.oncomplete = () => resolve(); });

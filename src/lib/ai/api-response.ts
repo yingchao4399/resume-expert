@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z, type ZodType } from "zod";
 import { LLMError } from "@/lib/ai/errors";
 import type { PromptRuntimeSnapshot } from "@/lib/studio/prompt-types";
+import { createAppErrorPayload, type AppErrorCategory } from "@/lib/errors/app-error";
 
 export async function parseAPIRequest<T>(
   request: Request,
@@ -32,22 +33,27 @@ export function toAPIErrorResponse(
   console.error(`[${scope}]`, error);
 
   if (error instanceof z.ZodError) {
+    const payload = createAppErrorPayload(error, { code: "INVALID_REQUEST", category: "validation", userMessage: error.issues[0]?.message || "请求参数不合法", retryable: false });
     return NextResponse.json(
-      withStudioSnapshots({ error: error.issues[0]?.message || "请求参数不合法" }, promptSnapshots),
+      withStudioSnapshots({ error: payload.userMessage, appError: payload }, promptSnapshots),
       { status: 400 }
     );
   }
 
   if (error instanceof LLMError) {
+    const category = (error.category === "rate_limit" ? "rate_limit" : error.category === "authentication" ? "authentication" : error.category === "base_url" ? "base_url" : error.category === "timeout" ? "timeout" : error.category === "cancelled" ? "cancelled" : error.category === "model" ? "model" : "network") satisfies AppErrorCategory;
+    const payload = createAppErrorPayload(error, { code: `AI_${category.toUpperCase()}`, category, userMessage: error.message, retryable: !["authentication", "cancelled"].includes(category) });
     return NextResponse.json(
-      withStudioSnapshots({ error: error.message, category: error.category }, promptSnapshots),
+      withStudioSnapshots({ error: payload.userMessage, category: error.category, appError: payload }, promptSnapshots),
       { status: error.status && error.status >= 400 && error.status <= 599 ? error.status : 500 }
     );
   }
 
+  const payload = createAppErrorPayload(error, { code: "UNEXPECTED_ERROR", category: "unexpected", userMessage: error instanceof Error ? error.message : fallbackMessage, retryable: true });
   return NextResponse.json(
     withStudioSnapshots({
-      error: error instanceof Error ? error.message : fallbackMessage,
+      error: payload.userMessage,
+      appError: payload,
     }, promptSnapshots),
     { status: 500 }
   );

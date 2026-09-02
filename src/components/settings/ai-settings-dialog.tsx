@@ -73,6 +73,7 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
         <DialogTitle className="flex items-center gap-2 text-base"><Settings2 className="h-4 w-4" />AI 模型设置</DialogTitle>
         <DialogDescription className="text-xs">支持六家官方 Provider 与自定义 OpenAI 兼容接口。刷新模型不会自动保存或替换当前模型。</DialogDescription>
       </DialogHeader>
+      <form onSubmit={(event) => { event.preventDefault(); void handleSave(); }}>
       {loading ? <div className="flex items-center justify-center py-16"><Loader2 className="h-5 w-5 animate-spin" /></div> : <div className="max-h-[65vh] overflow-y-auto px-5 py-4">
         <div className="mb-4 flex items-center gap-2 rounded-md border bg-neutral-50 px-3 py-2 text-xs"><span className="text-neutral-500">当前状态：</span><Badge variant={useMock ? "secondary" : "success"}>{useMock ? "Mock 模式" : "AI 模式"}</Badge>{hasExistingKey && <span className="text-neutral-400">Key 来源：{keySource === "user" ? "本地配置" : keySource === "env" ? "环境变量" : "未配置"}</span>}</div>
         {invalidExistingKey && <Alert tone="amber">当前保存的 API Key 格式错误，请重新粘贴服务商控制台生成的完整 Key。</Alert>}
@@ -109,7 +110,8 @@ export function AISettingsDialog({ open, onOpenChange, onSaved }: AISettingsDial
         </div>}
         {error && <Alert tone="red">{error}</Alert>}
       </div>}
-      <div className="flex justify-end gap-2 border-t px-5 py-3"><Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>取消</Button><Button variant="outline" size="sm" onClick={() => void handleTest()} disabled={useMock || saving || testing || loading}>{testing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{testing ? "测试中" : "测试连接"}</Button><Button size="sm" onClick={() => void handleSave()} disabled={saving || loading}>{saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{saving ? "保存中" : "保存配置"}</Button></div>
+      <div className="flex justify-end gap-2 border-t px-5 py-3"><Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>取消</Button><Button type="button" variant="outline" size="sm" onClick={() => void handleTest()} disabled={useMock || saving || testing || loading}>{testing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{testing ? "测试中" : "测试连接"}</Button><Button type="submit" size="sm" disabled={saving || loading}>{saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{saving ? "保存中" : "保存配置"}</Button></div>
+      </form>
     </DialogContent>
   </Dialog>;
 }

@@ -16,6 +16,9 @@ import { ResumeEditor } from "@/components/resume/resume-editor";
 import { extractResumeText, type ExtractedResumeText } from "@/lib/import/resume-import";
 import { structureImportedResume } from "@/services/ai/resumeAgent";
 import type { FinalResume, ImportedResumeItem, ImportedResumeProfile, ResumeImportMetadata } from "@/types/resume";
+import { useResumeStore } from "@/store/resume-store";
+import { beginTask, completeTask, failTask } from "@/lib/tasks/task-runtime";
+import { taskErrorPayload } from "@/lib/errors/app-error";
 
 interface ResumeImportDialogProps {
   open: boolean;
@@ -76,6 +79,8 @@ export function ResumeImportDialog({ open, onOpenChange, onConfirm }: ResumeImpo
 
   const handleStructure = async () => {
     if (text.trim().length < 20) return;
+    const documentId = useResumeStore.getState().activeDocumentId;
+    beginTask(documentId, "resume-import", "正在整理导入简历");
     setStructuring(true);
     setError(null);
     try {
@@ -84,8 +89,11 @@ export function ResumeImportDialog({ open, onOpenChange, onConfirm }: ResumeImpo
       setImportedProfile(result.importedResume ?? null);
       setMode(result.mode);
       setNotice("结构化结果已生成，请逐项核对后确认导入。");
+      completeTask(documentId, "resume-import", "导入简历已整理");
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "AI 整理失败");
+      const payload = taskErrorPayload(nextError, "AI 整理失败");
+      failTask(documentId, "resume-import", payload);
+      setError(payload.userMessage);
     } finally {
       setStructuring(false);
     }

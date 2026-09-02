@@ -48,7 +48,6 @@ export interface ResumeStore {
   userInput: UserInput;
   jobTargetContext: JobTargetContext;
   currentStep: StepId;
-  isAnalyzing: boolean;
   analysisResult: AnalysisResult | null;
   materialRevision: number;
   analysisRevision: number | null;
@@ -104,7 +103,6 @@ export interface ResumeStore {
   setLayoutConfig: (config: ResumeLayoutConfig) => void;
   loadExampleData: () => boolean;
   setCurrentStep: (step: StepId) => void;
-  setAnalyzing: (analyzing: boolean) => void;
   setJDAnalysisDocument: (document: JDAnalysisDocument, expectedMaterialRevision: number) => boolean;
   updateJDRequirement: (requirementId: string, patch: Parameters<typeof import("@/lib/jd/decision-map").updateRequirementAtom>[2]) => void;
   confirmSafeJDRequirements: () => void;

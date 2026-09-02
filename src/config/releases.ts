@@ -1,4 +1,5 @@
 export const RELEASE_RECORDS = [
+  { version: "1.11.1", goal: "故障隔离与恢复补丁", modules: ["路由与模块错误边界", "独立任务运行状态", "统一脱敏错误", "本机 doctor", "Studio 故障记录"], tests: "237 Vitest / 48 Playwright / evals / audit / build", status: "released" },
   { version: "1.11.0", goal: "我的简历库与历史存档", modules: ["岗位版本检索与只读查看", "手动冻结成品与去重", "历史 PDF/Word 下载", "V10 备份与局部恢复", "存储失败与导航保护"], tests: "233 Vitest / 48 Playwright / evals / audit / build", status: "released" },
   { version: "1.10.3", goal: "JD 语义归并与需求地图修复", modules: ["全局语义归并与来源保留", "核心分组与可撤销对照", "120 条整图容量", "V9 备份与旧地图迁移", "按批次预算与取消"], tests: "220 Vitest / 41 Playwright / evals / 12 真实模型合成归并案例 / audit / build", status: "released" },
   { version: "1.10.2", goal: "结构化分析、Word 分页与回归环境收尾", modules: ["Qwen 非思考结构任务", "双阶段连接测试", "岗位画像降级", "DOCX 显式分页", "独立 E2E 构建目录"], tests: "182 Vitest / 39 Playwright / evals / audit / build", status: "released" },

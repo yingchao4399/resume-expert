@@ -45,6 +45,7 @@ import {
   writeLibraryOrThrow,
   librarySnapshot,
 } from "@/store/resume-store-persistence";
+import { hasRunningTask } from "@/lib/tasks/task-runtime";
 
 export { defaultUserInput } from "@/store/resume-store-example";
 export { createEmptyDocument } from "@/store/resume-store-document";
@@ -57,8 +58,8 @@ export {
 } from "@/store/resume-store-persistence";
 
 function confirmUnsavedChanges(state: ResumeStore): boolean {
-  if (state.isAnalyzing && typeof window !== "undefined") {
-    if (!window.confirm("深度分析仍在进行，离开会取消本次分析且不会写入半成品。是否继续？")) return false;
+  if (hasRunningTask(state.activeDocumentId) && typeof window !== "undefined") {
+    if (!window.confirm("当前任务仍在进行，离开会取消本次任务且不会写入半成品。是否继续？")) return false;
   }
   if (!state.dirtyScope || typeof window === "undefined") return true;
   const label = state.dirtyScope === "resume" ? "简历内容" : state.dirtyScope === "layout" ? "排版设置" : state.dirtyScope === "jd" ? "需求地图" : "经历资料";
@@ -152,7 +153,6 @@ export const useResumeStore = create<ResumeStore>()(
       dirtyScope: null,
 
       ...workingStateFromDocument(initialDocument),
-      isAnalyzing: false,
       aiMode: null,
       focusedRequirementId: null,
 
@@ -271,7 +271,7 @@ export const useResumeStore = create<ResumeStore>()(
       archiveDocument: (id, title, notes) => {
         const state = get();
         const document = state.documents.find(item => item.id === id);
-        const blocked = archiveBlockedReason(document, Boolean(state.dirtyScope), state.isAnalyzing);
+        const blocked = archiveBlockedReason(document, Boolean(state.dirtyScope), hasRunningTask(document?.id ?? id));
         if (blocked) throw new Error(blocked);
         const archive = createArchive(document!, title, notes);
         const existing = state.archives.find(item => sameArchiveContent(item, archive));
@@ -683,8 +683,6 @@ export const useResumeStore = create<ResumeStore>()(
           if (!confirmUnsavedChanges(state)) return state;
           return { ...updateActiveDocument(state, { currentStep: step }), dirtyScope: null };
         }),
-
-      setAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
 
       setJDAnalysisDocument: (document, expectedMaterialRevision) => {
         const parsed = jdAnalysisDocumentSchema.safeParse(document);

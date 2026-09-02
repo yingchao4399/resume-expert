@@ -16,6 +16,9 @@ import { JDConsolidationPanel } from "@/components/jd/consolidation-panel";
 import { defaultRequirementGroups, sourceReferences } from "@/lib/jd/consolidation";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 import type { JDRequirementAtom } from "@/types/jd-analysis";
+import { beginTask, cancelTask, completeTask, failTask, updateTask } from "@/lib/tasks/task-runtime";
+import { taskErrorPayload } from "@/lib/errors/app-error";
+import { useTaskRun } from "@/hooks/use-task-run";
 
 const KIND_LABEL: Record<JDRequirementAtom["kind"], string> = {
   task: "任务", deliverable: "产出", knowledge: "知识", skill: "技能", tool: "工具", experience: "经验",
@@ -33,10 +36,12 @@ export function JDAnalysisStep() {
   const { snapshot } = useCareerDomain();
   const {
     activeDocumentId, setDirtyScope, confirmJDGroup, jdAnalysisDocument, userInput, jobTargetContext, optimizeStyle, materialRevision, analysisResult,
-    isAnalyzing, analysisError, setAnalyzing, setAnalysisError, updateJDRequirement,
+    analysisError, setAnalysisError, updateJDRequirement,
     confirmSafeJDRequirements, confirmJDRequirement, rejectJDRequirement, confirmJDAnalysis,
     setAnalysisResult, setCurrentStep, openFollowUpForRequirement,
   } = useResumeStore();
+  const matchTask = useTaskRun(activeDocumentId, "requirement-match");
+  const isAnalyzing = matchTask.status === "running";
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [editKind, setEditKind] = useState<JDRequirementAtom["kind"]>("task");
@@ -46,7 +51,7 @@ export function JDAnalysisStep() {
   const [progress, setProgress] = useState<DecisionStreamEvent | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
 
-  useEffect(() => () => { if (controllerRef.current) { controllerRef.current.abort(); controllerRef.current = null; setAnalyzing(false); } }, [activeDocumentId, setAnalyzing]);
+  useEffect(() => () => { if (controllerRef.current) { controllerRef.current.abort(); controllerRef.current = null; cancelTask(activeDocumentId, "requirement-match"); } }, [activeDocumentId]);
   const requirements = jdAnalysisDocument?.requirements ?? [];
   const groups = jdAnalysisDocument?.groups?.length ? jdAnalysisDocument.groups : defaultRequirementGroups(requirements);
   const mapStale = jdAnalysisDocument?.status === "stale" || jdAnalysisDocument?.materialRevision !== materialRevision;
@@ -94,7 +99,7 @@ export function JDAnalysisStep() {
       setAnalysisError("请先处理全部待复核项并确认整张需求地图。");
       return;
     }
-    setAnalyzing(true);
+    beginTask(activeDocumentId, "requirement-match", "正在匹配真实经历");
     setAnalysisError(null);
     setProgress(null);
     const controller = new AbortController();
@@ -103,18 +108,22 @@ export function JDAnalysisStep() {
     try {
       const result = await runRequirementMatchStreaming(
         userInput, jobTargetContext, buildCareerAnalysisClaims(snapshot), jdAnalysisDocument, optimizeStyle,
-        { signal: controller.signal, onProgress: setProgress },
+        { signal: controller.signal, onProgress: event => { setProgress(event); updateTask(activeDocumentId, "requirement-match", { message: "message" in event ? event.message ?? null : null }); } },
       );
       if (!controller.signal.aborted && useResumeStore.getState().activeDocumentId === activeDocumentId && setAnalysisResult(result, materialRevision, expectedJDRevision)) {
         // Completion is not an in-flight navigation: clear the leave/cancel guard first.
         controllerRef.current = null;
-        setAnalyzing(false);
+        completeTask(activeDocumentId, "requirement-match", "岗位事实匹配已完成");
         setCurrentStep("diagnosis");
+      } else if (!controller.signal.aborted) {
+        cancelTask(activeDocumentId, "requirement-match", "材料或需求地图已变化，迟到结果未保存。");
       }
     } catch (error) {
+      if (error instanceof ResumeAnalysisCancelledError) cancelTask(activeDocumentId, "requirement-match", error.message);
+      else failTask(activeDocumentId, "requirement-match", taskErrorPayload(error, "事实匹配失败"));
       setAnalysisError(error instanceof ResumeAnalysisCancelledError ? error.message : error instanceof Error ? error.message : "事实匹配失败");
     } finally {
-      if (controllerRef.current === controller) { controllerRef.current = null; setAnalyzing(false); }
+      if (controllerRef.current === controller) controllerRef.current = null;
     }
   };
 

@@ -9,16 +9,23 @@ import { useResumeStore } from "@/store/resume-store";
 import { prepareInterviewStreaming, ResumeAnalysisCancelledError } from "@/services/ai/resumeAgent";
 import type { InterviewPreparationProgressEvent } from "@/lib/ai/interview-preparation";
 import { useNavigationTaskGuard } from "@/hooks/use-navigation-task-guard";
+import { beginTask, cancelTask, completeTask, failTask, updateTask } from "@/lib/tasks/task-runtime";
+import { taskErrorPayload } from "@/lib/errors/app-error";
+import { useTaskRun } from "@/hooks/use-task-run";
 
 export function InterviewStep() {
-  const { analysisResult, userInput, jobTargetContext, materialRevision, analysisRevision, setInterviewPrep, setCurrentStep } = useResumeStore();
-  const [generating, setGenerating] = useState(false);
+  const { activeDocumentId, analysisResult, userInput, jobTargetContext, materialRevision, analysisRevision, setInterviewPrep, setCurrentStep } = useResumeStore();
+  const task = useTaskRun(activeDocumentId, "interview-prepare");
+  const generating = task.status === "running";
   const [progress, setProgress] = useState<InterviewPreparationProgressEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  useNavigationTaskGuard(generating, () => abortRef.current?.abort());
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useNavigationTaskGuard(generating, () => {
+    abortRef.current?.abort();
+    cancelTask(activeDocumentId, "interview-prepare");
+  });
+  useEffect(() => () => { if (abortRef.current) { abortRef.current.abort(); cancelTask(activeDocumentId, "interview-prepare"); } }, [activeDocumentId]);
 
   if (!analysisResult) {
     return <EmptyState message="请先完成输入材料并开始分析" />;
@@ -35,16 +42,19 @@ export function InterviewStep() {
     if (!analysisFresh || generating) return;
     const controller = new AbortController();
     abortRef.current = controller;
-    setGenerating(true); setError(null); setNotice(null); setProgress(null);
+    beginTask(activeDocumentId, "interview-prepare", "正在生成面试策略"); setError(null); setNotice(null); setProgress(null);
     try {
-      const prep = await prepareInterviewStreaming(userInput, jobTargetContext, analysisResult, materialRevision, { signal: controller.signal, onProgress: setProgress });
-      if (!controller.signal.aborted && !setInterviewPrep(prep, materialRevision)) setError("材料已在生成期间变化，迟到结果未保存。请重新分析后再生成。");
+      const prep = await prepareInterviewStreaming(userInput, jobTargetContext, analysisResult, materialRevision, { signal: controller.signal, onProgress: event => { setProgress(event); updateTask(activeDocumentId, "interview-prepare", { message: "message" in event ? event.message ?? null : null }); } });
+      if (!controller.signal.aborted && !setInterviewPrep(prep, materialRevision)) {
+        cancelTask(activeDocumentId, "interview-prepare", "材料已变化，迟到结果未保存。");
+        setError("材料已在生成期间变化，迟到结果未保存。请重新分析后再生成。");
+      }
+      else if (!controller.signal.aborted) completeTask(activeDocumentId, "interview-prepare", "面试策略已生成");
     } catch (next) {
-      if (next instanceof ResumeAnalysisCancelledError) setNotice(next.message);
-      else setError(next instanceof Error ? next.message : "面试策略生成失败");
+      if (next instanceof ResumeAnalysisCancelledError) { cancelTask(activeDocumentId, "interview-prepare", next.message); setNotice(next.message); }
+      else { const payload = taskErrorPayload(next, "面试策略生成失败"); failTask(activeDocumentId, "interview-prepare", payload); setError(payload.userMessage); }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
-      setGenerating(false);
     }
   };
 
