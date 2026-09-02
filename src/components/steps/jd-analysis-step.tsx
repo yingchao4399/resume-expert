@@ -128,8 +128,8 @@ export function JDAnalysisStep() {
   };
 
   const conclusion = confirmed.filter((item) => ["critical", "high"].includes(item.priority));
-  const topMatch = analysisResult?.jobReadiness?.strongestRequirementIds[0];
-  const topGap = analysisResult?.jobReadiness?.gapRequirementIds[0];
+  const topMatch = analysisResult?.jobReadinessV2?.strongestRequirementIds[0] ?? analysisResult?.jobReadiness?.strongestRequirementIds[0];
+  const topGap = analysisResult?.jobReadinessV2?.gapRequirementIds[0] ?? analysisResult?.jobReadiness?.gapRequirementIds[0];
 
   return (
     <div>

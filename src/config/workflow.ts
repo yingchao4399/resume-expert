@@ -12,10 +12,9 @@ export const WORKFLOW_STAGES: readonly WorkflowStageConfig[] = [
   {
     id: "materials",
     label: "材料",
-    description: "岗位、JD、简历与证据",
+    description: "岗位、JD 与原始简历",
     steps: [
       { id: "input", label: "岗位与简历材料" },
-      { id: "evidence", label: "经历证据库" },
     ],
   },
   {
@@ -27,7 +26,6 @@ export const WORKFLOW_STAGES: readonly WorkflowStageConfig[] = [
       { id: "diagnosis", label: "简历诊断" },
       { id: "match", label: "匹配分析" },
       { id: "follow-up", label: "经历补证" },
-      { id: "interview", label: "面试准备" },
     ],
   },
   {
@@ -42,9 +40,8 @@ export const WORKFLOW_STAGES: readonly WorkflowStageConfig[] = [
   {
     id: "delivery",
     label: "交付",
-    description: "ATS 检查、导出与备份",
+    description: "成品检查、导出与存档",
     steps: [
-      { id: "applications", label: "投递与进展" },
       { id: "export", label: "ATS 与导出" },
     ],
   },

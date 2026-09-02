@@ -7,40 +7,16 @@ import {
   BriefcaseBusiness,
   Check,
   Circle,
-  ClipboardList,
   Database,
-  Download,
-  FileSearch,
-  FileText,
-  GitCompare,
   LockKeyhole,
   Mic,
-  MessageSquare,
-  Sparkles,
-  Target,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useResumeStore } from "@/store/resume-store";
-import type { StepId } from "@/types/resume";
 import { INTERVIEW_REVIEW_STEPS, WORKFLOW_STAGES } from "@/config/workflow";
 import { getWorkflowProgress, type WorkflowStageStatus } from "@/lib/workflow-progress";
 import { calculateATSAssessment } from "@/lib/ats";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
-
-const STEP_ICONS: Record<StepId, React.ElementType> = {
-  input: FileText,
-  evidence: Database,
-  "jd-analysis": FileSearch,
-  diagnosis: Target,
-  match: GitCompare,
-  "follow-up": MessageSquare,
-  optimize: Sparkles,
-  "final-resume": ClipboardList,
-  interview: Brain,
-  applications: BriefcaseBusiness,
-  export: Download,
-  "interview-recording": Mic,
-};
 
 const STATUS_LABELS: Record<WorkflowStageStatus, string> = {
   pending: "待开始",
@@ -52,7 +28,6 @@ const STATUS_LABELS: Record<WorkflowStageStatus, string> = {
 export function StepSidebar() {
   const {
     setCurrentStep,
-    getStepStatus,
     analysisResult,
     userInput,
     currentStep,
@@ -64,8 +39,8 @@ export function StepSidebar() {
   } = useResumeStore();
   const progress = getWorkflowProgress({ currentStep, userInput, analysisResult, finalResumeStatus, materialRevision, analysisRevision, jdAnalysisDocument, analysisBasis });
   const atsAssessment = useMemo(
-    () => (isAnalysisFresh({ analysisResult, materialRevision, analysisRevision, jdAnalysisDocument, analysisBasis }) ? calculateATSAssessment(userInput, analysisResult!) : null),
-    [analysisResult, userInput, materialRevision, analysisRevision, jdAnalysisDocument, analysisBasis]
+    () => (finalResumeStatus === "confirmed" && isAnalysisFresh({ analysisResult, materialRevision, analysisRevision, jdAnalysisDocument, analysisBasis }) ? calculateATSAssessment(userInput, analysisResult!) : null),
+    [analysisResult, userInput, finalResumeStatus, materialRevision, analysisRevision, jdAnalysisDocument, analysisBasis]
   );
   const progressById = new Map(progress.map((item) => [item.id, item]));
 
@@ -100,40 +75,21 @@ export function StepSidebar() {
                 <p className="mt-1 text-[10px] text-neutral-500">{stageProgress.blocker ?? stage.description}</p>
                 <p className="mt-1 text-[10px] font-medium text-neutral-600">下一步：{stageProgress.actionLabel}</p>
               </button>
-              {stage.steps.map((step, stepIndex) => {
-                const status = getStepStatus(step.id);
-                const Icon = STEP_ICONS[step.id];
-                const isDisabled = status === "disabled";
-                return (
-                  <button
-                    key={step.id}
-                    type="button"
-                    disabled={isDisabled}
-                    onClick={() => !isDisabled && setCurrentStep(step.id)}
-                    className={cn(
-                      "mb-0.5 flex w-full items-center gap-2.5 rounded-md px-3 py-1.5 text-left text-sm transition-colors",
-                      status === "active" && "bg-neutral-100 text-neutral-900",
-                      status === "completed" && "text-neutral-600 hover:bg-neutral-50",
-                      status === "pending" && "text-neutral-500 hover:bg-neutral-50",
-                      status === "disabled" && "cursor-not-allowed text-neutral-300"
-                    )}
-                  >
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-                      {status === "completed" ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : status === "active" ? <Icon className="h-3.5 w-3.5" /> : isDisabled ? <LockKeyhole className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
-                    </span>
-                    <span className="flex-1 truncate">{step.label}</span>
-                    <span className="text-[10px] tabular-nums text-neutral-400">{stageIndex + 1}.{stepIndex + 1}</span>
-                  </button>
-                );
-              })}
             </section>
           );
         })}
 
         <section className="mt-4 border-t border-neutral-200 pt-3">
-          <p className="mb-1 px-3 text-[10px] font-medium uppercase tracking-wider text-neutral-400">独立模块 · 面试复盘</p>
+          <p className="mb-1 px-3 text-[10px] font-medium uppercase tracking-wider text-neutral-400">按需工具 · 不阻塞主流程</p>
+          {[
+            { id: "evidence" as const, label: "经历证据库", Icon: Database },
+            { id: "interview" as const, label: "面试准备", Icon: Brain },
+            { id: "applications" as const, label: "投递管理", Icon: BriefcaseBusiness },
+          ].map(({ id, label, Icon }) => <button key={id} type="button" onClick={() => setCurrentStep(id)} className={cn("flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-neutral-600 hover:bg-neutral-50", currentStep === id && "bg-neutral-100 text-neutral-900")}>
+            <Icon className="h-3.5 w-3.5" /><span className="flex-1">{label}</span><span className="text-[10px] text-neutral-400">按需</span>
+          </button>)}
           {INTERVIEW_REVIEW_STEPS.map((step) => {
-            const Icon = STEP_ICONS[step.id];
+            const Icon = Mic;
             const active = currentStep === step.id;
             return <button key={step.id} type="button" onClick={() => setCurrentStep(step.id)} className={cn("flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-neutral-600 hover:bg-neutral-50", active && "bg-neutral-100 text-neutral-900")}>
               <Icon className="h-3.5 w-3.5" /><span className="flex-1">{step.label}</span><span className="text-[10px] text-neutral-400">独立</span>

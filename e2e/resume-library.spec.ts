@@ -118,7 +118,7 @@ test("keeps a running task on cancelled navigation and aborts it before entering
   });
   try {
     await page.goto("/");
-    await page.getByRole("button", { name: /面试准备 2/ }).click();
+    await page.getByRole("button", { name: /面试准备/ }).click();
     const request = page.waitForRequest("**/api/interview/prepare/stream");
     await page.getByRole("button", { name: "生成面试策略", exact: true }).click();
     await request;
@@ -154,7 +154,7 @@ test("isolates a corrupt archive while keeping valid records visible across refr
   expect(await page.evaluate(() => localStorage.getItem("resume-expert-library-recovery"))).toBe(recovery);
 });
 
-test("exports, merges and replaces V10 archives with explicit confirmation", async ({ page }) => {
+test("exports, merges and replaces V11 archives with explicit confirmation", async ({ page }) => {
   const archive = createArchive(syntheticLibraryDocument(), "备份历史", "");
   await page.goto("/library");
   await expect(page.getByRole("heading", { name: "我的简历库" })).toBeVisible();
@@ -166,7 +166,7 @@ test("exports, merges and replaces V10 archives with explicit confirmation", asy
   const download = await downloadPromise;
   const file = (await download.path())!;
   const backup = JSON.parse(fs.readFileSync(file, "utf8"));
-  expect(backup.backupVersion).toBe(10); expect(backup.archives).toHaveLength(1);
+  expect(backup.backupVersion).toBe(11); expect(backup.archives).toHaveLength(1);
   await page.getByRole("dialog").locator('input[type="file"]').setInputFiles(file);
   await page.getByRole("button", { name: "合并为副本" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);

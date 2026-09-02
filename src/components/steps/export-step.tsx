@@ -67,14 +67,14 @@ export function ExportStep() {
   const finalResume = analysisResult?.finalResume;
   const assessment = useMemo(
     () =>
-      analysisResult
+      analysisResult && finalResumeStatus === "confirmed"
         ? calculateATSAssessment(userInput, analysisResult)
         : null,
-    [analysisResult, userInput]
+    [analysisResult, userInput, finalResumeStatus]
   );
 
   if (!analysisResult || !finalResume || !assessment) {
-    return <EmptyState message="请先完成输入材料并开始分析" />;
+    return <EmptyState message={analysisResult ? "请先生成并确认最终简历；ATS 不使用内部草稿计算。" : "请先完成输入材料并开始分析"} />;
   }
 
   const resumeText = formatResumeAsText(finalResume);

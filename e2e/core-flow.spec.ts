@@ -251,14 +251,14 @@ test("asks before replacing existing materials with example data", async ({ page
 test("persists a job application linked to the selected resume", async ({ page }) => {
   await seed(page);
   await page.goto("/");
-  await page.getByRole("button", { name: /投递与进展/ }).click();
+  await page.getByRole("button", { name: /投递管理/ }).click();
   await page.getByRole("button", { name: "新增投递" }).click();
   await page.getByLabel("公司").fill("未来科技");
   await page.getByLabel("岗位").fill("高级产品经理");
   await page.getByRole("button", { name: "保存投递" }).click();
   await expect(page.getByText("未来科技 · 高级产品经理")).toBeVisible();
   await page.reload();
-  await page.getByRole("button", { name: /投递与进展/ }).click();
+  await page.getByRole("button", { name: /投递管理/ }).click();
   await expect(page.getByText("未来科技 · 高级产品经理")).toBeVisible();
 });
 
@@ -282,7 +282,7 @@ test("keeps creation pending until the final resume is generated", async ({ page
   await page.getByRole("button", { name: "确认需求地图" }).click();
   await page.getByRole("button", { name: "匹配真实经历", exact: true }).click();
   await expect(page.getByText("最终简历尚未生成确认")).toBeVisible();
-  await page.getByRole("button", { name: /AI 优化 3\.1/ }).click();
+  await page.getByRole("button", { name: /3\. 制作/ }).click();
   await page.getByRole("button", { name: "生成优化方案" }).click();
   await page.getByRole("button", { name: "重新生成最终简历", exact: true }).click();
   await expect(page.getByRole("heading", { name: "最终简历" })).toBeVisible();
@@ -321,28 +321,28 @@ test("streams analysis progress, cancels actively and recovers after refresh", a
 test("locks the old analysis after JD changes and unlocks after reanalysis", async ({ page }) => {
   await seed(page);
   await page.goto("/");
-  await page.getByRole("button", { name: /岗位与简历材料 1\.1/ }).click();
+  await page.getByRole("button", { name: /1\. 材料/ }).click();
   await page.getByLabel("目标 JD").fill("新的岗位要求：负责可信 AI 产品");
   await expect(page.getByText(/旧分析仍可查看/)).toBeVisible();
-  await expect(page.getByRole("button", { name: /AI 优化 3\.1/ })).toBeDisabled();
-  await page.getByRole("button", { name: /JD 解析 2\.1/ }).click();
+  await expect(page.getByRole("button", { name: /3\. 制作/ })).toContainText("尚无分析结果");
+  await page.getByRole("button", { name: /2\. 分析/ }).click();
   await expect(page.getByText(/修改材料前的旧分析/)).toBeVisible();
 });
 
 test("stores target company context and shows the requirement map", async ({ page }) => {
   await seed(page);
   await page.goto("/");
-  await page.getByRole("button", { name: /岗位与简历材料 1\.1/ }).click();
+  await page.getByRole("button", { name: /1\. 材料/ }).click();
   await page.getByLabel("目标公司名称（可选）").fill("示例目标公司");
   await page.getByLabel("岗位背景补充（可选）").fill("已知该岗位负责企业服务业务线，团队配置仍待确认");
   await expect(page.getByText(/旧分析仍可查看/)).toBeVisible();
-  await page.getByRole("button", { name: /JD 解析 2\.1/ }).click();
+  await page.getByRole("button", { name: /2\. 分析/ }).click();
   await expect(page.getByRole("heading", { name: "JD 决策地图" })).toBeVisible();
   await expect(page.getByText(/材料已变化，这张需求地图只能查看/)).toBeVisible();
   await page.locator("details").filter({ has: page.getByText("负责企业服务产品规划", { exact: true }) }).first().locator("summary").click();
   await expect(page.getByText("负责企业服务产品规划", { exact: true }).first()).toBeVisible();
   await page.reload();
-  await page.getByRole("button", { name: /岗位与简历材料 1\.1/ }).click();
+  await page.getByRole("button", { name: /1\. 材料/ }).click();
   await expect(page.getByLabel("目标公司名称（可选）")).toHaveValue("示例目标公司");
 });
 
@@ -457,9 +457,30 @@ test("uses the same deterministic ATS score in sidebar and delivery", async ({ p
   await seed(page);
   await page.goto("/");
   const sidebarScore = await page.getByTestId("sidebar-ats-score").innerText();
-  await page.getByRole("button", { name: /ATS 与导出 4\.2/ }).click();
+  await page.getByRole("button", { name: /4\. 交付/ }).click();
   const exportScore = await page.getByTestId("export-ats-score").innerText();
   expect(sidebarScore.replace("/100", "").trim()).toBe(exportScore.trim());
+});
+
+test("keeps the main navigation to four stages and exposes optional tools separately", async ({ page }) => {
+  await seed(page);
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: /1\. 材料/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /2\. 分析/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /3\. 制作/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /4\. 交付/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /经历证据库.*按需/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /面试准备.*按需/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /投递管理.*按需/ })).toBeVisible();
+
+  await page.getByRole("button", { name: /2\. 分析/ }).click();
+  const workspace = page.getByRole("navigation", { name: "阶段内工作区" });
+  await expect(workspace.getByRole("button", { name: "需求地图" })).toBeVisible();
+  await expect(workspace.getByRole("button", { name: "准备度" })).toBeVisible();
+  await expect(workspace.getByRole("button", { name: "逐条匹配" })).toBeVisible();
+  await expect(workspace.getByRole("button", { name: "可选补证" })).toBeVisible();
+  await workspace.getByRole("button", { name: "逐条匹配" }).click();
+  await expect(page.getByText(/ATS 只会在最终简历确认后计算/)).toBeVisible();
 });
 
 test("generates interview strategy on demand without blocking quick analysis", async ({ page }) => {
@@ -595,7 +616,7 @@ test("shows actionable guidance and saves nothing after repeated structure error
 test("exports a DOCX that can be imported again", async ({ page }) => {
   await seed(page);
   await page.goto("/");
-  await page.getByRole("button", { name: /ATS 与导出 4\.2/ }).click();
+  await page.getByRole("button", { name: /4\. 交付/ }).click();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "下载 DOCX" }).click();
   const download = await downloadPromise;
@@ -603,7 +624,7 @@ test("exports a DOCX that can be imported again", async ({ page }) => {
   await download.saveAs(exportPath);
   expect((await fs.promises.stat(exportPath)).size).toBeGreaterThan(5_000);
 
-  await page.getByRole("button", { name: /岗位与简历材料 1\.1/ }).click();
+  await page.getByRole("button", { name: /1\. 材料/ }).click();
   await page.getByRole("button", { name: "导入 PDF / DOCX" }).click();
   await page.locator('input[type="file"]').setInputFiles(exportPath);
   await expect(page.getByRole("dialog", { name: "导入已有简历" }).locator("textarea").first()).toHaveValue(/张明/, { timeout: 20_000 });
@@ -613,7 +634,7 @@ test("downloads searchable ATS and visual A4 PDFs", async ({ page }) => {
   test.setTimeout(60_000);
   await page.addInitScript((value) => localStorage.setItem("resume-expert-library", JSON.stringify(value)), paginationBoundaryState());
   await page.goto("/");
-  await page.getByRole("button", { name: /ATS 与导出 4\.2/ }).click();
+  await page.getByRole("button", { name: /4\. 交付/ }).click();
   const paginationPreview = page.locator(".resume-paginated-view").last();
   await expect(paginationPreview).toHaveAttribute("data-pagination-status", "ready");
   const expectedPageCount = Number(await paginationPreview.getAttribute("data-page-count"));
@@ -719,7 +740,8 @@ test("persists custom style and only finalizes a user-confirmed keyword enhancem
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: /AI 优化 3\.1/ }).click();
+  await page.getByRole("button", { name: /3\. 制作/ }).click();
+  await page.getByRole("navigation", { name: "阶段内工作区" }).getByRole("button", { name: "优化方案", exact: true }).click();
   await page.getByRole("button", { name: "自定义", exact: true }).click();
   await page.getByLabel("自定义优化风格").fill("突出平台化能力，语气稳健");
   await page.getByRole("button", { name: "应用自定义风格并生成" }).click();

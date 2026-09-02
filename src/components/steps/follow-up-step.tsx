@@ -26,11 +26,13 @@ export function FollowUpStep() {
     analysisRevision,
     focusedRequirementId,
     setFollowUpGuidance,
+    setFollowUpDecision,
   } = useResumeStore();
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [guidanceLoadingId, setGuidanceLoadingId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  const [showMore, setShowMore] = useState(false);
 
   useEffect(() => {
     if (!focusedRequirementId) return;
@@ -83,10 +85,7 @@ export function FollowUpStep() {
 
   return (
     <div>
-      <SectionTitle
-        title="经历追问"
-        description="Agent 针对简历缺口生成追问，填写回答后可生成可用于简历的 bullet"
-      />
+      <SectionTitle title="可选核验与补充" description="默认只展示最高价值的 3 项；可以核验已有内容、补一个细节、说明没有经历或暂时跳过，均不阻塞制作" />
 
       {error && (
         <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -95,7 +94,7 @@ export function FollowUpStep() {
       )}
 
       <div className="mb-6 space-y-4">
-        {followUpQuestions.map((q, index) => (
+        {followUpQuestions.slice(0, showMore ? followUpQuestions.length : 3).map((q, index) => (
           <Card key={q.id} data-requirement-id={q.requirementId} className={focusedRequirementId === q.requirementId ? "border-blue-300 ring-1 ring-blue-100" : ""}>
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-4">
@@ -110,10 +109,17 @@ export function FollowUpStep() {
                   </div>
                   <CardTitle className="text-sm font-medium leading-snug">{q.question}</CardTitle>
                   {q.requirementId && <p className="mt-1 text-xs font-mono text-neutral-400">{q.requirementId}</p>}
+                  {q.impactLabel && <p className="mt-1 text-xs text-blue-700">{q.impactLabel}</p>}
                 </div>
+                {q.decision && q.decision !== "unreviewed" && <Badge variant="outline">{q.decision === "verified-existing" ? "已核验" : q.decision === "answered" ? "已补充" : q.decision === "no-experience" ? "暂无经历" : "已跳过"}</Badge>}
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {q.supplementNeed === "verify-existing" && <Button type="button" size="sm" variant="outline" onClick={() => setFollowUpDecision(q.id, "verified-existing")}>核验现有内容</Button>}
+                <Button type="button" size="sm" variant="outline" onClick={() => setFollowUpDecision(q.id, "no-experience")}>明确没有相关经历</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setFollowUpDecision(q.id, "skipped")}>暂时跳过</Button>
+              </div>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => setExpanded((value) => ({ ...value, [q.id]: !value[q.id] }))}><Lightbulb className="h-3.5 w-3.5" />{expanded[q.id] ? "收起回答帮助" : "展开思考提示与框架"}</Button>
                 <Button type="button" variant="outline" size="sm" disabled={guidanceLoadingId === q.id || !analysisFresh} onClick={() => handleGuidance(q.id)}>{guidanceLoadingId === q.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}生成占位符示范</Button>
@@ -164,9 +170,11 @@ export function FollowUpStep() {
         ))}
       </div>
 
+      {followUpQuestions.length > 3 && <div className="-mt-3 mb-6 text-center"><Button type="button" variant="ghost" onClick={() => setShowMore((value) => !value)}>{showMore ? "收起更多可选补充" : `更多可选补充（${followUpQuestions.length - 3}）`}</Button></div>}
+
       <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={() => setCurrentStep(analysisFresh ? "interview" : "input")}>
-          {analysisFresh ? "下一步：面试准备" : "返回重新分析"}
+        <Button variant="outline" size="sm" onClick={() => setCurrentStep(analysisFresh ? "optimize" : "input")}>
+          {analysisFresh ? "进入制作（补证可稍后继续）" : "返回重新分析"}
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>

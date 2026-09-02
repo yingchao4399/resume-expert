@@ -24,10 +24,16 @@ interface ProgressInput {
 }
 
 const STAGE_STEPS: Record<WorkflowStageId, StepId[]> = {
-  materials: ["input", "evidence"],
-  analysis: ["jd-analysis", "diagnosis", "match", "follow-up", "interview"],
+  materials: ["input"],
+  analysis: ["jd-analysis", "diagnosis", "match", "follow-up"],
   creation: ["optimize", "final-resume"],
-  delivery: ["applications", "export"],
+  delivery: ["export"],
+};
+
+const OPTIONAL_TOOL_CONTEXT: Partial<Record<StepId, WorkflowStageId>> = {
+  evidence: "materials",
+  interview: "analysis",
+  applications: "delivery",
 };
 
 export function getWorkflowProgress(input: ProgressInput): WorkflowStageProgress[] {
@@ -49,8 +55,8 @@ export function getWorkflowProgress(input: ProgressInput): WorkflowStageProgress
       id: "materials",
       status: active("materials") ? "active" : materialsReady ? "completed" : "blocked",
       blocker: missingMaterials.length ? `还缺：${missingMaterials.join("、")}` : null,
-      nextStep: missingMaterials.length ? "input" : "evidence",
-      actionLabel: missingMaterials.length ? "补齐材料" : "核对证据",
+      nextStep: "input",
+      actionLabel: missingMaterials.length ? "补齐材料" : "查看材料",
     },
     {
       id: "analysis",
@@ -68,7 +74,7 @@ export function getWorkflowProgress(input: ProgressInput): WorkflowStageProgress
               ? "需求地图尚未确认"
               : "需求地图已确认，等待匹配真实经历"
         : "材料未齐，暂不能分析",
-      nextStep: materialsReady && jdReady ? "jd-analysis" : "input",
+      nextStep: materialsReady ? "jd-analysis" : "input",
       actionLabel: analysisReady ? "查看分析" : !jdReady ? "解析 JD" : input.jdAnalysisDocument?.status !== "confirmed" ? "审核需求地图" : "匹配真实经历",
     },
     {
@@ -88,7 +94,7 @@ export function getWorkflowProgress(input: ProgressInput): WorkflowStageProgress
       id: "delivery",
       status: active("delivery") ? (finalReady ? "active" : "blocked") : "pending",
       blocker: finalReady ? null : "最终简历未就绪，暂不能导出",
-      nextStep: finalReady ? "applications" : analysisReady ? "optimize" : "input",
+      nextStep: finalReady ? "export" : analysisReady ? "optimize" : "input",
       actionLabel: finalReady ? "ATS 与导出" : "解决阻塞",
     },
   ];
@@ -97,5 +103,6 @@ export function getWorkflowProgress(input: ProgressInput): WorkflowStageProgress
 
 export function workflowStageForStep(step: StepId): WorkflowStageId | "interview-review" {
   if (step === "interview-recording") return "interview-review";
-  return (Object.entries(STAGE_STEPS).find(([, steps]) => steps.includes(step))?.[0] ?? "materials") as WorkflowStageId;
+  return OPTIONAL_TOOL_CONTEXT[step]
+    ?? (Object.entries(STAGE_STEPS).find(([, steps]) => steps.includes(step))?.[0] ?? "materials") as WorkflowStageId;
 }

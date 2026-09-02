@@ -7,7 +7,6 @@ import { Progress } from "@/components/ui/progress";
 import {
   EmptyState,
   ListSection,
-  ScoreRing,
   SectionTitle,
 } from "@/components/shared/ui-helpers";
 import { useResumeStore } from "@/store/resume-store";
@@ -20,25 +19,32 @@ export function DiagnosisStep() {
   }
 
   const { diagnosis, jobReadiness } = analysisResult;
-  const recommendationLabel = jobReadiness?.recommendation === "priority-apply"
+  const readiness = analysisResult.jobReadinessV2;
+  const recommendation = readiness?.recommendation ?? jobReadiness?.recommendation;
+  const recommendationLabel = recommendation === "priority-apply"
     ? "优先投"
-    : jobReadiness?.recommendation === "cautious-apply"
+    : recommendation === "cautious-apply"
       ? "谨慎投"
       : "补证后再投";
+  const metrics = readiness ? [readiness.coverageScore, readiness.trustScore, readiness.resultQualityScore, readiness.hardGateCoverage, readiness.criticalRequirementCoverage] : diagnosis.dimensionScores.map((item) => ({ label: item.dimension, value: item.score, applicable: true, numerator: item.score, denominator: 100 }));
+  const covered = readiness?.requirementAssessments.filter((item) => item.coverageStatus === "covered").length ?? 0;
+  const trusted = readiness?.requirementAssessments.filter((item) => item.trustStatus === "confirmed").length ?? 0;
 
   return (
     <div>
       <SectionTitle
-        title="岗位准备度"
-        description="按已确认岗位要求的优先级和可核验证据确定性计算，不代表录用概率"
+        title="岗位准备情况"
+        description="先看覆盖、可信证据和高价值缺口；数字总分仅为实验估算，不代表录用概率"
       />
+
+      {readiness && <div className="mb-5 grid gap-3 sm:grid-cols-4"><Summary label="已覆盖要求" value={`${covered}/${readiness.requirementAssessments.length}`} /><Summary label="可信事实" value={`${trusted}/${readiness.requirementAssessments.length}`} /><Summary label="高价值缺口" value={`${readiness.gapRequirementIds.length}`} /><Summary label="推荐行动" value={recommendationLabel} /></div>}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-[160px_1fr]">
         <Card className="flex items-center justify-center py-6">
           <div className="text-center">
-            <ScoreRing score={diagnosis.overallScore} />
-            <p className="mt-2 text-xs text-neutral-500">岗位准备度估算</p>
-            {jobReadiness && <p className="mt-1 text-sm font-medium text-blue-700">{recommendationLabel}</p>}
+            <p className="text-xs text-neutral-400">实验估算</p>
+            <p className="mt-1 text-3xl font-semibold tabular-nums text-neutral-700">{readiness?.overallScore ?? diagnosis.overallScore}<span className="text-sm font-normal text-neutral-400">/100</span></p>
+            <p className="mt-2 text-xs text-neutral-500">用于发现准备缺口，不作为核心结论</p>
           </div>
         </Card>
 
@@ -47,14 +53,14 @@ export function DiagnosisStep() {
             <CardTitle className="text-sm">确定性分项</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {diagnosis.dimensionScores.map((d) => (
-              <div key={d.dimension}>
+            {metrics.map((d) => (
+              <div key={d.label}>
                 <div className="mb-1.5 flex items-center justify-between text-sm">
-                  <span className="font-medium">{d.dimension}</span>
-                  <span className="tabular-nums text-neutral-500">{d.score}</span>
+                  <span className="font-medium">{d.label}</span>
+                  <span className="tabular-nums text-neutral-500">{d.applicable ? d.value : "不适用"}</span>
                 </div>
-                <Progress value={d.score} className="mb-1" />
-                <p className="text-xs text-neutral-500">{d.comment}</p>
+                {d.applicable && <Progress value={d.value ?? 0} className="mb-1" />}
+                <p className="text-xs text-neutral-500">{d.applicable ? "按已确认需求和当前证据确定性计算" : "当前 JD 没有这一类适用项，不计入总分"}</p>
               </div>
             ))}
           </CardContent>
@@ -89,4 +95,8 @@ export function DiagnosisStep() {
       </div>
     </div>
   );
+}
+
+function Summary({ label, value }: { label: string; value: string }) {
+  return <Card><CardContent className="py-4"><p className="text-xs text-neutral-500">{label}</p><p className="mt-1 text-lg font-semibold">{value}</p></CardContent></Card>;
 }
