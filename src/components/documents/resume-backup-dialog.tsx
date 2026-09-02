@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  downloadResumeBackupV10,
+  downloadResumeBackupV11,
   readResumeBackup,
   type ResumeBackup,
 } from "@/lib/backup/resume-backup";
@@ -61,7 +61,7 @@ export function ResumeBackupDialog({ open, onOpenChange }: ResumeBackupDialogPro
   const exportBackup = async (scope: "current" | "all") => {
     setError(null);
     try {
-      await downloadResumeBackupV10(scope === "current" ? [active] : documents,
+      await downloadResumeBackupV11(scope === "current" ? [active] : documents,
         scope === "current" ? careerEvidence.filter(item => item.sourceDocumentId === null || item.sourceDocumentId === active.id) : careerEvidence,
         scope === "current" ? jobApplications.filter(item => item.resumeDocumentId === active.id) : jobApplications,
         scope === "current" ? interviewReviews.filter(item => item.resumeDocumentId === active.id) : interviewReviews,

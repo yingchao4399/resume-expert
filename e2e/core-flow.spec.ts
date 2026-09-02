@@ -128,7 +128,8 @@ test("enables the developer studio and switches between product and workflow vie
   await page.reload();
   await expect(page.getByRole("heading", { name: "可视化工作流" })).toBeVisible();
   await page.getByRole("link", { name: "简历助手" }).click();
-  await expect(page.getByRole("heading", { name: "简历专家" })).toBeVisible();
+  await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "简历专家" })).toBeVisible({ timeout: 30_000 });
 });
 
 test("audits prompt definitions, source files and full local runtime snapshots", async ({ page }) => {

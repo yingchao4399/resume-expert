@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import process from "node:process";
 
 const url = "http://127.0.0.1:3000";
@@ -13,7 +14,13 @@ try {
   process.exit(1);
 } catch { /* Start a new local process below. */ }
 
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-const child = spawn(npmCommand, ["run", "dev"], { stdio: "inherit", env: process.env });
+// Resolve Next directly instead of spawning npm.cmd. On Windows, spawning the
+// command shim from a PTY can fail with EINVAL before the dev server starts.
+const require = createRequire(import.meta.url);
+const nextBin = require.resolve("next/dist/bin/next");
+const child = spawn(process.execPath, [nextBin, "dev", "--hostname", "127.0.0.1", "--port", "3000"], {
+  stdio: "inherit",
+  env: process.env,
+});
 child.on("error", (error) => { console.error(`启动失败：${error.message}`); process.exitCode = 1; });
 child.on("exit", (code) => { process.exitCode = code ?? 0; });
