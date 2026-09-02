@@ -67,4 +67,4 @@ export interface WorkflowValidationResult {
   errors: string[];
 }
 
-export const REQUIRED_GATE_IDS = ["materials-validation", "evidence-confirmation", "final-resume-confirmation", "export-gate"] as const;
+export const REQUIRED_GATE_IDS = ["materials-validation", "jd-confirmation", "final-resume-confirmation", "export-gate"] as const;

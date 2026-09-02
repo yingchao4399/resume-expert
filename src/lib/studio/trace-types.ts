@@ -1,7 +1,7 @@
 import type { PromptRuntimeSnapshot } from "@/lib/studio/prompt-types";
 
 export type WorkflowRunStatus = "running" | "success" | "error";
-export type WorkflowNodeId = "analyze" | "optimize" | "follow-up" | "finalize" | "import-structure" | "interview-review" | "project-evidence" | "career-interview";
+export type WorkflowNodeId = "analyze" | "jd-semantic" | "jd-consolidation" | "jd-confirmation" | "fact-match" | "supplement" | "evidence-confirmation" | "optimize" | "follow-up" | "finalize" | "import-structure" | "interview-review" | "project-evidence" | "career-interview";
 
 export interface WorkflowSpan {
   id: string;

@@ -1,5 +1,6 @@
 import type { AnalysisResult, FinalResumeStatus, StepId, UserInput } from "@/types/resume";
 import type { JDAnalysisDocument } from "@/types/jd-analysis";
+import type { WorkflowNode } from "@/lib/studio/workflow-types";
 
 export type WorkflowStageId = "materials" | "analysis" | "creation" | "delivery";
 export type WorkflowStageStatus = "pending" | "active" | "completed" | "blocked";
@@ -10,6 +11,11 @@ export interface WorkflowStageProgress {
   blocker: string | null;
   nextStep: StepId;
   actionLabel: string;
+}
+
+export interface WorkflowNodeRuntimeState {
+  status: "pending" | "active" | "completed" | "blocked" | "optional";
+  blocker: string | null;
 }
 
 interface ProgressInput {
@@ -105,4 +111,42 @@ export function workflowStageForStep(step: StepId): WorkflowStageId | "interview
   if (step === "interview-recording") return "interview-review";
   return OPTIONAL_TOOL_CONTEXT[step]
     ?? (Object.entries(STAGE_STEPS).find(([, steps]) => steps.includes(step))?.[0] ?? "materials") as WorkflowStageId;
+}
+
+/**
+ * Maps the persisted application state to the canonical Studio node IDs.
+ * Keeping this mapping next to the stage progress prevents the Studio canvas
+ * from inventing a second, divergent interpretation of the workflow.
+ */
+export function getWorkflowNodeRuntimeState(
+  node: Pick<WorkflowNode, "id" | "optional">,
+  input: ProgressInput,
+): WorkflowNodeRuntimeState {
+  const materialsReady = [input.userInput.targetRole, input.userInput.jobDescription, input.userInput.originalResume].every((value) => value.trim());
+  const map = input.jdAnalysisDocument;
+  const mapReady = Boolean(map && map.materialRevision === input.materialRevision && map.status !== "stale");
+  const mapConfirmed = Boolean(mapReady && map?.status === "confirmed" && map.confirmedRevision === map.revision);
+  const analysisReady = Boolean(input.analysisResult) && (input.analysisBasis
+    ? input.analysisBasis.materialRevision === input.materialRevision && input.analysisBasis.jdAnalysisRevision === map?.revision
+    : input.materialRevision === undefined || input.analysisRevision === input.materialRevision);
+  const finalReady = Boolean(input.analysisResult?.finalResume) && input.finalResumeStatus === "confirmed";
+  const current = input.currentStep;
+  const active = (...steps: StepId[]) => steps.includes(current);
+  const optional = (blocker: string | null = null): WorkflowNodeRuntimeState => ({ status: node.optional ? "optional" : blocker ? "blocked" : "pending", blocker });
+  switch (node.id) {
+    case "start": return { status: "completed", blocker: null };
+    case "materials-validation": return materialsReady ? { status: "completed", blocker: null } : { status: active("input") ? "active" : "blocked", blocker: "还缺少目标岗位、JD 或原始简历" };
+    case "analysis": return !materialsReady ? { status: "blocked", blocker: "材料未齐" } : mapReady ? { status: "completed", blocker: null } : { status: active("jd-analysis") ? "active" : "pending", blocker: null };
+    case "jd-consolidation": return !mapReady ? { status: "pending", blocker: "等待生成 JD 需求地图" } : map?.groups?.length ? { status: "completed", blocker: null } : { status: active("jd-analysis") ? "active" : "pending", blocker: "等待需求整理" };
+    case "jd-confirmation": return !mapReady ? { status: "blocked", blocker: "需要先生成需求地图" } : mapConfirmed ? { status: "completed", blocker: null } : { status: active("jd-analysis") ? "active" : "blocked", blocker: "需求地图尚未确认" };
+    case "fact-match": return !mapConfirmed ? { status: "blocked", blocker: "需求地图尚未确认" } : analysisReady ? { status: "completed", blocker: null } : { status: active("diagnosis", "match") ? "active" : "pending", blocker: null };
+    case "interview-prep": return input.analysisResult?.interviewPrep?.requirementStrategies?.length ? { status: "completed", blocker: null } : optional("按需生成，不阻塞制作");
+    case "supplement": return input.analysisResult?.followUpQuestions?.some((item) => item.decision === "answered" || item.decision === "verified-existing") ? { status: "completed", blocker: null } : optional("可选补证，不阻塞制作");
+    case "evidence-confirmation": return optional("仅采用候选事实或增强内容时需要确认");
+    case "optimize": return !analysisReady ? { status: "blocked", blocker: "尚无有效事实匹配结果" } : input.analysisResult?.optimizedItems?.length ? { status: "completed", blocker: null } : { status: active("optimize") ? "active" : "pending", blocker: null };
+    case "final-resume-confirmation": return finalReady ? { status: "completed", blocker: null } : { status: active("final-resume") ? "active" : "pending", blocker: input.finalResumeStatus === "stale" ? "最终简历已过期" : null };
+    case "export-gate": return finalReady ? { status: "completed", blocker: null } : { status: "blocked", blocker: "最终简历未确认" };
+    case "end": return finalReady ? { status: "completed", blocker: null } : { status: "pending", blocker: null };
+    default: return optional();
+  }
 }

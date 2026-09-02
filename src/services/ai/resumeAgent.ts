@@ -112,7 +112,7 @@ function nodeIdForURL(url: string): WorkflowNodeId {
 }
 
 function labelForNode(nodeId: WorkflowNodeId): string {
-  return ({ analyze: "岗位分析", optimize: "AI 优化", "follow-up": "经历补证", finalize: "最终生成", "import-structure": "简历结构化", "interview-review": "面试复盘", "project-evidence": "项目证据", "career-interview": "项目经历访谈" } as const)[nodeId];
+  return ({ analyze: "岗位分析", "jd-semantic": "JD 语义解析", "jd-consolidation": "需求归并", "jd-confirmation": "确认需求地图", "fact-match": "事实匹配", supplement: "可选补证", "evidence-confirmation": "候选事实确认", optimize: "AI 优化", "follow-up": "经历补证", finalize: "最终生成", "import-structure": "简历结构化", "interview-review": "面试复盘", "project-evidence": "项目证据", "career-interview": "项目经历访谈" } as const)[nodeId] ?? "AI 任务";
 }
 
 export async function fetchAIStatus() {
