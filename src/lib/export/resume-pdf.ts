@@ -3,7 +3,7 @@ import { PDFDocument, rgb, type PDFFont } from "pdf-lib";
 import { buildResumeFileName } from "@/lib/export/resume-docx";
 import { buildResumeRenderModel } from "@/lib/export/resume-render-model";
 import { isPaginationPlanCurrent } from "@/lib/export/resume-pagination";
-import { getDefaultLayoutConfig } from "@/lib/templates/resume-templates";
+import { getDefaultLayoutConfig, getTypographyConfig } from "@/lib/templates/resume-templates";
 import type { FinalResume, PdfGenerationProgress, ResumeLayoutConfig, ResumePaginationPlan } from "@/types/resume";
 
 const A4_WIDTH = 595.28;
@@ -39,6 +39,7 @@ export async function generateATSTextPdf(
   const margin = model.layout.pageMargin * MM_TO_PT;
   const width = A4_WIDTH - margin * 2;
   const baseSize = model.tokens.bodyFontSizePt;
+  const typography = getTypographyConfig(model.layout);
   const lineHeight = model.tokens.lineHeightPt;
   const accent = parseHex(model.layout.accentColor);
   let page = pdf.addPage([A4_WIDTH, A4_HEIGHT]);
@@ -85,8 +86,8 @@ export async function generateATSTextPdf(
     requireSpace(estimated);
     if (block.kind === "section-heading") {
       y -= model.tokens.sectionSpacingPt;
-      const headingSize = model.tokens.headingFontSizePt;
-      page.drawText(block.text, { x: margin, y: y - headingSize, size: headingSize, font, color: accent });
+      const headingSize = typography.h2.fontSize;
+      page.drawText(block.text, { x: margin, y: y - headingSize, size: headingSize, font, color: parseHex(typography.h2.color) });
       y -= headingSize + model.tokens.headingAfterPt / 2;
       if (model.layout.templateId !== "modern-clean") page.drawLine({ start: { x: margin, y }, end: { x: A4_WIDTH - margin, y }, thickness: 0.45, color: accent });
       y -= model.tokens.headingAfterPt / 2;
@@ -96,19 +97,19 @@ export async function generateATSTextPdf(
       y -= model.tokens.experienceBeforePt;
       const period = block.secondaryText ?? "";
       const periodSize = Math.max(8, baseSize - 1);
-      page.drawText(block.text, { x: margin, y: y - baseSize, size: baseSize, font, color: rgb(0.12, 0.12, 0.12) });
+      page.drawText(block.text, { x: margin, y: y - typography.h3.fontSize, size: typography.h3.fontSize, font, color: parseHex(typography.h3.color) });
       if (period) page.drawText(period, { x: A4_WIDTH - margin - font.widthOfTextAtSize(period, periodSize), y: y - periodSize, size: periodSize, font, color: rgb(0.4, 0.4, 0.4) });
-      y -= lineHeight + model.tokens.experienceAfterPt;
+      y -= typography.h3.fontSize * model.layout.lineHeight + model.tokens.experienceAfterPt;
       continue;
     }
-    const prefix = block.kind === "bullet" ? `${model.layout.bulletStyle === "dash" ? "-" : model.layout.bulletStyle === "square" ? "▪" : "•"} ` : "";
-    const indent = block.kind === "bullet" ? 14 : 0;
-    const lines = wrapText(block.text, font, baseSize, width - indent);
+    const prefix = block.kind === "bullet" ? `${model.layout.bulletStyle === "dash" ? "-" : model.layout.bulletStyle === "square" ? "▪" : "•"} ` : block.kind === "ordered-item" ? `${block.ordinal ?? 1}. ` : "";
+    const indent = block.kind === "bullet" || block.kind === "ordered-item" ? 18 : 0;
+    const lines = wrapText(block.text, font, typography.body.fontSize, width - indent);
     requireSpace(lines.length * lineHeight + 4);
     lines.forEach((line, lineIndex) => {
       requireSpace(lineHeight + 3);
       const text = `${lineIndex === 0 ? prefix : ""}${line}`;
-      page.drawText(text, { x: margin + (lineIndex === 0 ? 0 : indent), y: y - baseSize, size: baseSize, font, color: rgb(0.22, 0.22, 0.22) });
+      page.drawText(text, { x: margin + (lineIndex === 0 ? 0 : indent), y: y - typography.body.fontSize, size: typography.body.fontSize, font, color: parseHex(typography.body.color) });
       y -= lineHeight;
     });
     y -= block.kind === "bullet" ? model.tokens.bulletAfterPt : model.tokens.paragraphAfterPt;

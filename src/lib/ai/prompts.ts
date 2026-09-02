@@ -363,12 +363,37 @@ export function normalizeOptimizedItems(
   return (items ?? []).map((item, index) => ({
     id: item.id || `opt-${index + 1}`,
     section: item.section ?? "",
-    before: item.before ?? "",
-    after: item.after ?? "",
-    reason: item.reason ?? "",
-    riskWarning: item.riskWarning ?? "",
+    before: limitOptimizedText(item.before ?? "", "before"),
+    after: limitOptimizedText(item.after ?? "", "after", item.section),
+    reason: limitOptimizedText(item.reason ?? "", "reason"),
+    riskWarning: limitOptimizedText(item.riskWarning ?? "", "risk"),
     keywordEnhancement: item.keywordEnhancement ?? null,
   }));
+}
+
+/**
+ * Keep comparison-table copy readable in the A4 layout.  Limits are applied
+ * after schema validation so a verbose provider response cannot break the
+ * whole workflow.  We cut at a word/punctuation boundary where possible and
+ * add an ellipsis to make the intervention visible to the user.
+ */
+export function getOptimizedTextLimit(kind: "before" | "after" | "reason" | "risk", section = ""): number {
+  if (kind === "reason") return 120;
+  if (kind === "risk") return 100;
+  if (kind === "before") return 180;
+  if (/摘要|summary/i.test(section)) return 180;
+  if (/技能|工具|skill/i.test(section)) return 120;
+  return 160;
+}
+
+export function limitOptimizedText(text: string, kind: "before" | "after" | "reason" | "risk", section = ""): string {
+  const normalized = text.trim();
+  const limit = getOptimizedTextLimit(kind, section);
+  if (normalized.length <= limit) return normalized;
+  const slice = normalized.slice(0, Math.max(1, limit - 1));
+  const boundary = slice.search(/[，。；、,.;：:]([^，。；、,.;：:]*)$/);
+  const safe = boundary > Math.floor(limit * 0.55) ? slice.slice(0, boundary + 1) : slice;
+  return `${safe.trimEnd()}…`;
 }
 
 export function normalizeFinalResume(

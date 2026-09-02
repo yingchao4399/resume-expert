@@ -14,6 +14,7 @@ import { ArchiveResumeButton } from "@/components/documents/archive-resume-dialo
 import { useResumeStore } from "@/store/resume-store";
 import type { FinalResume, ResumeBulletValue } from "@/types/resume";
 import { getBulletText, normalizeResumeBullet } from "@/lib/evidence/resume-evidence";
+import { normalizeRichText } from "@/lib/resume/rich-text";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 
 function cloneResume(resume: FinalResume): FinalResume {
@@ -26,7 +27,11 @@ function cleanList(values: string[]): string[] {
 
 function cleanBullets(values: ResumeBulletValue[]) {
   return values
-    .map((value) => ({ ...normalizeResumeBullet(value), text: getBulletText(value).trim() }))
+    .map((value) => {
+      const normalized = normalizeResumeBullet(value);
+      const text = getBulletText(value).trim();
+      return { ...normalized, text, richText: normalizeRichText(normalized.richText, text) };
+    })
     .filter((value) => Boolean(value.text));
 }
 
@@ -40,6 +45,7 @@ function cleanResume(resume: FinalResume): FinalResume {
     },
     jobIntent: resume.jobIntent.trim(),
     summary: resume.summary.trim(),
+    summaryFormatting: normalizeRichText(resume.summaryFormatting, resume.summary.trim()),
     coreSkills: cleanList(resume.coreSkills),
     workExperience: resume.workExperience
       .map((work) => ({

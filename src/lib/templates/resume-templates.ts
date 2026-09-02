@@ -1,6 +1,8 @@
 import type {
   ResumeLayoutConfig,
   ResumeSectionId,
+  ResumeTypographyConfig,
+  ResumeTypographyLevel,
   ResumeTemplateId,
 } from "@/types/resume";
 
@@ -126,7 +128,13 @@ export function sanitizeLayoutConfig(value?: Partial<ResumeLayoutConfig> | null)
     accentColor: accent && contrastAgainstWhite(accent) >= 4.5 ? accent : defaults.accentColor,
     sectionOrder: order,
     hiddenSections: Array.from(new Set(hidden)),
+    typography: sanitizeTypographyConfig(value?.typography, defaults.typography),
   };
+}
+
+export function getTypographyConfig(layout: ResumeLayoutConfig): Required<ResumeTypographyConfig> {
+  const defaults = defaultTypography(layout.baseFontSize, layout.accentColor, layout.fontFamily);
+  return { ...defaults, ...sanitizeTypographyConfig(layout.typography, defaults) } as Required<ResumeTypographyConfig>;
 }
 
 export function getFontStack(font: ResumeLayoutConfig["fontFamily"]): string {
@@ -155,6 +163,29 @@ function clamp(value: number | undefined, min: number, max: number, fallback: nu
 function normalizeColor(value?: string): string | null {
   if (!value || !/^#[0-9a-f]{6}$/i.test(value)) return null;
   return value.toUpperCase();
+}
+
+function defaultTypography(base: number, accent: string, fontFamily: ResumeLayoutConfig["fontFamily"]): Required<ResumeTypographyConfig> {
+  const level = (fontSize: number, color = "#222222") => ({ fontFamily, fontSize, color });
+  return {
+    body: level(base), h1: level(base + 12), h2: level(base + 1, accent), h3: level(base),
+    h4: level(base), h5: level(base), h6: level(base), h7: level(base),
+  };
+}
+
+function sanitizeTypographyConfig(value: ResumeTypographyConfig | undefined, fallback?: ResumeTypographyConfig): ResumeTypographyConfig {
+  const defaults = fallback ?? defaultTypography(10, "#525252", "microsoft-yahei");
+  const levels: ResumeTypographyLevel[] = ["body", "h1", "h2", "h3", "h4", "h5", "h6", "h7"];
+  return Object.fromEntries(levels.map((level) => {
+    const current = value?.[level];
+    const base = defaults[level]!;
+    const color = normalizeColor(current?.color) ?? base.color;
+    return [level, {
+      fontFamily: current?.fontFamily ?? base.fontFamily,
+      fontSize: clamp(current?.fontSize, level === "body" ? 8.5 : 8, level === "h1" ? 36 : 24, base.fontSize),
+      color: contrastAgainstWhite(color) >= 4.5 ? color : base.color,
+    }];
+  })) as ResumeTypographyConfig;
 }
 
 function contrastAgainstWhite(hex: string): number {

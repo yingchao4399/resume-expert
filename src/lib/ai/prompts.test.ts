@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFinalizeResumePrompt, buildOptimizeUserPrompt } from "@/lib/ai/prompts";
+import { buildFinalizeResumePrompt, buildOptimizeUserPrompt, getOptimizedTextLimit, normalizeOptimizedItems } from "@/lib/ai/prompts";
 import { EXAMPLE_USER_INPUT } from "@/store/resume-store-example";
 import type { FollowUpQuestion, KeywordEnhancementDraft, OptimizedItem } from "@/types/resume";
 
@@ -16,6 +16,13 @@ function item(adoptionStatus: KeywordEnhancementDraft["adoptionStatus"]): Optimi
 }
 
 describe("optimization prompt safety", () => {
+  it("keeps generated comparison copy within readable section limits", () => {
+    const longText = "负责企业级产品规划与跨部门协作，".repeat(30);
+    const [normalized] = normalizeOptimizedItems([{ id: "long", section: "工作经历", before: "", after: longText, reason: "", riskWarning: "" }]);
+    expect(normalized.after.length).toBeLessThanOrEqual(getOptimizedTextLimit("after", "工作经历"));
+    expect(normalized.after.endsWith("…")).toBe(true);
+  });
+
   it("keeps custom style subordinate to factual and evidence constraints", () => {
     const prompt = buildOptimizeUserPrompt(EXAMPLE_USER_INPUT, "custom", "突出平台化能力");
     expect(prompt).toContain("突出平台化能力");

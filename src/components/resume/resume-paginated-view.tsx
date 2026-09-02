@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { ResumeRenderBlocks, ResumeRenderHeader } from "@/components/resume/resume-render-content";
 import { createResumePaginationPlan, hashResumeRenderModel } from "@/lib/export/resume-pagination";
 import { buildResumeRenderModel, type ResumeRenderBlock } from "@/lib/export/resume-render-model";
-import { getDefaultLayoutConfig, getFontStack } from "@/lib/templates/resume-templates";
+import { getDefaultLayoutConfig, getFontStack, getTypographyConfig } from "@/lib/templates/resume-templates";
 import { cn } from "@/lib/utils";
 import type {
   FinalResume,
@@ -31,9 +31,10 @@ export function ResumePaginatedView({
   const measurementRef = useRef<HTMLElement>(null);
   const [plan, setPlan] = useState<ResumePaginationPlan | null>(null);
   const [status, setStatus] = useState<ResumePaginationStatus>("measuring");
+  const body = getTypographyConfig(model.layout).body;
   const style = {
-    fontFamily: getFontStack(model.layout.fontFamily),
-    fontSize: `${model.layout.baseFontSize}pt`,
+    fontFamily: getFontStack(body.fontFamily),
+    fontSize: `${body.fontSize}pt`,
     lineHeight: model.layout.lineHeight,
     "--resume-accent": model.layout.accentColor,
   } as CSSProperties;

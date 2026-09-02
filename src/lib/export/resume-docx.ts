@@ -9,14 +9,16 @@ import {
   TabStopPosition,
   TabStopType,
   TextRun,
+  UnderlineType,
 } from "docx";
 import {
   getDefaultLayoutConfig,
   getDocxFont,
+  getTypographyConfig,
   RESUME_SECTION_LABELS,
   sanitizeLayoutConfig,
 } from "@/lib/templates/resume-templates";
-import type { FinalResume, ResumeLayoutConfig, ResumeSectionId } from "@/types/resume";
+import type { FinalResume, ResumeFormattedText, ResumeLayoutConfig, ResumeSectionId } from "@/types/resume";
 import { buildResumeRenderModel } from "@/lib/export/resume-render-model";
 import { isPaginationPlanCurrent } from "@/lib/export/resume-pagination";
 import type { ResumePaginationPlan } from "@/types/resume";
@@ -41,6 +43,7 @@ export function buildResumeDocument(
   const font = getDocxFont(layout.fontFamily);
   const wordFont = { ascii: font, hAnsi: font, eastAsia: font, cs: font };
   const bodySize = Math.round(renderModel.tokens.bodyFontSizePt * 2);
+  const typography = getTypographyConfig(layout);
   const accent = colorValue(layout.accentColor);
   const spacingLine = Math.round(renderModel.tokens.lineHeightPt * 20);
   const sectionBefore = Math.round(renderModel.tokens.sectionSpacingPt * 20);
@@ -48,14 +51,28 @@ export function buildResumeDocument(
     paginationPlan?.pages.slice(1).map((page) => page.blockIds[0]).filter((id): id is string => Boolean(id)) ?? [],
   );
 
-  const run = (text: string, options: { bold?: boolean; size?: number; color?: string } = {}) =>
+  const run = (text: string, options: { bold?: boolean; italic?: boolean; underline?: boolean; size?: number; color?: string } = {}) =>
     new TextRun({
       text,
       bold: options.bold,
+      italics: options.italic,
+      underline: options.underline ? { type: UnderlineType.SINGLE } : undefined,
       size: options.size ?? bodySize,
       font: wordFont,
       color: options.color,
     });
+
+  const formattedRuns = (text: string, formatted?: ResumeFormattedText): TextRun[] => {
+    if (!formatted?.runs?.length) return [run(text)];
+    return formatted.runs.map((part) => run(part.text, { bold: part.bold, italic: part.italic, underline: part.underline }));
+  };
+
+  const paragraphOptions = (formatted?: ResumeFormattedText) => ({
+    alignment: formatted?.alignment === "center" ? AlignmentType.CENTER : formatted?.alignment === "right" ? AlignmentType.RIGHT : formatted?.alignment === "justify" ? AlignmentType.JUSTIFIED : AlignmentType.LEFT,
+    indent: formatted && (formatted.firstLineIndent || formatted.hangingIndent)
+      ? { firstLine: Math.round(formatted.firstLineIndent * bodySize * 10), hanging: Math.round(formatted.hangingIndent * bodySize * 10) }
+      : undefined,
+  });
 
   const heading = (id: ResumeSectionId, pageBreakBefore = false) =>
     new Paragraph({
@@ -71,42 +88,46 @@ export function buildResumeDocument(
           : {
               bottom: { color: accent, size: 4, space: 3, style: BorderStyle.SINGLE },
             },
-      children: [run(RESUME_SECTION_LABELS[id], { bold: true, size: bodySize + 2, color: accent })],
+      children: [run(RESUME_SECTION_LABELS[id], { bold: true, size: Math.round(typography.h2.fontSize * 2), color: colorValue(typography.h2.color) })],
     });
 
-  const bodyParagraph = (text: string, pageBreakBefore = false) =>
+  const bodyParagraph = (text: string, pageBreakBefore = false, formatted?: ResumeFormattedText) =>
     new Paragraph({
+      ...paragraphOptions(formatted),
       pageBreakBefore,
       widowControl: true,
       spacing: { after: Math.round(renderModel.tokens.paragraphAfterPt * 20), line: spacingLine, lineRule: LineRuleType.EXACT },
-      children: [run(text)],
+      children: formattedRuns(text, formatted),
     });
 
-  const bulletParagraph = (text: string, pageBreakBefore = false) => {
+  const bulletParagraph = (text: string, pageBreakBefore = false, ordinal?: number, formatted?: ResumeFormattedText) => {
     const prefix = layout.bulletStyle === "square" ? "▪ " : layout.bulletStyle === "dash" ? "– " : "• ";
+    const marker = ordinal === undefined ? prefix : `${ordinal}. `;
     return new Paragraph({
       keepLines: true,
       widowControl: true,
       pageBreakBefore,
+      ...paragraphOptions(formatted),
       indent: { left: 180, hanging: 120 },
       spacing: { after: Math.round(renderModel.tokens.bulletAfterPt * 20), line: spacingLine, lineRule: LineRuleType.EXACT },
-      children: [run(`${prefix}${text}`)],
+      children: [run(marker), ...formattedRuns(text, formatted)],
     });
   };
 
   const renderBlock = (block: (typeof renderModel.blocks)[number]): Paragraph[] => {
     const pageBreakBefore = pageBreakBlockIds.has(block.id);
     if (block.kind === "section-heading") return [heading(block.sectionId, pageBreakBefore)];
-    if (block.kind === "bullet") return [bulletParagraph(block.text, pageBreakBefore)];
+    if (block.kind === "bullet") return [bulletParagraph(block.text, pageBreakBefore, undefined, block.formattedText)];
+    if (block.kind === "ordered-item") return [bulletParagraph(block.text, pageBreakBefore, block.ordinal, block.formattedText)];
     if (block.kind === "experience-heading") return [new Paragraph({
       keepNext: true,
       pageBreakBefore,
       widowControl: true,
       tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
       spacing: { before: Math.round(renderModel.tokens.experienceBeforePt * 20), after: Math.round(renderModel.tokens.experienceAfterPt * 20) },
-      children: [run(block.text, { bold: true }), run(block.secondaryText ? `\t${block.secondaryText}` : "", { color: "666666" })],
+      children: [run(block.text, { bold: true, size: Math.round(typography.h3.fontSize * 2), color: colorValue(typography.h3.color) }), run(block.secondaryText ? `\t${block.secondaryText}` : "", { color: "666666", size: Math.round(typography.body.fontSize * 2) })],
     })];
-    return [bodyParagraph(block.text, pageBreakBefore)];
+    return [bodyParagraph(block.text, pageBreakBefore, block.formattedText)];
   };
 
   const headerAlignment = layout.templateId === "modern-clean" ? AlignmentType.LEFT : AlignmentType.CENTER;
@@ -114,7 +135,7 @@ export function buildResumeDocument(
     new Paragraph({
       alignment: headerAlignment,
       spacing: { after: 60 },
-      children: [run(resume.personalInfo.name || "姓名", { bold: true, size: Math.round(renderModel.tokens.nameFontSizePt * 2), color: layout.templateId === "modern-clean" ? accent : undefined })],
+      children: [run(resume.personalInfo.name || "姓名", { bold: true, size: Math.round(typography.h1.fontSize * 2), color: layout.templateId === "modern-clean" ? colorValue(typography.h1.color) : undefined })],
     }),
     new Paragraph({
       alignment: headerAlignment,
@@ -125,7 +146,7 @@ export function buildResumeDocument(
           [resume.personalInfo.email, resume.personalInfo.phone, resume.personalInfo.location]
             .filter(Boolean)
             .join("  |  "),
-          { size: Math.round(renderModel.tokens.contactFontSizePt * 2), color: "666666" }
+          { size: Math.round(typography.body.fontSize * 2), color: colorValue(typography.body.color) }
         ),
       ],
     }),

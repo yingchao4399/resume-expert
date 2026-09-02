@@ -7,13 +7,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/resume/rich-text-editor";
 import type {
   FinalResume,
   ProjectExperience,
   ResumeBulletValue,
   WorkExperience,
 } from "@/types/resume";
-import { createResumeBullet, getBulletText, updateResumeBulletText } from "@/lib/evidence/resume-evidence";
+import { createResumeBullet, getBulletText, updateResumeBulletRichText } from "@/lib/evidence/resume-evidence";
+import { normalizeRichText, plainTextToRichText } from "@/lib/resume/rich-text";
 
 interface ResumeEditorProps {
   value: FinalResume;
@@ -76,11 +78,7 @@ export function ResumeEditor({ value, onChange }: ResumeEditorProps) {
             />
           </Field>
           <Field label="职业摘要">
-            <Textarea
-              className="min-h-28"
-              value={value.summary}
-              onChange={(event) => update({ summary: event.target.value })}
-            />
+            <RichTextEditor label="职业摘要" value={normalizeRichText(value.summaryFormatting, value.summary)} onChange={(summaryFormatting) => update({ summary: summaryFormatting.runs.map((run) => run.text).join(""), summaryFormatting })} minHeight="min-h-28" />
           </Field>
         </div>
       </EditorSection>
@@ -247,21 +245,23 @@ function ExperienceEditor<T extends { period: string; bullets: ResumeBulletValue
                 <p className="text-sm font-medium">成果描述</p>
                 {item.bullets.map((bullet, bulletIndex) => (
                   <div key={bulletIndex} className="flex items-start gap-2">
-                    <Textarea
-                      aria-label={`${title} ${index + 1} 成果描述 ${bulletIndex + 1}`}
-                      className="min-h-20"
-                      value={getBulletText(bullet)}
-                      onChange={(event) =>
+                    <div className="min-w-0 flex-1">
+                    <RichTextEditor
+                      label={`${title} ${index + 1} 成果描述 ${bulletIndex + 1}`}
+                      value={typeof bullet === "string" ? plainTextToRichText(bullet) : normalizeRichText(bullet.richText, getBulletText(bullet))}
+                      minHeight="min-h-20"
+                      onChange={(richText) =>
                         updateItem(index, {
                           ...item,
                           bullets: item.bullets.map((current, currentIndex) =>
                             currentIndex === bulletIndex
-                              ? updateResumeBulletText(current, event.target.value)
+                              ? updateResumeBulletRichText(current, richText)
                               : current
                           ),
                         })
                       }
                     />
+                    </div>
                     <Button
                       type="button"
                       variant="ghost"

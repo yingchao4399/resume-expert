@@ -248,6 +248,24 @@ export interface ResumeBullet {
   originalText: string;
   aiText: string;
   manualText: string;
+  /** Optional inline formatting and paragraph layout chosen by the user. */
+  richText?: ResumeFormattedText;
+}
+
+export type ResumeTextAlignment = "left" | "center" | "right" | "justify";
+
+export interface ResumeTextRun {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+}
+
+export interface ResumeFormattedText {
+  runs: ResumeTextRun[];
+  alignment: ResumeTextAlignment;
+  firstLineIndent: number;
+  hangingIndent: number;
 }
 
 /** String values are accepted only while migrating V1/V2 persisted and AI data. */
@@ -280,6 +298,7 @@ export interface FinalResume {
   };
   jobIntent: string;
   summary: string;
+  summaryFormatting?: ResumeFormattedText;
   coreSkills: string[];
   workExperience: WorkExperience[];
   projectExperience: ProjectExperience[];
@@ -358,6 +377,10 @@ export interface ResumeImportMetadata {
 }
 
 export type ResumeTemplateId = "ats-classic" | "modern-clean" | "compact-professional";
+export type ResumeFontFamily = "microsoft-yahei" | "songti" | "arial" | "calibri";
+export type ResumeTypographyLevel = "body" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "h7";
+export interface ResumeTypographyLevelConfig { fontFamily: ResumeFontFamily; fontSize: number; color: string; }
+export type ResumeTypographyConfig = Partial<Record<ResumeTypographyLevel, ResumeTypographyLevelConfig>>;
 export type ResumeSectionId =
   | "jobIntent"
   | "summary"
@@ -374,7 +397,7 @@ export type ResumeSectionId =
 
 export interface ResumeLayoutConfig {
   templateId: ResumeTemplateId;
-  fontFamily: "microsoft-yahei" | "songti" | "arial" | "calibri";
+  fontFamily: ResumeFontFamily;
   baseFontSize: number;
   lineHeight: number;
   sectionSpacing: number;
@@ -383,6 +406,7 @@ export interface ResumeLayoutConfig {
   bulletStyle: "disc" | "dash" | "square";
   sectionOrder: ResumeSectionId[];
   hiddenSections: ResumeSectionId[];
+  typography?: ResumeTypographyConfig;
 }
 
 export type ResumePaginationStatus = "measuring" | "ready" | "error";

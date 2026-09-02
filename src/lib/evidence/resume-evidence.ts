@@ -6,7 +6,9 @@ import type {
   ResumeBulletValue,
   ResumeBulletSource,
   ResumeEvidenceLink,
+  ResumeFormattedText,
 } from "@/types/resume";
+import { normalizeRichText, plainTextToRichText } from "@/lib/resume/rich-text";
 
 function createId(prefix: string): string {
   if (typeof globalThis.crypto?.randomUUID === "function") return `${prefix}-${globalThis.crypto.randomUUID()}`;
@@ -57,6 +59,7 @@ export function createResumeBullet(
     originalText: sourceType === "imported" ? text : "",
     aiText: sourceType === "ai-generated" ? text : "",
     manualText: sourceType === "manual" ? text : "",
+    richText: plainTextToRichText(text),
   };
 }
 
@@ -74,13 +77,21 @@ export function normalizeResumeBullet(
     sourceType: bullet.sourceType ?? sourceType,
     evidenceIds: links.map((link) => link.evidenceId), evidenceLinks: links,
     originalText: bullet.originalText ?? "", aiText: bullet.aiText ?? "", manualText: bullet.manualText ?? "",
+    richText: normalizeRichText(bullet.richText, bullet.text ?? ""),
   };
 }
 
 export function updateResumeBulletText(bullet: ResumeBulletValue, text: string): ResumeBullet {
   const normalized = normalizeResumeBullet(bullet);
   const links = normalized.evidenceLinks.map((link) => ({ ...link, status: "needs-review" as const }));
-  return { ...normalized, text, sourceType: "manual", manualText: text, evidenceLinks: links, evidenceIds: links.map((link) => link.evidenceId) };
+  return { ...normalized, text, sourceType: "manual", manualText: text, richText: plainTextToRichText(text), evidenceLinks: links, evidenceIds: links.map((link) => link.evidenceId) };
+}
+
+export function updateResumeBulletRichText(bullet: ResumeBulletValue, richText: ResumeFormattedText): ResumeBullet {
+  const normalized = normalizeResumeBullet(bullet);
+  const next = normalizeRichText(richText);
+  const links = normalized.evidenceLinks.map((link) => ({ ...link, status: "needs-review" as const }));
+  return { ...normalized, text: next.runs.map((run) => run.text).join(""), sourceType: "manual", manualText: next.runs.map((run) => run.text).join(""), richText: next, evidenceLinks: links, evidenceIds: links.map((link) => link.evidenceId) };
 }
 
 function tokenize(value: string): string[] {

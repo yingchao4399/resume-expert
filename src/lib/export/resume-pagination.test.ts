@@ -92,4 +92,20 @@ describe("resume pagination public interface", () => {
     expect(candidates.at(-1)).toMatchObject({ sectionSpacing: 6, pageMargin: 10, lineHeight: 1.15, baseFontSize: 8.5 });
     expect(candidates.every((candidate) => candidate.hiddenSections === layout.hiddenSections)).toBe(true);
   });
+
+  it("renders numbered sub-items as ordered blocks instead of nested bullets", () => {
+    const model = buildResumeRenderModel({
+      ...resume,
+      workExperience: [{
+        company: "示例公司",
+        role: "产品经理",
+        period: "2022-至今",
+        bullets: ["心研智能学习助手（0-1 产品规划）：1. 场景挖掘与需求分析 2. 设计 MVP 方案 3. 推动上线"],
+      }],
+    }, getDefaultLayoutConfig("ats-classic"));
+    const blocks = model.blocks.filter((block) => block.sectionId === "workExperience");
+    expect(blocks.filter((block) => block.kind === "bullet")).toHaveLength(0);
+    expect(blocks.filter((block) => block.kind === "ordered-item").map((block) => block.ordinal)).toEqual([1, 2, 3]);
+    expect(blocks.find((block) => block.kind === "paragraph")?.text).toContain("心研智能学习助手");
+  });
 });

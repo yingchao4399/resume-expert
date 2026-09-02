@@ -229,6 +229,11 @@ const resumeBulletSchema = z.union([
     originalText: z.string(),
     aiText: z.string(),
     manualText: z.string(),
+    richText: z.object({
+      runs: z.array(z.object({ text: z.string(), bold: z.boolean().optional(), italic: z.boolean().optional(), underline: z.boolean().optional() })),
+      alignment: z.enum(["left", "center", "right", "justify"]),
+      firstLineIndent: z.number(), hangingIndent: z.number(),
+    }).optional(),
   }),
 ]);
 
@@ -305,6 +310,11 @@ export const finalResumeSchema = z.object({
   }),
   jobIntent: z.string(),
   summary: z.string(),
+  summaryFormatting: z.object({
+    runs: z.array(z.object({ text: z.string(), bold: z.boolean().optional(), italic: z.boolean().optional(), underline: z.boolean().optional() })),
+    alignment: z.enum(["left", "center", "right", "justify"]),
+    firstLineIndent: z.number(), hangingIndent: z.number(),
+  }).optional(),
   coreSkills: z.array(z.string()),
   workExperience: z.array(workExperienceSchema),
   projectExperience: z.array(projectExperienceSchema),

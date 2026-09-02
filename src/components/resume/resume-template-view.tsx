@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { ResumeRenderBlocks, ResumeRenderHeader } from "@/components/resume/resume-render-content";
 import { buildResumeRenderModel } from "@/lib/export/resume-render-model";
-import { getDefaultLayoutConfig, getFontStack } from "@/lib/templates/resume-templates";
+import { getDefaultLayoutConfig, getFontStack, getTypographyConfig } from "@/lib/templates/resume-templates";
 import { cn } from "@/lib/utils";
 import type { FinalResume, ResumeLayoutConfig } from "@/types/resume";
 
@@ -13,9 +13,10 @@ interface ResumeTemplateViewProps {
 
 export function ResumeTemplateView({ resume, layoutConfig, className }: ResumeTemplateViewProps) {
   const model = buildResumeRenderModel(resume, layoutConfig ?? getDefaultLayoutConfig());
+  const body = getTypographyConfig(model.layout).body;
   const style = {
-    fontFamily: getFontStack(model.layout.fontFamily),
-    fontSize: `${model.layout.baseFontSize}pt`,
+    fontFamily: getFontStack(body.fontFamily),
+    fontSize: `${body.fontSize}pt`,
     lineHeight: model.layout.lineHeight,
     "--resume-accent": model.layout.accentColor,
     "--resume-section-gap": `${model.layout.sectionSpacing}px`,

@@ -30,6 +30,7 @@ import {
 import { ResumePaginatedView } from "@/components/resume/resume-paginated-view";
 import {
   getDefaultLayoutConfig,
+  getTypographyConfig,
   RESUME_SECTION_LABELS,
   RESUME_TEMPLATES,
   sanitizeLayoutConfig,
@@ -205,6 +206,16 @@ export function ResumeTemplateStudio({ open, onOpenChange, resume, value, onSave
                 </select>
               </label>
               <RangeField label="正文字号" value={draft.baseFontSize} min={8.5} max={12} step={0.5} suffix="pt" onChange={(baseFontSize) => update({ baseFontSize })} />
+              <div className="rounded-md border bg-neutral-50 p-3">
+                <p className="mb-2 text-xs font-medium">正文与标题层级</p>
+                <p className="mb-3 text-[11px] text-neutral-500">每一级可独立设置字体、字号和颜色；旧文档会自动使用模板默认值。</p>
+                <div className="space-y-2">
+                  {TYPOGRAPHY_LEVELS.map((level) => {
+                    const typography = getTypographyConfig(safeDraft)[level.id];
+                    return <TypographyField key={level.id} label={level.label} value={typography} onChange={(next) => update({ typography: { ...getTypographyConfig(safeDraft), [level.id]: next } })} />;
+                  })}
+                </div>
+              </div>
               <RangeField label="行距" value={draft.lineHeight} min={1.15} max={1.7} step={0.05} onChange={(lineHeight) => update({ lineHeight })} />
               <RangeField label="区块间距" value={draft.sectionSpacing} min={6} max={24} step={1} suffix="px" onChange={(sectionSpacing) => update({ sectionSpacing })} />
               <RangeField label="A4 页边距" value={draft.pageMargin} min={10} max={24} step={1} suffix="mm" onChange={(pageMargin) => update({ pageMargin })} />
@@ -321,6 +332,20 @@ function RangeField({
       <input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} />
     </label>
   );
+}
+
+const TYPOGRAPHY_LEVELS = [
+  { id: "body", label: "正文" }, { id: "h1", label: "一级标题（姓名）" }, { id: "h2", label: "二级标题（区块）" },
+  { id: "h3", label: "三级标题（经历）" }, { id: "h4", label: "四级标题" }, { id: "h5", label: "五级标题" },
+  { id: "h6", label: "六级标题" }, { id: "h7", label: "七级标题" },
+] as const;
+
+function TypographyField({ label, value, onChange }: { label: string; value: { fontFamily: ResumeLayoutConfig["fontFamily"]; fontSize: number; color: string }; onChange: (value: { fontFamily: ResumeLayoutConfig["fontFamily"]; fontSize: number; color: string }) => void }) {
+  return <div className="grid grid-cols-[1fr_88px_42px] items-center gap-2">
+    <label className="text-[11px]">{label}<select className="mt-1 h-7 w-full rounded border bg-white px-1 text-xs" value={value.fontFamily} onChange={(event) => onChange({ ...value, fontFamily: event.target.value as ResumeLayoutConfig["fontFamily"] })}><option value="microsoft-yahei">微软雅黑</option><option value="songti">宋体</option><option value="arial">Arial</option><option value="calibri">Calibri</option></select></label>
+    <label className="text-[11px]">字号<input className="mt-1 h-7 w-full rounded border bg-white px-1 text-xs" type="number" min={8} max={36} step={0.5} value={value.fontSize} onChange={(event) => onChange({ ...value, fontSize: Number(event.target.value) })} /></label>
+    <label className="text-[11px]">颜色<input className="mt-1 h-7 w-10 rounded border bg-white p-0.5" type="color" value={value.color} onChange={(event) => onChange({ ...value, color: event.target.value })} /></label>
+  </div>;
 }
 
 function SortableSectionRow({

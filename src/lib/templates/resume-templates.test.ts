@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getDefaultLayoutConfig,
+  getTypographyConfig,
   RESUME_SECTION_ORDER,
   sanitizeLayoutConfig,
 } from "@/lib/templates/resume-templates";
@@ -34,5 +35,21 @@ describe("resume templates", () => {
       accentColor: "#FFFFFF",
     });
     expect(config.accentColor).toBe("#1D4ED8");
+  });
+
+  it("keeps independent body and heading typography within safe bounds", () => {
+    const config = sanitizeLayoutConfig({
+      ...getDefaultLayoutConfig("ats-classic"),
+      typography: {
+        body: { fontFamily: "songti", fontSize: 7, color: "#FFFFFF" },
+        h1: { fontFamily: "arial", fontSize: 40, color: "#222222" },
+        h7: { fontFamily: "calibri", fontSize: 14, color: "#222222" },
+      },
+    });
+    const typography = getTypographyConfig(config);
+    expect(typography.body).toMatchObject({ fontFamily: "songti", fontSize: 8.5 });
+    expect(typography.h1.fontSize).toBe(36);
+    expect(typography.h7).toMatchObject({ fontFamily: "calibri", fontSize: 14 });
+    expect(typography.body.color).not.toBe("#FFFFFF");
   });
 });

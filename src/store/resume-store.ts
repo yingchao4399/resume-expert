@@ -8,6 +8,7 @@ import type { CareerEvidence, FinalResume, ImportedResumeProfile, ResumeDocument
 import { archiveBlockedReason, createArchive, draftFromArchive, sameArchiveContent } from "@/lib/library/resume-archives";
 import { WORKFLOW_STAGES } from "@/config/workflow";
 import { sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
+import { limitOptimizedText } from "@/lib/ai/prompts";
 import { buildEvidenceCandidates, evidenceSourceReference, mapResumeBullets, normalizeFinalResumeBullets } from "@/lib/evidence/resume-evidence";
 import { isAnalysisFresh } from "@/lib/analysis-revision";
 import {
@@ -818,8 +819,15 @@ export const useResumeStore = create<ResumeStore>()(
       setOptimizedItems: (items) =>
         set((state) => {
           if (!state.analysisResult) return state;
+          const boundedItems = items.map((item) => ({
+            ...item,
+            before: limitOptimizedText(item.before, "before", item.section),
+            after: limitOptimizedText(item.after, "after", item.section),
+            reason: limitOptimizedText(item.reason, "reason", item.section),
+            riskWarning: limitOptimizedText(item.riskWarning, "risk", item.section),
+          }));
           return updateActiveDocument(state, {
-            analysisResult: { ...state.analysisResult, optimizedItems: items },
+            analysisResult: { ...state.analysisResult, optimizedItems: boundedItems },
             finalResumeStatus: "stale",
           });
         }),

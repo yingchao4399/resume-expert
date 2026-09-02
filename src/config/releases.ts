@@ -1,4 +1,5 @@
 export const RELEASE_RECORDS = [
+  { version: "1.14.0", goal: "富文本简历编辑与编号排版优化", modules: ["修改后文案长度控制", "编号子项独立排版", "摘要与 Bullet 富文本", "正文及 H1-H7 字体颜色", "DOCX 格式复用"], tests: "回归 Vitest / lint / typecheck", status: "released" },
   { version: "1.13.1", goal: "优化对照与最终简历一致性修复", modules: ["长 JD 关键词增强容量", "优化项确定性投影", "工作与项目语义匹配", "人工编辑保护"], tests: "回归测试 / lint / typecheck / build", status: "released" },
   { version: "1.13.0", goal: "JD 专家分析、可信匹配与工作流对齐", modules: ["专家式语义拆解", "逐要求证据召回", "岗位准备度解释", "完整执行节点图", "可选分支门禁"], tests: "249 Vitest / build / lint / typecheck", status: "released" },
   { version: "1.12.0", goal: "四阶段减负与可信评分重构", modules: ["四阶段工作区", "逐要求覆盖与可信状态", "岗位准备度 V2", "自适应可选补证", "60 组合成校准评测"], tests: "246 Vitest / 49 Playwright / evals / audit / build", status: "released" },
