@@ -361,8 +361,8 @@ export const useResumeStore = create<ResumeStore>()(
             ? parsed.state?.activeDocumentId as string
             : recoveredDocuments[0].id;
           const recoveredValue = JSON.stringify({
-            state: { schemaVersion: 15, documents: recoveredDocuments, archives, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
-            version: 15,
+            state: { schemaVersion: 16, documents: recoveredDocuments, archives, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
+            version: 16,
           });
           validatePersistedLibrary(recoveredValue);
           unlockStorageWrites();
@@ -984,7 +984,7 @@ export const useResumeStore = create<ResumeStore>()(
     }),
     {
       name: RESUME_STORAGE_KEY,
-       version: 15,
+       version: 16,
       skipHydration: true,
       storage: createJSONStorage<ResumeLibraryState>(() => safeLocalStorage),
       partialize: librarySnapshot,
@@ -996,7 +996,7 @@ export const useResumeStore = create<ResumeStore>()(
           ? persisted.documents.map((document) => migrateDocument(document))
           : [];
         return {
-           schemaVersion: 15,
+           schemaVersion: 16,
           documents,
           archives: Array.isArray(persisted.archives) ? persisted.archives : [],
           activeDocumentId: persisted.activeDocumentId ?? documents[0]?.id ?? "",

@@ -134,7 +134,7 @@ describe("immutable resume library archives", () => {
     const document = state.documents[0];
     const archive = createArchive(document, "历史", "");
     const backup = parseResumeBackup(createResumeBackup([document], [], [], [], [archive]));
-    expect(backup.backupVersion).toBe(11);
+    expect(backup.backupVersion).toBe(12);
     expect(backup.archives[0].finalResume).toMatchObject(archive.finalResume);
     expect(parseResumeBackup({ ...backup, backupVersion: 9, archives: undefined }).archives).toEqual([]);
     state.importDocuments(backup.documents, "merge", [], [], [], true, backup.archives);

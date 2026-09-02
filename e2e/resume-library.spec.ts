@@ -166,7 +166,7 @@ test("exports, merges and replaces V11 archives with explicit confirmation", asy
   const download = await downloadPromise;
   const file = (await download.path())!;
   const backup = JSON.parse(fs.readFileSync(file, "utf8"));
-  expect(backup.backupVersion).toBe(11); expect(backup.archives).toHaveLength(1);
+  expect(backup.backupVersion).toBe(12); expect(backup.archives).toHaveLength(1);
   await page.getByRole("dialog").locator('input[type="file"]').setInputFiles(file);
   await page.getByRole("button", { name: "合并为副本" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);

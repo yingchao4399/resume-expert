@@ -20,6 +20,13 @@ export function mapFingerprint(document: JDAnalysisDocument): string {
   return jdHash(JSON.stringify(canonical([document.sourceText, document.materialRevision, document.revision, document.requirements])));
 }
 const normalized = (text: string) => text.toLocaleLowerCase().replace(/[\s，。；：、,.!?！？;:（）()“”"'·•-]/g, "");
+function mergedSignals(text: string, kind: JDRequirementAtom["kind"]) {
+  const actionVerb = text.match(/负责|推动|设计|搭建|制定|分析|维护|优化|交付|协调|管理|开发|运营|跟进|落地|复盘|解决|提升|支持|熟悉|掌握|精通/)?.[0] ?? "";
+  const objectText = actionVerb ? text.slice(text.indexOf(actionVerb) + actionVerb.length).replace(/^[：:，,、\s]+/, "").slice(0, 80) : text.slice(0, 80);
+  const numericConstraints = text.match(/\d+(?:\.\d+)?\s*(?:[-~至]\s*\d+\s*)?(?:年以上|年以下|年|个月|%|人|万|万元|次|个)?|本科|硕士|博士|大专|CET[-一二三四五六级0-9]+/gi) ?? [];
+  const requiredEvidenceTypes = kind === "education" || kind === "credential" ? ["资格或学历凭证"] : kind === "skill" || kind === "tool" || kind === "knowledge" ? ["使用场景", "个人贡献", "熟练程度"] : kind === "deliverable" ? ["交付物", "个人行动", "结果", "指标"] : kind === "experience" ? ["相关经历", "个人贡献", "结果"] : ["场景", "个人行动", "结果"];
+  return { actionVerb, objectText, requiredEvidenceTypes, numericConstraints: [...new Set(numericConstraints.map((item) => item.trim()))] };
+}
 const unique = <T>(values: T[]) => [...new Set(values)];
 
 export function sourceReferences(document: JDAnalysisDocument, atom: JDRequirementAtom): JDSourceReference[] {
@@ -72,9 +79,9 @@ export function defaultRequirementGroups(requirements: JDRequirementAtom[]): JDR
 }
 
 export function migrateJDMap(document: JDAnalysisDocument): JDAnalysisDocument {
-  return { ...document, schemaVersion: 2, groups: document.groups?.length ? document.groups : defaultRequirementGroups(document.requirements),
+  return { ...document, schemaVersion: 3, groups: document.groups?.length ? document.groups : defaultRequirementGroups(document.requirements),
     requirements: document.requirements.map(atom => ({ ...atom, sourceReferences: sourceReferences(document, atom) })),
-    previousMap: document.previousMap ? { ...document.previousMap, schemaVersion: 2 } : null };
+    previousMap: document.previousMap ? { ...document.previousMap, schemaVersion: 3 } : null };
 }
 
 /** Validate a compact semantic proposal against immutable input, without writing state. */
@@ -145,7 +152,7 @@ export function applyConsolidation(document: JDAnalysisDocument, proposal: JDCon
     produced.add(id);
     const members = document.requirements.filter(item => merge.memberIds.includes(item.id));
     const refs = [...new Map(members.flatMap(item => sourceReferences(document, item)).map(ref => [`${ref.sourceSpanId}:${ref.startOffset}:${ref.endOffset}`, ref])).values()];
-    requirements.push({ ...members[0], id, normalizedText: merge.text, sourceReferences: refs, sourceSpanIds: unique(refs.map(ref => ref.sourceSpanId)),
+    requirements.push({ ...members[0], id, normalizedText: merge.text, ...mergedSignals(merge.text, members[0].kind), sourceReferences: refs, sourceSpanIds: unique(refs.map(ref => ref.sourceSpanId)),
       originalRequirementIds: unique(members.flatMap(item => item.originalRequirementIds ?? [item.id])), mergeReason: merge.reason,
       keywords: unique(members.flatMap(item => item.keywords ?? [])), priorityBasis: unique(members.flatMap(item => item.priorityBasis)),
       expectedOutcome: unique(members.map(item => item.expectedOutcome).filter((value): value is string => Boolean(value))).join("；") || null,
@@ -155,7 +162,7 @@ export function applyConsolidation(document: JDAnalysisDocument, proposal: JDCon
   if (requirements.length > JD_MAX_REQUIREMENTS) throw new Error(JD_CAPACITY_MESSAGE);
   const { previousMap: _previous, ...snapshot } = document;
   void _previous;
-  return { ...document, schemaVersion: 2, revision: document.revision + 1, status: "draft", confirmedRevision: null,
+  return { ...document, schemaVersion: 3, revision: document.revision + 1, status: "draft", confirmedRevision: null,
     requirements, groups: verified.groups.map(group => ({ ...group, requirementIds: unique(group.requirementIds.map(id => remap.get(id)!)) })),
     consolidationWarnings: proposal.warnings, consolidationMode: proposal.mode, updatedAt: new Date().toISOString(), previousMap: keepSnapshot ? snapshot : null };
 }
@@ -164,5 +171,5 @@ export function restorePreviousMap(document: JDAnalysisDocument): JDAnalysisDocu
   if (!document.previousMap) throw new Error("没有可恢复的整理前地图。");
   if (document.previousMap.materialRevision !== document.materialRevision) throw new Error("材料已变化，不能恢复旧材料的需求地图。");
   const previous = document.previousMap;
-  return { ...previous, schemaVersion: 2, revision: document.revision + 1, status: "draft", confirmedRevision: null, previousMap: null, updatedAt: new Date().toISOString() };
+  return { ...previous, schemaVersion: 3, revision: document.revision + 1, status: "draft", confirmedRevision: null, previousMap: null, updatedAt: new Date().toISOString() };
 }

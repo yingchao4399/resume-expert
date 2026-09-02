@@ -28,7 +28,7 @@ describe("JD consolidation storage boundaries", () => {
     document.jdAnalysisDocument = applyConsolidation(before, mockConsolidation(before));
     const backup = parseResumeBackup(createResumeBackup([document]));
     const restored = backup.documents[0].jdAnalysisDocument!;
-    expect(backup.backupVersion).toBe(11);
+    expect(backup.backupVersion).toBe(12);
     expect(restored.requirements).toHaveLength(2);
     expect(restored.requirements[0].originalRequirementIds).toHaveLength(2);
     expect(restorePreviousMap(restored).requirements).toHaveLength(4);

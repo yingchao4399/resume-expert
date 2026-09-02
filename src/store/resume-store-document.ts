@@ -31,7 +31,7 @@ export function suggestedTitle(input: UserInput): string {
 export function createEmptyDocument(id = createId()): ResumeDocument {
   const timestamp = nowISO();
   return {
-    schemaVersion: 13,
+    schemaVersion: 14,
     id,
     title: "未命名简历",
     createdAt: timestamp,

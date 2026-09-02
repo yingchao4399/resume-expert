@@ -17,6 +17,17 @@ describe("deep JD runtime schemas", () => {
     expect(parsed.sourceClassifications[0].classification).toBe("requirement");
   });
 
+  it("does not apply the retired 40-item whole-map limit to a model batch", () => {
+    const requirements = Array.from({ length: 56 }, (_, index) => ({
+      sourceItemId: "jd-source-1", sourceQuote: "负责平台建设", requirement: `独立要求 ${index + 1}`,
+      category: "responsibility" as const, priority: "must" as const, keywords: [], interviewFocus: "",
+    }));
+    const parsed = createCompactJDModelResultSchema(["jd-source-1"]).safeParse({
+      sourceClassifications: [{ sourceItemId: "jd-source-1", classification: "requirement" }], requirements,
+    });
+    expect(parsed.success).toBe(true);
+  });
+
   it("keeps a bounded set of model-provided inference evidence", () => {
     const parsed = createDeepJDModelResultSchema(["jd-source-1"]).safeParse({
       sourceClassifications: [{ sourceItemId: "jd-source-1", classification: "background" }],

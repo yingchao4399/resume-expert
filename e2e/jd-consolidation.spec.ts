@@ -49,10 +49,10 @@ test("migrates 56 requirements, previews and reverts merges, then matches the fu
   await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("resume-expert-library")!).state.documents[0].analysisResult.interviewPrep.requirementStrategies?.length)).toBe(56);
   await page.reload();
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("resume-expert-library")!));
-  expect(saved.version).toBe(15);
+  expect(saved.version).toBe(16);
   expect(saved.state.archives).toEqual([]);
-  expect(saved.state.documents[0].schemaVersion).toBe(13);
-  expect(saved.state.documents[0].jdAnalysisDocument.schemaVersion).toBe(2);
+  expect(saved.state.documents[0].schemaVersion).toBe(14);
+  expect(saved.state.documents[0].jdAnalysisDocument.schemaVersion).toBe(3);
   expect(saved.state.documents[0].analysisResult.matchItems).toHaveLength(56);
 });
 

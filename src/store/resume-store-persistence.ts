@@ -102,7 +102,7 @@ export function validatePersistedLibrary(raw: string): void {
 export function writeLibraryOrThrow(state: ResumeLibraryState): void {
   if (typeof window === "undefined") return;
   if (readRecoveryRecord()) throw new Error("恢复模式下禁止修改，请先确认恢复结果或导出异常数据。");
-  const value = JSON.stringify({ state, version: 15 });
+  const value = JSON.stringify({ state, version: 16 });
   validatePersistedLibrary(value);
   try {
     emitStorageStatus("saving");
@@ -117,7 +117,7 @@ export function writeLibraryOrThrow(state: ResumeLibraryState): void {
 }
 
 export function librarySnapshot(state: Pick<ResumeLibraryState, "documents" | "archives" | "activeDocumentId" | "jobApplications" | "interviewReviews">): ResumeLibraryState {
-  return { schemaVersion: 15, documents: state.documents, archives: state.archives, activeDocumentId: state.activeDocumentId, careerEvidence: [], jobApplications: state.jobApplications, interviewReviews: state.interviewReviews };
+  return { schemaVersion: 16, documents: state.documents, archives: state.archives, activeDocumentId: state.activeDocumentId, careerEvidence: [], jobApplications: state.jobApplications, interviewReviews: state.interviewReviews };
 }
 
 function preserveCorruptStorage(raw: string, error: unknown): RecoveryRecord {
@@ -243,7 +243,7 @@ export function migrateDocument(document: LegacyResumeDocument): ResumeDocument 
   return {
     ...base,
     ...documentWithoutLegacyStatus,
-    schemaVersion: 13,
+    schemaVersion: 14,
     jobTargetContext: document.jobTargetContext ?? { companyName: "", notes: "", companySnapshotId: null },
     materialRevision: typeof document.materialRevision === "number" ? document.materialRevision : 0,
     analysisRevision: analysisResult && hasCurrentRequirementMap && typeof document.analysisRevision === "number" ? document.analysisRevision : null,
