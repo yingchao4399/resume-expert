@@ -536,7 +536,10 @@ const keywordEnhancementItemRequestSchema = z.object({
 export const keywordEnhancementRequestSchema = z.object({
   input: userInputSchema,
   items: z.array(keywordEnhancementItemRequestSchema).min(1).max(12),
-  allowedKeywords: z.array(z.string().min(1)).min(1).max(80),
+  // A confirmed JD may contain many more than the old 80-keyword cap. The
+  // request still bounds the payload, while each item can select at most 8
+  // keywords below. This keeps long, valid requirement maps usable.
+  allowedKeywords: z.array(z.string().min(1)).min(1).max(JD_MAX_CANDIDATES, "当前确认关键词过多，请拆分 JD 或减少关键词后重试"),
   customInstruction: z.string().trim().max(300).optional().default(""),
 }).superRefine((value, context) => {
   const allowed = new Set(value.allowedKeywords.map(normalizeCatalogKeyword));

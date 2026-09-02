@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createCompactJDModelResultSchema, createDeepJDModelResultSchema, createDiagnosisMatchResultSchema, followUpGuidanceResultSchema } from "@/lib/ai/schemas";
+import { createCompactJDModelResultSchema, createDeepJDModelResultSchema, createDiagnosisMatchResultSchema, followUpGuidanceResultSchema, keywordEnhancementRequestSchema } from "@/lib/ai/schemas";
 
 describe("deep JD runtime schemas", () => {
   it("requires complete source classification coverage", () => {
@@ -24,6 +24,19 @@ describe("deep JD runtime schemas", () => {
     }));
     const parsed = createCompactJDModelResultSchema(["jd-source-1"]).safeParse({
       sourceClassifications: [{ sourceItemId: "jd-source-1", classification: "requirement" }], requirements,
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts a confirmed keyword catalog larger than the retired 80-item cap", () => {
+    const input = {
+      targetRole: "产品经理", industry: "SaaS", companyType: "中型公司", jobStage: "社招-中级",
+      highlightSkills: "", jobDescription: "负责产品规划", originalResume: "有产品经验", additionalInfo: "",
+    };
+    const parsed = keywordEnhancementRequestSchema.safeParse({
+      input,
+      items: [{ itemId: "opt-1", section: "摘要", currentText: "已有内容", selectedKeywords: ["关键词 81"], evidence: [] }],
+      allowedKeywords: Array.from({ length: 81 }, (_, index) => `关键词 ${index + 1}`),
     });
     expect(parsed.success).toBe(true);
   });

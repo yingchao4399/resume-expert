@@ -47,6 +47,7 @@ import {
 } from "@/store/resume-store-persistence";
 import { hasRunningTask } from "@/lib/tasks/task-runtime";
 import { calculateJobReadinessV2 } from "@/lib/jd/readiness-v2";
+import { applyOptimizedItemsToFinalResume } from "@/lib/resume/optimized-projection";
 
 export { defaultUserInput } from "@/store/resume-store-example";
 export { createEmptyDocument } from "@/store/resume-store-document";
@@ -836,8 +837,9 @@ export const useResumeStore = create<ResumeStore>()(
       setFinalResume: (resume, options) =>
         set((state) => {
           if (!state.analysisResult) return state;
+          const projectedResume = options?.manual ? resume : applyOptimizedItemsToFinalResume(resume, state.analysisResult.optimizedItems ?? []);
           return updateActiveDocument(state, {
-            analysisResult: { ...state.analysisResult, finalResume: normalizeFinalResumeBullets(preserveImportedSections(resume, state.sourceResume), options?.manual ? "manual" : "ai-generated", state.careerEvidence) },
+            analysisResult: { ...state.analysisResult, finalResume: normalizeFinalResumeBullets(preserveImportedSections(projectedResume, state.sourceResume), options?.manual ? "manual" : "ai-generated", state.careerEvidence) },
             finalResumeStatus: "confirmed",
             hasManualEdits: options?.manual === true,
           });
