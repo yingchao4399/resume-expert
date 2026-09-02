@@ -129,12 +129,12 @@ describe("immutable resume library archives", () => {
     expect(useResumeStore.getState().attemptStorageRecovery()).toBeNull();
     expect(values.get(RESUME_STORAGE_KEY)).toBe(raw);
   });
-  it("supports V10 roundtrip, empty legacy archives, merge remapping and replacement", () => {
+  it("supports V11 roundtrip, empty legacy archives, merge remapping and replacement", () => {
     const state = useResumeStore.getState();
     const document = state.documents[0];
     const archive = createArchive(document, "历史", "");
     const backup = parseResumeBackup(createResumeBackup([document], [], [], [], [archive]));
-    expect(backup.backupVersion).toBe(10);
+    expect(backup.backupVersion).toBe(11);
     expect(backup.archives[0].finalResume).toMatchObject(archive.finalResume);
     expect(parseResumeBackup({ ...backup, backupVersion: 9, archives: undefined }).archives).toEqual([]);
     state.importDocuments(backup.documents, "merge", [], [], [], true, backup.archives);

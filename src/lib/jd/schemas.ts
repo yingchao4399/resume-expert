@@ -110,3 +110,28 @@ export const jobReadinessAssessmentSchema = z.object({
   gapRequirementIds: z.array(z.string()),
   explanation: z.array(z.string()),
 });
+
+export const requirementAssessmentSchema = z.object({
+  requirementId: z.string(),
+  coverageStatus: z.enum(["covered", "partial", "missing"]),
+  trustStatus: z.enum(["confirmed", "resume-unverified", "none"]),
+  supplementNeed: z.enum(["none", "verify-existing", "add-detail", "new-evidence"]),
+  evidenceStrength: z.enum(["strong", "medium", "weak", "none"]),
+  resumeQuotes: z.array(z.string()),
+  evidenceClaimIds: z.array(z.string()),
+  missingDimensions: z.array(z.enum(["experience", "scope", "contribution", "action", "result", "metric"])),
+  rationale: z.string(),
+});
+
+const readinessMetricSchema = z.object({
+  value: z.number().min(0).max(100).nullable(), applicable: z.boolean(), numerator: z.number().nonnegative(), denominator: z.number().nonnegative(), label: z.string(),
+});
+
+export const jobReadinessAssessmentV2Schema = z.object({
+  version: z.literal(2), experimental: z.literal(true), overallScore: z.number().min(0).max(100),
+  recommendation: z.enum(["priority-apply", "supplement-before-apply", "cautious-apply"]), confidence: z.enum(["low", "medium", "high"]),
+  coverageScore: readinessMetricSchema, trustScore: readinessMetricSchema, resultQualityScore: readinessMetricSchema,
+  hardGateCoverage: readinessMetricSchema, criticalRequirementCoverage: readinessMetricSchema,
+  unresolvedHighImpactUnknowns: z.number().int().nonnegative(), requirementAssessments: z.array(requirementAssessmentSchema),
+  strongestRequirementIds: z.array(z.string()), gapRequirementIds: z.array(z.string()), explanation: z.array(z.string()),
+});

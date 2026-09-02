@@ -140,3 +140,47 @@ export interface JobReadinessAssessment {
   gapRequirementIds: string[];
   explanation: string[];
 }
+
+export type RequirementCoverageStatus = "covered" | "partial" | "missing";
+export type EvidenceTrustStatus = "confirmed" | "resume-unverified" | "none";
+export type SupplementNeed = "none" | "verify-existing" | "add-detail" | "new-evidence";
+export type SupplementDecision = "unreviewed" | "verified-existing" | "answered" | "no-experience" | "skipped";
+export type EvidenceDimension = "experience" | "scope" | "contribution" | "action" | "result" | "metric";
+
+export interface RequirementAssessment {
+  requirementId: string;
+  coverageStatus: RequirementCoverageStatus;
+  trustStatus: EvidenceTrustStatus;
+  supplementNeed: SupplementNeed;
+  evidenceStrength: import("@/types/resume").EvidenceStrength;
+  resumeQuotes: string[];
+  evidenceClaimIds: string[];
+  missingDimensions: EvidenceDimension[];
+  rationale: string;
+}
+
+export interface ReadinessMetric {
+  value: number | null;
+  applicable: boolean;
+  numerator: number;
+  denominator: number;
+  label: string;
+}
+
+export interface JobReadinessAssessmentV2 {
+  version: 2;
+  experimental: true;
+  overallScore: number;
+  recommendation: ApplicationRecommendation;
+  confidence: "low" | "medium" | "high";
+  coverageScore: ReadinessMetric;
+  trustScore: ReadinessMetric;
+  resultQualityScore: ReadinessMetric;
+  hardGateCoverage: ReadinessMetric;
+  criticalRequirementCoverage: ReadinessMetric;
+  unresolvedHighImpactUnknowns: number;
+  requirementAssessments: RequirementAssessment[];
+  strongestRequirementIds: string[];
+  gapRequirementIds: string[];
+  explanation: string[];
+}

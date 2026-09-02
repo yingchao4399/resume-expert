@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildFinalizeResumePrompt, buildOptimizeUserPrompt } from "@/lib/ai/prompts";
 import { EXAMPLE_USER_INPUT } from "@/store/resume-store-example";
-import type { KeywordEnhancementDraft, OptimizedItem } from "@/types/resume";
+import type { FollowUpQuestion, KeywordEnhancementDraft, OptimizedItem } from "@/types/resume";
 
 function draft(adoptionStatus: KeywordEnhancementDraft["adoptionStatus"]): KeywordEnhancementDraft {
   return {
@@ -33,5 +33,25 @@ describe("optimization prompt safety", () => {
     const prompt = buildFinalizeResumePrompt(EXAMPLE_USER_INPUT, "concise", [item("user-confirmed")], []);
     expect(prompt).toContain('"after": "负责企业服务产品规划"');
     expect(prompt).toContain('"verification": "user-confirmed"');
+  });
+
+  it("excludes skipped, unverified and no-experience supplements from final generation", () => {
+    const question = (decision: FollowUpQuestion["decision"]): FollowUpQuestion => ({
+      id: `follow-up-${decision}`,
+      question: "请补充相关经历",
+      purpose: "验证岗位要求",
+      userAnswer: "这是一段尚未确认的输入",
+      generatedBullet: "这是一条尚未确认的 bullet",
+      decision,
+    });
+    const prompt = buildFinalizeResumePrompt(
+      EXAMPLE_USER_INPUT,
+      "concise",
+      [],
+      [question("unreviewed"), question("skipped"), question("no-experience")]
+    );
+    expect(prompt).not.toContain("这是一段尚未确认的输入");
+    expect(prompt).not.toContain("这是一条尚未确认的 bullet");
+    expect(prompt).toContain("【用户补充的经历证据】\n无");
   });
 });

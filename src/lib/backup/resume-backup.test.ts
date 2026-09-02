@@ -19,9 +19,9 @@ describe("resume backup", () => {
 
     expect(parsed.documents).toHaveLength(1);
     expect(parsed.documents[0].id).toBe("backup-test");
-    expect(parsed.documents[0].schemaVersion).toBe(12);
+    expect(parsed.documents[0].schemaVersion).toBe(13);
     expect(parsed.documents[0].sourceResume).toBeNull();
-    expect(parsed.backupVersion).toBe(10);
+    expect(parsed.backupVersion).toBe(11);
     expect(parsed.jobApplications[0]).toMatchObject({ id: "application-1", resumeDocumentId: "backup-test" });
   });
 
@@ -37,7 +37,7 @@ describe("resume backup", () => {
 
     expect(parsed.documents[0]).toMatchObject({
       id: "legacy-test",
-      schemaVersion: 12,
+      schemaVersion: 13,
       jobTargetContext: { companyName: "", notes: "", companySnapshotId: null },
       sourceResume: null,
       importMetadata: null,

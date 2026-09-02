@@ -97,10 +97,23 @@ describe("resume store persistence", () => {
 
     const migrated = migrateDocument(legacy);
 
-    expect(migrated.schemaVersion).toBe(12);
+    expect(migrated.schemaVersion).toBe(13);
     expect(migrated.customOptimizeInstruction).toBe("");
     expect(migrated.analysisRevision).toBeNull();
     expect(migrated.finalResumeStatus).toBe("stale");
     expect(migrated.layoutConfig.templateId).toBe("ats-classic");
+  });
+
+  it("recomputes V2 readiness from existing references without calling a model", async () => {
+    const document = createEmptyDocument("v11-document");
+    const analysis = await runMockResumeAnalysis(EXAMPLE_USER_INPUT, "ai-product", { companyName: "", notes: "", companySnapshotId: null }, []);
+    const requirement = {
+      id: "req-erp", sourceSpanId: "span-erp", sourceSpanIds: ["span-erp"], sourceQuote: "熟悉 ERP", normalizedText: "熟悉 ERP",
+      kind: "tool" as const, modality: "required" as const, priority: "high" as const, priorityBasis: ["原文明示"], expectedOutcome: null,
+      anchorStatus: "validated" as const, reviewStatus: "confirmed" as const, isHardGate: false, userEdited: false,
+    };
+    analysis.matchItems = [{ requirementId: "req-erp", jdRequirement: "熟悉 ERP", evidenceClaimIds: [], resumeQuotes: ["负责 ERP 产品"], resumeEvidence: "负责 ERP 产品", evidenceStrength: "weak", missingEvidenceTypes: [], needsSupplement: true, optimizationSuggestion: "核验" }];
+    const migrated = migrateDocument({ ...document, schemaVersion: 12, analysisResult: analysis, jdAnalysisDocument: { schemaVersion: 2, sourceText: "熟悉 ERP", materialRevision: 0, revision: 1, status: "confirmed", confirmedRevision: 1, sourceSpans: [{ id: "span-erp", sectionId: null, text: "熟悉 ERP", startOffset: 0, endOffset: 6, listLevel: 0, role: "requirement" }], requirements: [requirement], hypotheses: [], qualityFindings: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
+    expect(migrated.analysisResult?.jobReadinessV2?.requirementAssessments[0]).toMatchObject({ coverageStatus: "partial", trustStatus: "resume-unverified", supplementNeed: "verify-existing" });
   });
 });

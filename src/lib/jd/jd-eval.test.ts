@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { JD_GOLD_CASES } from "../../../evals/jd-cases";
 import { buildJDAnalysisDocument, parseJDSourceSpans } from "@/lib/jd/decision-map";
+import { inferRequirementDraft } from "@/lib/jd/deterministic-requirement";
 
 describe("48-case JD gold evaluation", () => {
   it("meets deterministic source, atom and modality release gates", () => {
@@ -15,6 +16,7 @@ describe("48-case JD gold evaluation", () => {
       const sourceSpan = spans.find((span) => span.role === "requirement");
       expect(sourceSpan).toBeDefined();
       expect(sourceText.slice(sourceSpan!.startOffset, sourceSpan!.endOffset)).toBe(sourceSpan!.text);
+      const inferred = inferRequirementDraft(item.source, item.seniority);
       const document = buildJDAnalysisDocument({
         sourceText,
         materialRevision: 1,
@@ -22,11 +24,8 @@ describe("48-case JD gold evaluation", () => {
         drafts: [{
           sourceSpanId: sourceSpan!.id,
           sourceQuote: item.source,
-          normalizedText: item.expected.normalizedText,
-          kind: item.expected.kind,
-          modality: item.expected.modality,
-          priority: item.expected.priority,
-          priorityBasis: ["Gold 标注"],
+          ...inferred,
+          priorityBasis: ["确定性解析"],
         }],
       });
       const atom = document.requirements[0];
@@ -34,6 +33,8 @@ describe("48-case JD gold evaluation", () => {
       if (atom.sourceSpanIds.includes(sourceSpan!.id)) covered += 1;
       if (atom.modality === item.expected.modality) modalities += 1;
       expect(atom.normalizedText).toBe(item.expected.normalizedText);
+      expect(atom.kind, item.id).toBe(item.expected.kind);
+      expect(atom.priority, item.id).toBe(item.expected.priority);
     }
 
     expect(anchors / JD_GOLD_CASES.length).toBeGreaterThanOrEqual(0.98);

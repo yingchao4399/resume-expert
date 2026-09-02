@@ -9,6 +9,9 @@ import { buildConservativeResume } from "@/lib/resume/conservative-resume";
 import { buildJDAnalysisDocument, parseJDSourceSpans } from "@/lib/jd/decision-map";
 import { rankCareerClaimsByRequirement } from "@/lib/jd/deep-analysis";
 import { calculateJobReadiness, determineEvidenceStrength } from "@/lib/jd/readiness";
+import { assessRequirements, calculateJobReadinessV2 } from "@/lib/jd/readiness-v2";
+import { planSupplementTasks } from "@/lib/jd/supplement-planner";
+import { findResumeQuotes } from "@/lib/jd/resume-quote-recall";
 import type { WorkflowExecutionOptions } from "@/lib/studio/execution";
 import type { CareerAnalysisClaim } from "@/lib/career/career-context";
 import type { AnalysisResult, EvidenceStrength, JobRequirement, JobRoleInferenceItem, JobTargetContext, UserInput } from "@/types/resume";
@@ -334,6 +337,7 @@ export async function matchConfirmedJDServer(
   }
 
   const claimById = new Map(careerClaims.map((claim) => [claim.id, claim]));
+  const atomById = new Map(atoms.map((item) => [item.id, item]));
   const evidenceByRequirement = new Map<string, EvidenceStrength>();
   const resultEvidenceRequirementIds = new Set<string>();
   const completeMetricRequirementIds = new Set<string>();
@@ -341,7 +345,10 @@ export async function matchConfirmedJDServer(
     const raw = modelMatches.find((item) => item.requirementId === requirement.id);
     const allowed = new Set((claimsByRequirement.get(requirement.id) ?? []).map((claim) => claim.id));
     const evidenceClaimIds = [...new Set((raw?.evidenceClaimIds ?? []).filter((id) => allowed.has(id)))];
-    const resumeQuotes = [...new Set((raw?.resumeQuotes ?? []).map((item) => item.trim()).filter((item) => item.length >= 2 && input.originalResume.includes(item)))];
+    const resumeQuotes = [...new Set([
+      ...(raw?.resumeQuotes ?? []).map((item) => item.trim()).filter((item) => item.length >= 2 && input.originalResume.includes(item)),
+      ...findResumeQuotes(input.originalResume, atomById.get(requirement.id)!),
+    ])].slice(0, 3);
     let strength: EvidenceStrength = resumeQuotes.length ? "weak" : "none";
     for (const id of evidenceClaimIds) {
       const claim = claimById.get(id) ?? null;
@@ -366,19 +373,14 @@ export async function matchConfirmedJDServer(
   });
   const unresolvedHighImpactUnknowns = document.hypotheses.filter((item) => item.status === "unknown" && item.decisionImpact === "high").length;
   const readiness = calculateJobReadiness({ requirements: atoms, evidenceByRequirement, resultEvidenceRequirementIds, completeMetricRequirementIds, unresolvedHighImpactUnknowns });
-  const followUpQuestions: AnalysisResult["followUpQuestions"] = matchItems.filter((item) => item.needsSupplement).slice(0, 10).map((item, index) => ({
-    id: `fu-${index + 1}`, requirementId: item.requirementId, question: `请提供能证明“${item.jdRequirement}”的真实经历；如果没有，也请如实说明。`,
-    purpose: `补充“${item.jdRequirement}”的可核验证据`, thinkingPrompts: ["当时是什么场景？", "你本人做了什么？", "结果如何验证？"],
-    answerFramework: ["场景", "个人职责", "关键行动", "结果与口径"], honestNoExperience: "说明暂无直接经历，再补充最相近的可迁移经验。",
-    placeholderExample: "", userAnswer: "", generatedBullet: "",
-  }));
+  const requirementAssessments = assessRequirements(atoms, matchItems);
+  const readinessV2 = calculateJobReadinessV2({ requirements: atoms, requirementAssessments, unresolvedHighImpactUnknowns });
+  const supplementPlan = planSupplementTasks(atoms, requirementAssessments);
+  const followUpQuestions: AnalysisResult["followUpQuestions"] = [...supplementPlan.primary, ...supplementPlan.optional].slice(0, 12);
   const summary = summaryFromConfirmed(document);
-  const dimensionScores = [
-    { dimension: "硬门槛覆盖", score: readiness.hardGateCoverage, comment: "已确认硬门槛中存在可核验证据的比例" },
-    { dimension: "关键任务覆盖", score: readiness.criticalRequirementCoverage, comment: "关键要求中存在可核验证据的比例" },
-    { dimension: "结果证据", score: readiness.resultEvidenceScore, comment: "已关联结果事实的要求比例" },
-    { dimension: "指标完整度", score: readiness.metricCompletenessScore, comment: "已关联完整量化口径的要求比例" },
-  ];
+  const dimensionScores = [readinessV2.coverageScore, readinessV2.trustScore, readinessV2.resultQualityScore].map((item) => ({
+    dimension: item.label, score: item.value ?? 0, comment: item.applicable ? "按当前已确认需求与可核验引用确定性计算" : "当前岗位要求中不适用",
+  }));
   const raw: AnalysisResult = {
     jdAnalysis: {
       ...summary,
@@ -388,10 +390,10 @@ export async function matchConfirmedJDServer(
       clarificationNeeds: document.hypotheses.filter((item) => item.status === "unknown").map((item) => ({ id: `clarify-${item.id}`, topic: item.type, missingInformation: item.conclusion, impact: `决策影响：${item.decisionImpact}`, suggestedInput: "向招聘方确认", verificationQuestion: item.verificationQuestion })),
     },
     diagnosis: {
-      overallScore: readiness.overallScore,
+      overallScore: readinessV2.overallScore,
       dimensionScores,
-      mainIssues: readiness.gapRequirementIds.map((id) => atoms.find((item) => item.id === id)?.normalizedText ?? id),
-      prioritySuggestions: readiness.explanation,
+      mainIssues: readinessV2.gapRequirementIds.map((id) => atoms.find((item) => item.id === id)?.normalizedText ?? id),
+      prioritySuggestions: readinessV2.explanation,
     },
     matchItems,
     followUpQuestions,
@@ -399,6 +401,7 @@ export async function matchConfirmedJDServer(
     finalResume: buildConservativeResume(input),
     interviewPrep: { likelyQuestions: [], evidenceToPrepare: [], possibleExaggerations: [], dataToSupplement: [], selfIntroduction: "", requirementStrategies: [], reverseQuestions: [] },
     jobReadiness: readiness,
+    jobReadinessV2: readinessV2,
   };
   execution.onDecisionProgress?.({ type: "stage-completed", stage: "fact-match", message: "事实匹配与岗位准备度已完成" });
   if (execution.signal?.aborted) throw new AnalysisCancelledError();

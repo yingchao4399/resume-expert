@@ -228,7 +228,7 @@ export function buildFinalizeResumePrompt(
     };
   });
   const supplements = followUpQuestions
-    .filter((item) => item.userAnswer.trim() || item.generatedBullet.trim())
+    .filter((item) => item.decision === "answered" && item.userAnswer.trim() && item.generatedBullet.trim())
     .map((item) => ({
       question: item.question,
       purpose: item.purpose,
@@ -323,6 +323,11 @@ export function normalizeAnalysisResult(raw: AnalysisResult, input?: UserInput):
       placeholderExample: item.placeholderExample ?? "",
       userAnswer: item.userAnswer ?? "",
       generatedBullet: item.generatedBullet ?? "",
+      supplementNeed: item.supplementNeed,
+      decision: item.decision,
+      missingDimensions: item.missingDimensions,
+      existingQuote: item.existingQuote,
+      impactLabel: item.impactLabel,
     })),
     optimizedItems: (raw.optimizedItems ?? []).map((item, index) => ({
       id: item.id || `opt-${index + 1}`,
@@ -344,6 +349,7 @@ export function normalizeAnalysisResult(raw: AnalysisResult, input?: UserInput):
       reverseQuestions: raw.interviewPrep?.reverseQuestions ?? [],
     },
     jobReadiness: raw.jobReadiness,
+    jobReadinessV2: raw.jobReadinessV2,
   };
 }
 

@@ -63,7 +63,7 @@ export const resumeArchiveSchema = z.object({
 });
 
 const documentSchema = z.object({
-  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12)]),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13)]),
   id: z.string().min(1),
   title: z.string().min(1),
   createdAt: z.string(),
@@ -123,7 +123,7 @@ const interviewReviewSchema = z.object({
 });
 
 const backupSchema = z.object({
-  backupVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10)]),
+  backupVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11)]),
   exportedAt: z.string(),
   documents: z.array(documentSchema).min(1),
   archives: z.array(resumeArchiveSchema).optional().default([]),
@@ -134,7 +134,7 @@ const backupSchema = z.object({
 });
 
 export interface ResumeBackup {
-  backupVersion: 10;
+  backupVersion: 11;
   exportedAt: string;
   documents: ResumeDocument[];
   archives: ResumeArchive[];
@@ -146,7 +146,7 @@ export interface ResumeBackup {
 
 export function createResumeBackup(documents: ResumeDocument[], careerEvidence: CareerEvidence[] = [], jobApplications: JobApplication[] = [], interviewReviews: InterviewReviewRecord[] = [], archives: ResumeArchive[] = []): ResumeBackup {
   return {
-    backupVersion: 10,
+    backupVersion: 11,
     exportedAt: new Date().toISOString(),
     documents: structuredClone(documents),
     archives: structuredClone(archives),
@@ -165,7 +165,7 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
     throw new Error(`备份文件结构无效（${path}）：${issue?.message ?? "未知错误"}`);
   }
   return {
-    backupVersion: 10,
+    backupVersion: 11,
     exportedAt: parsed.data.exportedAt,
     archives: parsed.data.archives,
     documents: parsed.data.documents.map((document) => {
@@ -180,7 +180,7 @@ export function parseResumeBackup(value: unknown): ResumeBackup {
       void _legacyStatus;
       return {
         ...currentDocument,
-        schemaVersion: 12,
+        schemaVersion: 13,
         jobTargetContext: document.jobTargetContext ?? { companyName: "", notes: "", companySnapshotId: null },
         materialRevision: document.materialRevision ?? 0,
         analysisRevision: hasCurrentRequirementMap && document.analysisResult ? document.analysisRevision ?? null : null,
@@ -246,6 +246,7 @@ export const createResumeBackupV6 = createResumeBackupV4;
 export const createResumeBackupV7 = createResumeBackupV4;
 export const createResumeBackupV8 = createResumeBackupV4;
 export const createResumeBackupV10 = createResumeBackupV4;
+export const createResumeBackupV11 = createResumeBackupV4;
 
 export async function downloadResumeBackupV4(
   documents: ResumeDocument[], careerEvidence: CareerEvidence[] = [], jobApplications: JobApplication[] = [],
@@ -263,6 +264,7 @@ export const downloadResumeBackupV6 = downloadResumeBackupV4;
 export const downloadResumeBackupV7 = downloadResumeBackupV4;
 export const downloadResumeBackupV8 = downloadResumeBackupV4;
 export const downloadResumeBackupV10 = downloadResumeBackupV4;
+export const downloadResumeBackupV11 = downloadResumeBackupV4;
 
 function selectCareerClosure(documents: ResumeDocument[], domain: CareerDomainSnapshot): CareerDomainSnapshot {
   const referencedClaims = new Set<string>();

@@ -46,6 +46,7 @@ import {
   librarySnapshot,
 } from "@/store/resume-store-persistence";
 import { hasRunningTask } from "@/lib/tasks/task-runtime";
+import { calculateJobReadinessV2 } from "@/lib/jd/readiness-v2";
 
 export { defaultUserInput } from "@/store/resume-store-example";
 export { createEmptyDocument } from "@/store/resume-store-document";
@@ -360,8 +361,8 @@ export const useResumeStore = create<ResumeStore>()(
             ? parsed.state?.activeDocumentId as string
             : recoveredDocuments[0].id;
           const recoveredValue = JSON.stringify({
-            state: { schemaVersion: 14, documents: recoveredDocuments, archives, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
-            version: 14,
+            state: { schemaVersion: 15, documents: recoveredDocuments, archives, activeDocumentId, careerEvidence, jobApplications, interviewReviews },
+            version: 15,
           });
           validatePersistedLibrary(recoveredValue);
           unlockStorageWrites();
@@ -875,6 +876,21 @@ export const useResumeStore = create<ResumeStore>()(
           });
         }),
 
+      setFollowUpDecision: (id, decision) =>
+        set((state) => {
+          if (!state.analysisResult) return state;
+          const target = state.analysisResult.followUpQuestions.find((item) => item.id === id);
+          const assessments = state.analysisResult.jobReadinessV2?.requirementAssessments.map((item) =>
+            decision === "verified-existing" && item.requirementId === target?.requirementId
+              ? { ...item, trustStatus: "confirmed" as const, coverageStatus: "covered" as const, supplementNeed: item.missingDimensions.length ? "add-detail" as const : "none" as const, rationale: "用户已核验原简历引用。" }
+              : item
+          );
+          const jobReadinessV2 = assessments && state.jdAnalysisDocument
+            ? calculateJobReadinessV2({ requirements: state.jdAnalysisDocument.requirements, requirementAssessments: assessments, unresolvedHighImpactUnknowns: state.jdAnalysisDocument.hypotheses.filter((item) => item.status === "unknown" && item.decisionImpact === "high").length })
+            : state.analysisResult.jobReadinessV2;
+          return updateActiveDocument(state, { analysisResult: { ...state.analysisResult, jobReadinessV2, diagnosis: jobReadinessV2 ? { ...state.analysisResult.diagnosis, overallScore: jobReadinessV2.overallScore, mainIssues: jobReadinessV2.gapRequirementIds.map((requirementId) => state.jdAnalysisDocument?.requirements.find((item) => item.id === requirementId)?.normalizedText ?? requirementId), prioritySuggestions: jobReadinessV2.explanation } : state.analysisResult.diagnosis, followUpQuestions: state.analysisResult.followUpQuestions.map((item) => item.id === id ? { ...item, decision } : item) }, finalResumeStatus: "stale" });
+        }),
+
       setFollowUpGuidance: (id, example) =>
         set((state) => {
           if (!state.analysisResult) return state;
@@ -918,7 +934,7 @@ export const useResumeStore = create<ResumeStore>()(
               analysisResult: {
                 ...state.analysisResult,
                 followUpQuestions: state.analysisResult.followUpQuestions.map((q) =>
-                  q.id === id ? { ...q, generatedBullet: bullet } : q
+                  q.id === id ? { ...q, generatedBullet: bullet, decision: "answered" } : q
                 ),
               },
               finalResumeStatus: "stale",
@@ -968,7 +984,7 @@ export const useResumeStore = create<ResumeStore>()(
     }),
     {
       name: RESUME_STORAGE_KEY,
-       version: 14,
+       version: 15,
       skipHydration: true,
       storage: createJSONStorage<ResumeLibraryState>(() => safeLocalStorage),
       partialize: librarySnapshot,
@@ -980,7 +996,7 @@ export const useResumeStore = create<ResumeStore>()(
           ? persisted.documents.map((document) => migrateDocument(document))
           : [];
         return {
-           schemaVersion: 14,
+           schemaVersion: 15,
           documents,
           archives: Array.isArray(persisted.archives) ? persisted.archives : [],
           activeDocumentId: persisted.activeDocumentId ?? documents[0]?.id ?? "",

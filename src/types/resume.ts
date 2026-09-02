@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { JDAnalysisDocument, JobReadinessAssessment } from "@/types/jd-analysis";
+import type { JDAnalysisDocument, JobReadinessAssessment, JobReadinessAssessmentV2, SupplementDecision, SupplementNeed, EvidenceDimension } from "@/types/jd-analysis";
 
 export type StepId =
   | "input"
@@ -143,6 +143,11 @@ export interface FollowUpQuestion {
   placeholderExample?: string;
   userAnswer: string;
   generatedBullet: string;
+  supplementNeed?: SupplementNeed;
+  decision?: SupplementDecision;
+  missingDimensions?: EvidenceDimension[];
+  existingQuote?: string;
+  impactLabel?: string;
 }
 
 export type OptimizeStyle =
@@ -452,6 +457,7 @@ export interface AnalysisResult {
   finalResume: FinalResume;
   interviewPrep: InterviewPrep;
   jobReadiness?: JobReadinessAssessment;
+  jobReadinessV2?: JobReadinessAssessmentV2;
 }
 
 export interface StepConfig {
@@ -462,7 +468,7 @@ export interface StepConfig {
 export type FinalResumeStatus = "draft" | "confirmed" | "stale";
 
 export interface ResumeDocument {
-  schemaVersion: 9 | 10 | 11 | 12;
+  schemaVersion: 9 | 10 | 11 | 12 | 13;
   id: string;
   title: string;
   createdAt: string;
@@ -503,7 +509,7 @@ export interface JobApplication {
 }
 
 export interface ResumeLibraryState {
-  schemaVersion: 10 | 11 | 12 | 13 | 14;
+  schemaVersion: 10 | 11 | 12 | 13 | 14 | 15;
   documents: ResumeDocument[];
   archives: ResumeArchive[];
   activeDocumentId: string;

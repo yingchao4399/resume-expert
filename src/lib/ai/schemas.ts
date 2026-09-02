@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { JD_MAX_REQUIREMENTS, JD_CAPACITY_MESSAGE } from "@/lib/jd/limits";
-import { jdAnalysisDocumentSchema, jobReadinessAssessmentSchema } from "@/lib/jd/schemas";
+import { jdAnalysisDocumentSchema, jobReadinessAssessmentSchema, jobReadinessAssessmentV2Schema } from "@/lib/jd/schemas";
 import type { MindMapNode } from "@/types/interview";
 
 const nonEmptyText = z.string().min(1);
@@ -182,6 +182,11 @@ export const followUpQuestionSchema = z.object({
   placeholderExample: z.string().optional().default(""),
   userAnswer: z.string(),
   generatedBullet: z.string(),
+  supplementNeed: z.enum(["none", "verify-existing", "add-detail", "new-evidence"]).optional(),
+  decision: z.enum(["unreviewed", "verified-existing", "answered", "no-experience", "skipped"]).optional(),
+  missingDimensions: z.array(z.enum(["experience", "scope", "contribution", "action", "result", "metric"])).optional(),
+  existingQuote: z.string().optional(),
+  impactLabel: z.string().optional(),
 });
 
 export const optimizedItemSchema = z.object({
@@ -355,6 +360,7 @@ export const persistedAnalysisResultSchema = z.object({
   finalResume: finalResumeSchema,
   interviewPrep: persistedInterviewPrepSchema,
   jobReadiness: jobReadinessAssessmentSchema.optional(),
+  jobReadinessV2: jobReadinessAssessmentV2Schema.optional(),
 });
 
 export const analysisResultSchema = persistedAnalysisResultSchema.extend({

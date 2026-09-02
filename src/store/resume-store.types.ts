@@ -124,6 +124,7 @@ export interface ResumeStore {
   setOptimizeStyle: (style: OptimizeStyle) => void;
   setCustomOptimizeInstruction: (instruction: string) => void;
   updateFollowUpAnswer: (id: string, answer: string) => void;
+  setFollowUpDecision: (id: string, decision: import("@/types/jd-analysis").SupplementDecision) => void;
   setFollowUpBullet: (id: string, bullet: string) => void;
   getStepStatus: (step: StepId) => StepStatus;
   setCopied: (copied: boolean) => void;

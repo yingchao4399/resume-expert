@@ -12,7 +12,7 @@ async function events(response: Response) {
 }
 
 describe("confirmed JD matching stream", () => {
-  it("refuses drafts and computes readiness only after the map is confirmed", async () => {
+  it("computes trusted facts separately from candidate original-resume coverage", async () => {
     const parsed = await parseJD(new Request("http://localhost/api/analyze/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Workflow-Provider": "mock" },
@@ -29,8 +29,9 @@ describe("confirmed JD matching stream", () => {
     }));
     const output = await events(response);
     expect(output.at(-1).type).toBe("completed");
-    expect(output.at(-1).result.jobReadiness.overallScore).toBe(0);
-    expect(output.at(-1).result.diagnosis.overallScore).toBe(0);
-    expect(output.at(-1).result.matchItems.every((item: { evidenceStrength: string }) => item.evidenceStrength === "none")).toBe(true);
+    const assessment = output.at(-1).result.jobReadinessV2;
+    expect(assessment.version).toBe(2);
+    expect(assessment.requirementAssessments.some((item: { trustStatus: string }) => item.trustStatus === "resume-unverified")).toBe(true);
+    expect(assessment.requirementAssessments.every((item: { trustStatus: string }) => item.trustStatus !== "confirmed")).toBe(true);
   });
 });

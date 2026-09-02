@@ -5,6 +5,7 @@ import { parseResumeBackup, resumeArchiveSchema } from "@/lib/backup/resume-back
 import { normalizeFinalResumeBullets } from "@/lib/evidence/resume-evidence";
 import { sanitizeLayoutConfig } from "@/lib/templates/resume-templates";
 import { createEmptyDocument, createId, nowISO } from "@/store/resume-store-document";
+import { assessRequirements, calculateJobReadinessV2 } from "@/lib/jd/readiness-v2";
 
 export const RESUME_STORAGE_KEY = "resume-expert-library";
 export const RESUME_STORAGE_ERROR_EVENT = "resume-expert-storage-error";
@@ -101,7 +102,7 @@ export function validatePersistedLibrary(raw: string): void {
 export function writeLibraryOrThrow(state: ResumeLibraryState): void {
   if (typeof window === "undefined") return;
   if (readRecoveryRecord()) throw new Error("恢复模式下禁止修改，请先确认恢复结果或导出异常数据。");
-  const value = JSON.stringify({ state, version: 14 });
+  const value = JSON.stringify({ state, version: 15 });
   validatePersistedLibrary(value);
   try {
     emitStorageStatus("saving");
@@ -116,7 +117,7 @@ export function writeLibraryOrThrow(state: ResumeLibraryState): void {
 }
 
 export function librarySnapshot(state: Pick<ResumeLibraryState, "documents" | "archives" | "activeDocumentId" | "jobApplications" | "interviewReviews">): ResumeLibraryState {
-  return { schemaVersion: 14, documents: state.documents, archives: state.archives, activeDocumentId: state.activeDocumentId, careerEvidence: [], jobApplications: state.jobApplications, interviewReviews: state.interviewReviews };
+  return { schemaVersion: 15, documents: state.documents, archives: state.archives, activeDocumentId: state.activeDocumentId, careerEvidence: [], jobApplications: state.jobApplications, interviewReviews: state.interviewReviews };
 }
 
 function preserveCorruptStorage(raw: string, error: unknown): RecoveryRecord {
@@ -212,13 +213,19 @@ export function migrateDocument(document: LegacyResumeDocument): ResumeDocument 
     ? normalizeFinalResumeBullets(document.sourceResume, "imported")
     : null;
   const importedResume = document.importedResume ?? (sourceResume ? migrateSourceResume(sourceResume) : null);
-  const analysisResult = document.analysisResult
+  let analysisResult = document.analysisResult
     ? {
         ...document.analysisResult,
         finalResume: normalizeFinalResumeBullets(document.analysisResult.finalResume, "ai-generated", [], "needs-review"),
       }
     : null;
   const hasCurrentRequirementMap = Boolean(document.schemaVersion && document.schemaVersion >= 9 && document.jdAnalysisDocument);
+  const jdAnalysisDocument = hasCurrentRequirementMap && document.jdAnalysisDocument ? migrateJDMap(document.jdAnalysisDocument) : null;
+  if (analysisResult && jdAnalysisDocument && !analysisResult.jobReadinessV2) {
+    const requirementAssessments = assessRequirements(jdAnalysisDocument.requirements, analysisResult.matchItems);
+    const jobReadinessV2 = calculateJobReadinessV2({ requirements: jdAnalysisDocument.requirements, requirementAssessments, unresolvedHighImpactUnknowns: jdAnalysisDocument.hypotheses.filter((item) => item.status === "unknown" && item.decisionImpact === "high").length });
+    analysisResult = { ...analysisResult, jobReadinessV2, diagnosis: { ...analysisResult.diagnosis, overallScore: jobReadinessV2.overallScore, prioritySuggestions: jobReadinessV2.explanation } };
+  }
   const finalResumeStatus: FinalResumeStatus = analysisResult && !hasCurrentRequirementMap
     ? "stale"
     :
@@ -236,11 +243,11 @@ export function migrateDocument(document: LegacyResumeDocument): ResumeDocument 
   return {
     ...base,
     ...documentWithoutLegacyStatus,
-    schemaVersion: 12,
+    schemaVersion: 13,
     jobTargetContext: document.jobTargetContext ?? { companyName: "", notes: "", companySnapshotId: null },
     materialRevision: typeof document.materialRevision === "number" ? document.materialRevision : 0,
     analysisRevision: analysisResult && hasCurrentRequirementMap && typeof document.analysisRevision === "number" ? document.analysisRevision : null,
-    jdAnalysisDocument: hasCurrentRequirementMap && document.jdAnalysisDocument ? migrateJDMap(document.jdAnalysisDocument) : null,
+    jdAnalysisDocument,
     analysisBasis: hasCurrentRequirementMap && document.analysisBasis ? document.analysisBasis : null,
     sourceResume,
     importedResume,
