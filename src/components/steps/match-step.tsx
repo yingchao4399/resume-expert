@@ -34,6 +34,8 @@ export function MatchStep() {
                 <div className="rounded bg-neutral-50 p-3"><p className="text-xs font-medium text-neutral-500">原简历原文</p><p className="mt-1">{item.resumeQuotes?.length ? item.resumeQuotes.join("；") : "无可校验引用"}</p></div>
               </div>
               <p className="mt-3 text-xs text-neutral-600">匹配理由：{item.matchRationale || item.resumeEvidence}</p>
+              {assessment?.evidenceBasis?.length ? <p className="mt-1 text-xs text-neutral-500">判断依据：{assessment.evidenceBasis.join("；")}</p> : null}
+              {assessment?.matchConfidence && <p className="mt-1 text-xs text-neutral-500">匹配置信度：{assessment.matchConfidence === "high" ? "高" : assessment.matchConfidence === "medium" ? "中" : "低"}</p>}
               {!!item.missingEvidenceTypes?.length && <p className="mt-1 text-xs text-amber-700">缺失证据：{item.missingEvidenceTypes.join("、")}</p>}
               <div className="mt-3 flex items-center justify-between gap-3"><p className="text-xs text-neutral-600">建议：{item.optimizationSuggestion}</p>{item.needsSupplement && item.requirementId && <Button size="sm" variant="outline" onClick={() => openFollowUpForRequirement(item.requirementId!)}>针对该要求补证</Button>}</div>
             </div>);

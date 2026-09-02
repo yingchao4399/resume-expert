@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { assembleRequirements, rankCareerClaimsByRequirement, rankCareerClaimsForRequirements, splitJDSourceItems, validateMatchReferences } from "@/lib/jd/deep-analysis";
+import { buildJDAnalysisDocument, deriveRequirementSignals } from "@/lib/jd/decision-map";
 import type { CareerAnalysisClaim } from "@/lib/career/career-context";
 
 describe("deep JD analysis primitives", () => {
@@ -64,6 +65,20 @@ describe("deep JD analysis primitives", () => {
     const [validated] = validateMatchReferences([{ requirementId: requirements[0].id, evidenceClaimIds: ["real", "fake"], resumeQuotes: ["真实引用", "虚构引用"], evidenceStrength: "strong", needsSupplement: false, resumeEvidence: "引用", matchRationale: "模型匹配", missingEvidenceTypes: [] }], requirements, claims, "简历中的真实引用");
     expect(validated.evidenceClaimIds).toEqual(["real"]);
     expect(validated.resumeQuotes).toEqual(["真实引用"]);
+  });
+
+  it("derives expert-facing action, object, evidence and numeric signals from an atom", () => {
+    const signals = deriveRequirementSignals("负责搭建供应链数据平台，至少 3 年经验并交付指标看板", "deliverable");
+    expect(signals.actionVerb).toBe("负责");
+    expect(signals.objectText).toContain("搭建供应链数据平台");
+    expect(signals.requiredEvidenceTypes).toContain("指标");
+    expect(signals.numericConstraints).toEqual(expect.arrayContaining(["3 年", "至少"]));
+  });
+
+  it("persists derived signals on parsed requirements for the decision map", () => {
+    const document = buildJDAnalysisDocument({ sourceText: "负责搭建平台", materialRevision: 1, drafts: [{ sourceSpanId: "jd-span-0-6", sourceQuote: "负责搭建平台", normalizedText: "负责搭建平台", kind: "task", modality: "required", priority: "high", priorityBasis: [] }] });
+    expect(document.requirements[0].actionVerb).toBe("负责");
+    expect(document.requirements[0].requiredEvidenceTypes).toContain("个人行动");
   });
 
   it("downgrades a match when every model reference is invalid", () => {

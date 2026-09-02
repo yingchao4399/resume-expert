@@ -51,6 +51,10 @@ export interface JDRequirementAtom extends JDRequirementAtomDraft {
   originalRequirementIds?: string[];
   mergeReason?: string;
   reviewWarnings?: string[];
+  actionVerb?: string;
+  objectText?: string;
+  requiredEvidenceTypes?: string[];
+  numericConstraints?: string[];
 }
 
 export interface JDSourceReference {
@@ -107,8 +111,17 @@ export interface JDQualityFinding {
   severity: "high" | "medium" | "low";
 }
 
+export interface JDExpertSummary {
+  mission: string;
+  coreOutcomes: string[];
+  hardGates: string[];
+  workFocus: string[];
+  highValueUnknowns: string[];
+  riskFlags: string[];
+}
+
 export interface JDAnalysisDocument {
-  schemaVersion: 1 | 2;
+  schemaVersion: 1 | 2 | 3;
   sourceText: string;
   materialRevision: number;
   revision: number;
@@ -124,6 +137,7 @@ export interface JDAnalysisDocument {
   consolidationWarnings?: string[];
   consolidationMode?: "llm" | "mock";
   previousMap?: Omit<JDAnalysisDocument, "previousMap"> | null;
+  expertSummary?: JDExpertSummary;
 }
 
 export type ApplicationRecommendation = "priority-apply" | "supplement-before-apply" | "cautious-apply";
@@ -157,6 +171,10 @@ export interface RequirementAssessment {
   evidenceClaimIds: string[];
   missingDimensions: EvidenceDimension[];
   rationale: string;
+  matchConfidence?: "high" | "medium" | "low";
+  evidenceBasis?: string[];
+  candidateEvidenceClaimIds?: string[];
+  recommendedAction?: "核验现有内容" | "补充细节" | "补充新经历" | "无需补充";
 }
 
 export interface ReadinessMetric {

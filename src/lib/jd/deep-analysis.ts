@@ -80,7 +80,8 @@ export function rankCareerClaimsForRequirements(
   limit = 12,
 ): CareerAnalysisClaim[] {
   const requirementText = requirements.map((item) => `${item.requirement} ${item.keywords.join(" ")}`).join(" ");
-  const targetTerms = normalizedTerms(`${input.targetRole} ${requirementText}`);
+  const requirementTerms = normalizedTerms(requirementText);
+  const roleTerms = normalizedTerms(input.targetRole);
   return claims
     .map((claim) => {
       const claimTerms = normalizedTerms([
@@ -89,11 +90,16 @@ export function rankCareerClaimsForRequirements(
         claim.role,
         ...claim.capabilities.flatMap((item) => [item.name, ...item.aliases]),
       ].join(" "));
-      const overlap = claimTerms.filter((term) => targetTerms.some((target) => target === term || target.includes(term) || term.includes(target)));
+      const overlap = claimTerms.filter((term) => requirementTerms.some((target) => target === term || target.includes(term) || term.includes(target)));
+      const roleOverlap = claimTerms.filter((term) => roleTerms.some((target) => target === term || target.includes(term) || term.includes(target)));
       const capabilityBonus = claim.capabilities.filter((capability) => requirements.some((requirement) =>
         [capability.name, ...capability.aliases].some((name) => `${requirement.requirement} ${requirement.keywords.join(" ")}`.toLocaleLowerCase().includes(name.toLocaleLowerCase())),
       )).length * 4;
-      const relevance = overlap.length + capabilityBonus;
+      // A role title alone must never make an unrelated claim relevant. It is
+      // only a tie-breaker after the claim matches at least one requirement
+      // term, preventing e.g. every “工程师” experience from matching every
+      // skill in a product-manager JD.
+      const relevance = overlap.length > 0 ? overlap.length + Math.min(roleOverlap.length, 2) + capabilityBonus : 0;
       return { claim, score: relevance > 0 ? relevance + (claim.metrics.length ? 1 : 0) : 0 };
     })
     .filter((item) => item.score > 0)
@@ -105,12 +111,12 @@ export function rankCareerClaimsForRequirements(
 export function rankCareerClaimsByRequirement(
   claims: CareerAnalysisClaim[],
   requirements: JobRequirement[],
-  _input: Pick<UserInput, "targetRole">,
+  input: Pick<UserInput, "targetRole">,
   limitPerRequirement = 3,
 ): Map<string, CareerAnalysisClaim[]> {
   return new Map(requirements.map((requirement) => [
     requirement.id,
-    rankCareerClaimsForRequirements(claims, [requirement], { targetRole: "" }, limitPerRequirement),
+    rankCareerClaimsForRequirements(claims, [requirement], input, limitPerRequirement),
   ]));
 }
 

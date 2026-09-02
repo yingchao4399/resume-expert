@@ -16,6 +16,22 @@ const NEGATED_PATTERN = /不要求|无需|无须|不限于?|不作为硬性要�
 const REQUIRED_PATTERN = /必须|须具备|至少|以上|持有.*证|硬性要求|不可或缺/;
 const PREFERRED_PATTERN = /优先|加分项|更佳|最好具备/;
 
+export function deriveRequirementSignals(text: string, kind: JDRequirementAtom["kind"]): Pick<JDRequirementAtom, "actionVerb" | "objectText" | "requiredEvidenceTypes" | "numericConstraints"> {
+  const actionVerb = text.match(/负责|推动|设计|搭建|制定|分析|维护|优化|交付|协调|管理|开发|运营|跟进|落地|复盘|解决|提升|支持|熟悉|掌握|精通/)?.[0] ?? "";
+  const objectText = actionVerb ? text.slice((text.indexOf(actionVerb) + actionVerb.length)).replace(/^[：:，,、\s]+/, "").slice(0, 80) : text.slice(0, 80);
+  const numericConstraints = text.match(/\d+(?:\.\d+)?\s*(?:[-~至]\s*\d+\s*)?(?:年以上|年以下|年|个月|%|人|万|万元|次|个)?|至少|以上|以下|不低于|不超过|必须|本科|硕士|博士|大专|CET[-一二三四五六级0-9]+/gi) ?? [];
+  const requiredEvidenceTypes = kind === "education" || kind === "credential"
+    ? ["资格或学历凭证"]
+    : kind === "skill" || kind === "tool" || kind === "knowledge"
+      ? ["使用场景", "个人贡献", "熟练程度"]
+      : kind === "deliverable"
+        ? ["交付物", "个人行动", "结果", "指标"]
+        : kind === "experience"
+          ? ["相关经历", "个人贡献", "结果"]
+          : ["场景", "个人行动", "结果"];
+  return { actionVerb, objectText, requiredEvidenceTypes, numericConstraints: [...new Set(numericConstraints.map((item) => item.trim()))] };
+}
+
 function stableHash(value: string): string {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
@@ -130,11 +146,12 @@ export function buildJDAnalysisDocument(input: {
         reviewStatus: anchorValid && deterministicCue ? "auto-validated" : "needs-review",
         isHardGate: normalizedDraft.modality === "required" && normalizedDraft.priority === "critical",
         userEdited: false,
+        ...deriveRequirementSignals(normalizedDraft.normalizedText, normalizedDraft.kind),
       };
     });
   const now = input.now ?? new Date().toISOString();
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     sourceText: input.sourceText,
     materialRevision: input.materialRevision,
     revision: 1,

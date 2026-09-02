@@ -41,6 +41,10 @@ export const jdRequirementAtomSchema = z.object({
   originalRequirementIds: z.array(z.string()).optional(),
   mergeReason: z.string().optional(),
   reviewWarnings: z.array(z.string()).optional(),
+  actionVerb: z.string().optional(),
+  objectText: z.string().optional(),
+  requiredEvidenceTypes: z.array(z.string()).optional(),
+  numericConstraints: z.array(z.string()).optional(),
 });
 
 export const roleHypothesisSchema = z.object({
@@ -64,7 +68,7 @@ export const jdQualityFindingSchema = z.object({
 });
 
 const jdMapContentSchema = z.object({
-  schemaVersion: z.union([z.literal(1), z.literal(2)]),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   sourceText: z.string(),
   materialRevision: z.number().int().nonnegative(),
   revision: z.number().int().positive(),
@@ -79,6 +83,7 @@ const jdMapContentSchema = z.object({
   groups: z.array(jdRequirementGroupSchema).max(12).optional(),
   consolidationWarnings: z.array(z.string()).optional(),
   consolidationMode: z.enum(["llm", "mock"]).optional(),
+  expertSummary: z.object({ mission: z.string(), coreOutcomes: z.array(z.string()), hardGates: z.array(z.string()), workFocus: z.array(z.string()), highValueUnknowns: z.array(z.string()), riskFlags: z.array(z.string()) }).optional(),
 });
 
 // Accept legacy maps (including previously persisted >40-item maps) before migrating.
@@ -91,7 +96,7 @@ export const jdAnalysisDocumentSchema = jdMapContentSchema.extend({ previousMap:
       if (grouped.length !== ids.length || new Set(grouped).size !== ids.length || grouped.some(id => !ids.includes(id))) context.addIssue({ code: "custom", path: ["groups"], message: "核心分组必须完整且唯一覆盖全部细则。" });
     }
   })
-  .transform(value => ({ ...value, schemaVersion: 2 as const }));
+  .transform(value => ({ ...value, schemaVersion: 3 as const }));
 
 export const analysisBasisSchema = z.object({
   materialRevision: z.number().int().nonnegative(),
@@ -121,6 +126,10 @@ export const requirementAssessmentSchema = z.object({
   evidenceClaimIds: z.array(z.string()),
   missingDimensions: z.array(z.enum(["experience", "scope", "contribution", "action", "result", "metric"])),
   rationale: z.string(),
+  matchConfidence: z.enum(["high", "medium", "low"]).optional(),
+  evidenceBasis: z.array(z.string()).optional(),
+  candidateEvidenceClaimIds: z.array(z.string()).optional(),
+  recommendedAction: z.enum(["核验现有内容", "补充细节", "补充新经历", "无需补充"]).optional(),
 });
 
 const readinessMetricSchema = z.object({

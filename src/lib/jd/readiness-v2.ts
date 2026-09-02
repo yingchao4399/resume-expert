@@ -32,10 +32,18 @@ export function assessRequirements(requirements: JDRequirementAtom[], matches: M
     const missingDimensions = match ? uniqueDimensions(match) : ["experience" as const];
     const supplementNeed: RequirementAssessment["supplementNeed"] = trustStatus === "none"
       ? "new-evidence" : trustStatus === "resume-unverified" ? "verify-existing" : strength === "strong" && missingDimensions.length === 0 ? "none" : "add-detail";
+    const matchConfidence: RequirementAssessment["matchConfidence"] = strength === "strong" ? "high" : strength === "medium" ? "medium" : trustStatus === "none" ? "low" : "medium";
+    const recommendedAction: RequirementAssessment["recommendedAction"] = supplementNeed === "none" ? "无需补充" : supplementNeed === "verify-existing" ? "核验现有内容" : supplementNeed === "add-detail" ? "补充细节" : "补充新经历";
+    const evidenceBasis = [
+      claimIds.length ? `已确认事实 ${claimIds.length} 条` : "未关联已确认事实",
+      quotes.length ? `原简历原文引用 ${quotes.length} 条（候选证据）` : "无原简历连续引用",
+      strength === "strong" ? "包含完整行动、结果或指标" : "仍缺少可核验的完整结果或指标",
+    ];
     return {
       requirementId: requirement.id, coverageStatus, trustStatus, supplementNeed, evidenceStrength: strength,
       resumeQuotes: quotes, evidenceClaimIds: claimIds, missingDimensions,
       rationale: trustStatus === "confirmed" ? "已关联用户确认的结构化事实。" : trustStatus === "resume-unverified" ? "原简历已有合法引用，等待用户核验。" : "尚未找到可核验经历。",
+      matchConfidence, evidenceBasis, candidateEvidenceClaimIds: [], recommendedAction,
     };
   });
 }

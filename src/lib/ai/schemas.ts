@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { JD_MAX_REQUIREMENTS, JD_CAPACITY_MESSAGE } from "@/lib/jd/limits";
+import { JD_MAX_REQUIREMENTS, JD_MAX_CANDIDATES, JD_CAPACITY_MESSAGE } from "@/lib/jd/limits";
 import { jdAnalysisDocumentSchema, jobReadinessAssessmentSchema, jobReadinessAssessmentV2Schema } from "@/lib/jd/schemas";
 import type { MindMapNode } from "@/types/interview";
 
@@ -93,11 +93,14 @@ const sourceClassificationSchema = z.object({
   classification: z.preprocess(normalizeSourceClassification, z.enum(["requirement", "background", "benefit", "irrelevant"])),
 });
 
-export function createDeepJDModelResultSchema(sourceItemIds: string[]) {
+export function createDeepJDModelResultSchema(sourceItemIds: string[], maxRequirements = JD_MAX_CANDIDATES) {
   const allowed = new Set(sourceItemIds);
   return z.object({
     sourceClassifications: z.array(sourceClassificationSchema).max(sourceItemIds.length),
-    requirements: z.array(jdRequirementDraftSchema).max(40),
+    // The whole-document limit is enforced after batches are merged. Keeping
+    // this bound independent from the legacy 40-item limit allows a large JD
+    // to be analysed in bounded batches without dropping later requirements.
+    requirements: z.array(jdRequirementDraftSchema).max(Math.min(JD_MAX_CANDIDATES, Math.max(1, maxRequirements)), JD_CAPACITY_MESSAGE),
     responsibilities: z.array(conciseText).max(12), hardRequirements: z.array(conciseText).max(12), implicitRequirements: z.array(conciseText).max(12),
     keywords: z.array(z.string().max(80)).max(30), idealCandidate: z.string().max(1000), coreCompetencies: z.array(coreCompetencySchema).max(12),
     roleInference: z.object({ items: z.array(roleInferenceItemSchema).max(12) }), clarificationNeeds: z.array(clarificationNeedSchema).max(12),
@@ -118,11 +121,11 @@ export function createDeepJDModelResultSchema(sourceItemIds: string[]) {
   });
 }
 
-export function createCompactJDModelResultSchema(sourceItemIds: string[]) {
+export function createCompactJDModelResultSchema(sourceItemIds: string[], maxRequirements = JD_MAX_CANDIDATES) {
   const allowed = new Set(sourceItemIds);
   return z.object({
     sourceClassifications: z.array(sourceClassificationSchema).max(sourceItemIds.length),
-    requirements: z.array(jdRequirementDraftSchema).max(40),
+    requirements: z.array(jdRequirementDraftSchema).max(Math.min(JD_MAX_CANDIDATES, Math.max(1, maxRequirements)), JD_CAPACITY_MESSAGE),
   }).superRefine((value, context) => {
     const returned = value.sourceClassifications.map((item) => item.sourceItemId);
     if (new Set(returned).size !== returned.length) context.addIssue({ code: "custom", path: ["sourceClassifications"], message: "原始条目分类不得重复" });

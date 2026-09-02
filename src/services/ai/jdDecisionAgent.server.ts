@@ -19,7 +19,7 @@ import type { JDAnalysisDocument, JDRequirementAtom, JDRequirementAtomDraft, Rol
 import type { AIMode } from "@/lib/ai/types";
 import { AnalysisCancelledError } from "@/lib/ai/errors";
 import { createJDTaskBudget } from "@/lib/ai/jd-task-budget";
-import { JD_MAX_REQUIREMENTS, JD_CAPACITY_MESSAGE, JD_BATCH_SIZE, MATCH_BATCH_SIZE } from "@/lib/jd/limits";
+import { JD_MAX_REQUIREMENTS, JD_MAX_CANDIDATES, JD_CAPACITY_MESSAGE, JD_BATCH_SIZE, MATCH_BATCH_SIZE } from "@/lib/jd/limits";
 import { applyConsolidation, mockConsolidation } from "@/lib/jd/consolidation";
 import { jdAnalysisDocumentSchema } from "@/lib/jd/schemas";
 import { persistedAnalysisResultSchema } from "@/lib/ai/schemas";
@@ -77,6 +77,19 @@ function deterministicQualityFindings(document: JDAnalysisDocument): JDAnalysisD
     });
   }
   return findings;
+}
+
+function buildJDExpertSummary(document: JDAnalysisDocument): NonNullable<JDAnalysisDocument["expertSummary"]> {
+  const confirmed = document.requirements.filter((item) => item.reviewStatus === "confirmed" && item.modality !== "negated");
+  const mission = confirmed.find((item) => item.kind === "deliverable" || item.kind === "task")?.normalizedText ?? "尚未确认岗位使命";
+  return {
+    mission,
+    coreOutcomes: confirmed.filter((item) => item.kind === "deliverable" || Boolean(item.expectedOutcome)).slice(0, 8).map((item) => item.expectedOutcome || item.normalizedText),
+    hardGates: confirmed.filter((item) => item.isHardGate || item.modality === "required").slice(0, 12).map((item) => item.normalizedText),
+    workFocus: confirmed.filter((item) => ["task", "skill", "tool", "collaboration"].includes(item.kind)).slice(0, 8).map((item) => item.normalizedText),
+    highValueUnknowns: document.hypotheses.filter((item) => item.status === "unknown" && item.decisionImpact === "high").map((item) => item.verificationQuestion),
+    riskFlags: document.qualityFindings.filter((item) => item.severity === "high" || item.severity === "medium").slice(0, 8).map((item) => item.message),
+  };
 }
 
 function overviewHypotheses(
@@ -141,7 +154,8 @@ function mockJDDocument(input: UserInput, materialRevision: number): JDAnalysisD
   }));
   const draft = buildJDAnalysisDocument({ sourceText: input.jobDescription, materialRevision, spans, drafts });
   const document = applyConsolidation(draft, mockConsolidation(draft), undefined, false);
-  return { ...document, qualityFindings: deterministicQualityFindings(document) };
+  const withFindings = { ...document, qualityFindings: deterministicQualityFindings(document) };
+  return { ...withFindings, expertSummary: buildJDExpertSummary(withFindings) };
 }
 
 export async function analyzeJDDecisionMapServer(
@@ -174,7 +188,7 @@ export async function analyzeJDDecisionMapServer(
     batchSize: JD_BATCH_SIZE,
     createRequest: (items, signal) => ({
       promptId: "resume.deep-jd", system: RESUME_AGENT_SYSTEM_PROMPT, user: buildDeepJDPrompt(input, jobTargetContext, items),
-      schema: createCompactJDModelResultSchema(items.map((item) => item.id)), schemaName: "jd_decision_map_draft",
+      schema: createCompactJDModelResultSchema(items.map((item) => item.id), Math.min(JD_MAX_CANDIDATES, items.length * 8)), schemaName: "jd_decision_map_draft",
       maxTokens: 6000, timeoutMs: 60_000, batchSize: items.length, analysisStage: "JD 需求解析",
       model: execution.model, capture: execution.capture, analysisBudget: budget, signal,
     }),
@@ -222,6 +236,7 @@ export async function analyzeJDDecisionMapServer(
     }
   }
   document = { ...document, qualityFindings: deterministicQualityFindings(document) };
+  document = { ...document, expertSummary: buildJDExpertSummary(document) };
   budget.assertActive();
   jdAnalysisDocumentSchema.parse(document);
   execution.onDecisionProgress?.({ type: "stage-completed", stage: "jd-draft", message: "JD 草稿已生成，等待人工确认" });

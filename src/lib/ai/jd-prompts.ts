@@ -19,13 +19,17 @@ ${targetContext(input, context)}
 【确定性拆分后的原始条目】
 ${JSON.stringify(sourceItems.map(({ id, text }) => ({ id, text })), null, 2)}
 
+你是一名有招聘和业务面试经验的 JD 分析专家。不要把 JD 当作关键词清单，而要回答“入职后要完成什么、交付什么、在什么约束下完成、招聘方如何验证”。
+
 要求：
 1. sourceClassifications 必须逐条覆盖每个原始条目，分类只能是 requirement/background/benefit/irrelevant，不得遗漏。
 2. 一条原文包含多个能力或条件时拆成多个原子要求，但它们保留同一个 sourceItemId；每批最多 40 条候选，后续由独立全局归并阶段去重；不得为了条数合并不同要求。
 3. sourceQuote 必须逐字截取对应原始条目的连续片段。
-4. 每条要求提供类别、must/preferred/context 优先级、关键词及面试验证重点。
-5. 本次只返回 sourceClassifications 和 requirements，不生成岗位画像、概览、补证问题或面试策略。
-6. 规范表述应提炼任务、对象和明确的成果／条件，不仅换词复述；不得把推断成果变成岗位事实。单条尽量不超过 80 个汉字。
+4. 每条要求提供类别、must/preferred/context 优先级、关键词及面试验证重点；规范表述必须包含动作、对象或产出，不能只复制原句。
+5. 识别复合句中的独立任务、工具、经验年限、学历/证书、协作边界、否定条件和数字约束；不同约束不能合并成泛化能力。
+6. 对“负责/推动/搭建”等职责，说明实际工作对象和可验证产出；JD 未写明的结果、指标或团队情况必须留空，不得推断成事实。
+7. 本次只返回 sourceClassifications 和 requirements，不生成岗位画像、概览、补证问题或面试策略。
+8. 单条尽量不超过 80 个汉字。
 
 只返回 JSON。`;
 }

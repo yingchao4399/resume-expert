@@ -157,7 +157,7 @@ export async function runLLMResumeAnalysis(
       promptId: "resume.deep-jd",
       system: RESUME_AGENT_SYSTEM_PROMPT,
       user: buildDeepJDPrompt(input, jobTargetContext, items),
-      schema: createCompactJDModelResultSchema(items.map((item) => item.id)),
+      schema: createCompactJDModelResultSchema(items.map((item) => item.id), Math.min(240, items.length * 8)),
       schemaName: "compact_jd_requirement_map",
       maxTokens: 6000,
       timeoutMs: 60_000,
